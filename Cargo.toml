@@ -1,0 +1,23 @@
+[package]
+name = "project"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+async-trait = "0.1.83"
+tokio = { version = "1.40.0", features = ["macros", "rt-multi-thread", "signal"] }
+hyper = { version = "1.4.1", features = ["client", "http1"] }
+hyper-rustls = "0.27.3"
+google-youtube3 = "5.0.5"
+reqwest = "0.11.6"
+songbird = "0.4.3"
+symphonia = { version = "0.5.4", features = ["all"] }
+serenity = "0.12.2"
+env_logger = "0.11.5"
+poise = "0.6.1"
+dotenv = "0.15"
+log = "0.4.22"
+thiserror = "1.0.64"
+html-escape = "0.2.13"
+lombok = "0.4.0"
+sqlx = { version = "0.7", features = ["runtime-tokio-rustls", "sqlite"] }
