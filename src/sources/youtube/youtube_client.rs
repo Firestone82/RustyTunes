@@ -33,7 +33,7 @@ pub enum SearchError {
 }
 
 const SINGLE_URI: &str = "https://www.youtube.com/watch?v=";
-const _PLAYLIST_URI: &str = "https://www.youtube.com/playlist?list=";
+const PLAYLIST_URI: &str = "https://www.youtube.com/playlist?list=";
 
 impl Default for YoutubeClient {
     fn default() -> Self {
@@ -109,6 +109,7 @@ impl YoutubeClient {
                 match (video_id.clone(), title, channel, thumbnail_url) {
                     (Some(video_id), Some(title), Some(channel), Some(thumbnail_url)) => Some(
                         TrackMetadata {
+                            id: video_id.to_string(),
                             title: decode_html_entities(title).to_string(),
                             channel: decode_html_entities(channel).to_string(),
                             track_url: format!("{SINGLE_URI}{video_id}"),
@@ -138,9 +139,96 @@ impl YoutubeClient {
         Ok(SearchResult::Tracks(tracks))
     }
 
-    pub async fn search_playlist_url(&self, _url: String) -> Result<SearchResult, SearchError> {
-        // TODO: Implement this function
-        Ok(SearchResult::Playlist(vec![]))
+    pub async fn search_playlist_url(&self, url: String) -> Result<SearchResult, SearchError> {
+        let playlist_id = url.trim_start_matches(PLAYLIST_URI);
+
+        // let playlist_request = self.youtube
+        //     .playlists()
+        //     .list(&vec![
+        //         String::from("id"),
+        //         String::from("snippet"),
+        //     ])
+        //     .add_id(playlist_id)
+        //     .param("key", &self.api_key)
+        //     .max_results(1);
+        //
+        // let (_, playlist) = playlist_request.doit().await
+        //     .map_err(|error| SearchError::ApiError(error.to_string()))?;
+
+        let tracks_request = self.youtube
+            .playlist_items()
+            .list(&vec![
+                String::from("id"),
+                String::from("snippet"),
+            ])
+            .playlist_id(playlist_id)
+            .param("key", &self.api_key)
+            .max_results(50);
+
+        let (_, list) = tracks_request.doit().await
+            .map_err(|error| SearchError::ApiError(error.to_string()))?;
+
+        let results = list.items
+            .ok_or_else(|| SearchError::VideoNotFound(url.clone()))?;
+
+        if results.len() == 0 {
+            return Err(SearchError::VideoNotFound(format!("No video found for url: {}", url)));
+        }
+
+        let mut tracks: Vec<Track> = vec![];
+
+        for result in results {
+            
+            let metadata: Option<TrackMetadata> = result.snippet.as_ref().and_then(|snippet| {
+                let video_id: Option<String> = snippet.resource_id
+                    .as_ref()
+                    .and_then(|resource_id| resource_id.video_id.clone());
+
+                let title: Option<&String> = snippet.title.as_ref();
+                let channel: Option<&String> = snippet.channel_title.as_ref();
+                let thumbnail_url: Option<&String> = snippet
+                    .thumbnails
+                    .as_ref()
+                    .and_then(|details| {
+                        details
+                            .maxres
+                            .as_ref()
+                            .or(details.high.as_ref())
+                            .or(details.medium.as_ref())
+                            .or(details.standard.as_ref())
+                            .or(details.default.as_ref())
+                    })
+                    .and_then(|thumbnail| thumbnail.url.as_ref());
+
+                match (video_id.clone(), title, channel, thumbnail_url) {
+                    (Some(video_id), Some(title), Some(channel), Some(thumbnail_url)) => Some(
+                        TrackMetadata {
+                            id: video_id.to_string(),
+                            title: decode_html_entities(title).to_string(),
+                            channel: decode_html_entities(channel).to_string(),
+                            track_url: format!("{SINGLE_URI}{video_id}"),
+                            thumbnail_url: thumbnail_url.to_string(),
+                        }
+                    ),
+                    _ => None,
+                }
+            });
+
+            // println!("{:?}", video_id);
+            // println!("{:?}", metadata);
+            // println!("{:?}/{:?}", PLAYLIST_URI, metadata);
+
+            if let Some(metadata) = (metadata) {
+                tracks.push(Track {
+                    id: metadata.id.clone(),
+                    metadata,
+                });
+            } else {
+                println!("Failed to parse video - {:?}/{:?}", SINGLE_URI, result);
+            }
+        }
+
+        Ok(SearchResult::Playlist(tracks))
     }
 
 }

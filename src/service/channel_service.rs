@@ -36,7 +36,7 @@ pub async fn join_user_channel(ctx: Context<'_>) -> Result<ChannelId, MusicBotEr
             // Event listener to disconnect the bot if there is no activity in the voice channel
             handle.add_global_event(
                 Event::Core(CoreEvent::ClientDisconnect),
-                InactivityHandler::new(guild_id, manager.clone(), ctx.serenity_context().cache.clone())
+                InactivityHandler::new(guild_id, manager.clone(), ctx.serenity_context().clone())
             );
 
             // Event listener for when there is an error with the track
@@ -55,6 +55,36 @@ pub async fn join_user_channel(ctx: Context<'_>) -> Result<ChannelId, MusicBotEr
     }
 
     Ok(chanel_id)
+}
+
+pub async fn leave_channel(ctx: Context<'_>) -> Result<(), MusicBotError> {
+    let guild_id: GuildId = ctx.guild_id().ok_or_else(|| {
+        println!("Could not locate voice channel. Guild ID is none");
+        MusicBotError::InternalError("Could not locate voice channel. Guild ID is none".to_owned())
+    })?;
+
+    let manager: Arc<Songbird> = songbird::get(ctx.serenity_context()).await
+        .ok_or_else(|| MusicBotError::InternalError("Could not locate voice channel. Songbird manager does not exist".to_owned()))?;
+
+    match manager.get(guild_id) {
+        Some(handle_lock) => {
+            let mut handle = handle_lock.lock().await;
+
+            let _ = handle.remove_all_global_events();
+            let _ = handle.leave().await
+                .map_err(|error| {
+                    println!("Could not leave voice channel. Error: {:?}", error);
+                    MusicBotError::InternalError("Could not leave voice channel".to_owned())
+                });
+        }
+
+        None => {
+            println!("Could not locate voice channel. Songbird manager does not exist");
+            return Err(MusicBotError::InternalError("Could not locate voice channel. Songbird manager does not exist".to_owned()))
+        }
+    }
+
+    Ok(())
 }
 
 pub fn get_user_voice_channel(ctx: Context<'_>, user_id: &UserId) -> Option<ChannelId> {

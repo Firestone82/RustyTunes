@@ -72,6 +72,11 @@ impl MusicBotClient {
                     commands::cmd_skip::skip(),
                     commands::cmd_stop::stop(),
                     commands::cmd_vol::volume(),
+                    commands::cmd_join::join(),
+                    commands::cmd_queue::queue(),
+                    commands::cmd_leave::leave(),
+                    commands::cmd_shuffle::shuffle(),
+                    commands::cmd_playing::playing(),
                 ],
                 prefix_options: poise::PrefixFrameworkOptions {
                     prefix: Some(String::from("!")),

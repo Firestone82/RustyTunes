@@ -1,14 +1,14 @@
 use crate::bot::{Context, MusicBotError};
 use crate::checks::channel_checks::check_author_in_same_voice_channel;
-use crate::service::channel_service;
 use crate::player::player::{Player, Track};
+use crate::service::channel_service;
+use crate::service::embed_service;
 use crate::sources::youtube::youtube_client::{SearchError, SearchResult, YoutubeClient};
 use serenity::all::{CreateEmbed, ReactionType};
 use std::convert::Into;
 use std::str::FromStr;
 use std::time::Duration;
 use tokio::sync::RwLockWriteGuard;
-use crate::service::embed_service;
 
 const YOUTUBE_VIDEO_URL: &str = "https://www.youtube.com/watch?v=";
 const YOUTUBE_PLAYLIST_URL: &str = "https://www.youtube.com/playlist?list=";
@@ -41,7 +41,7 @@ pub async fn play(ctx: Context<'_>, track_source: Vec<String>) -> Result<(), Mus
     else if track_source.starts_with(&SPOTIFY_TRACK_URL) || track_source.starts_with(&SPOTIFY_PLAYLIST_URL) {
         // TODO: Implement search for tracks using Spotify
     }
-    // Search using text
+    // Search using text on YouTube
     else {
         let youtube_client: &YoutubeClient = &ctx.data().youtube_client;
         result = youtube_client.search_track_url(track_source, 6).await;
@@ -109,8 +109,19 @@ pub async fn play(ctx: Context<'_>, track_source: Vec<String>) -> Result<(), Mus
             drop(player);
         }
 
-        Ok(SearchResult::Playlist(_playlist)) => {
-            // TODO: Add all tracks from the playlist to the queue
+        Ok(SearchResult::Playlist(playlist)) => {
+            let mut player: RwLockWriteGuard<Player> = ctx.data().player.write().await;
+
+            if let Err(error) = player.add_tracks_to_queue(ctx, playlist).await {
+                println!("Error adding track to queue: {:?}", error);
+
+                let embed: CreateEmbed = embed_service::create_playback_error_embed(error);
+                let _ = embed_service::send_context_embed(ctx, embed, true, Some(30)).await?;
+            } else {
+                join_channel = true;
+            }
+
+            drop(player);
         }
 
         Err(error) => {

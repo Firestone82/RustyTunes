@@ -1,0 +1,12 @@
+use crate::bot::{Context, MusicBotError};
+use crate::checks::channel_checks::check_author_in_same_voice_channel;
+use crate::service::channel_service;
+
+#[poise::command(
+    prefix_command,
+    check = "check_author_in_same_voice_channel",
+)]
+pub async fn leave(ctx: Context<'_>) -> Result<(), MusicBotError> {
+    channel_service::leave_channel(ctx).await?;
+    Ok(())
+}

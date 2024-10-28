@@ -1,5 +1,6 @@
 use crate::bot::{Context, MusicBotError};
 use crate::player::player::{PlaybackError, Track};
+use crate::service::utils_service;
 use crate::sources::youtube::youtube_client::SearchError;
 use serenity::all::{ChannelId, Color, CreateEmbed, CreateEmbedFooter, CreateMessage, GuildChannel, Http, Message};
 use std::sync::Arc;
@@ -10,6 +11,19 @@ pub fn create_track_added_to_queue(queue: &Vec<Track>, track: &Track) -> CreateE
         .title("🎵  Track added to queue")
         .description(format!("**[{}]({})**", track.metadata.title, track.metadata.track_url))
         .footer(CreateEmbedFooter::new(format!("Queue length: {}", queue.len())))
+}
+
+pub fn create_playlist_added_to_queue(queue: &Vec<Track>, tracks: &Vec<Track>) -> CreateEmbed {
+    let mut embed: CreateEmbed = CreateEmbed::new()
+        .color(Color::DARK_GREEN)
+        .title("🎵  Playlist added to queue")
+        .description("Tracks added to queue:");
+
+    // for track in tracks {
+    //     embed = embed.field(track.metadata.title.clone(), track.metadata.track_url.clone(), false);
+    // }
+
+    embed.footer(CreateEmbedFooter::new(format!("Queue length: {}", queue.len())))
 }
 
 pub fn create_playback_error_embed(error: PlaybackError) -> CreateEmbed {
@@ -83,6 +97,20 @@ pub fn create_now_playing_embed(track: &Track) -> CreateEmbed {
         .description(format!("**[{}]({})**", track.metadata.title, track.metadata.track_url))
 }
 
+pub fn create_no_song_playing_embed() -> CreateEmbed {
+    CreateEmbed::new()
+        .color(Color::DARK_RED)
+        .title("🚫  No song playing")
+        .description("No song is currently playing.")
+}
+
+pub fn create_shuffle_song_embed() -> CreateEmbed {
+    CreateEmbed::new()
+        .color(Color::DARK_BLUE)
+        .title("🔀  Shuffle")
+        .description("Queue has been shuffled.")
+}
+
 pub fn create_playback_stopped_embed() -> CreateEmbed {
     CreateEmbed::new()
         .color(Color::DARK_RED)
@@ -103,6 +131,37 @@ pub fn create_volume_embed(volume: f32) -> CreateEmbed {
         .title("🔊  Volume")
         .description(format!("Volume is set to {}%.", volume))
 }
+
+pub fn create_queue_embed(queue: &Vec<Track>, page: usize) -> CreateEmbed {
+    let mut embed: CreateEmbed = CreateEmbed::new()
+        .color(Color::DARK_BLUE)
+        .title("📜  Queue")
+        .description("Upcoming tracks:")
+        .footer(CreateEmbedFooter::new(format!("Queue length: {}", queue.len())));
+
+    let page: usize = page.max(1);
+    let mut start: usize = (page - 1) * 10;
+
+    if start >= queue.len() {
+        start = queue.len().saturating_sub(1);
+    }
+
+    let queue_slice: Vec<&Track> = queue.iter().skip(start).take(10).collect::<Vec<&Track>>();
+
+    for (index, track) in queue_slice.iter().enumerate() {
+        embed = embed.field(
+            format!("{}  {}", utils_service::number_to_emoji(index + start + 1), track.metadata.title),
+            &track.metadata.track_url,
+            false,
+        );
+    }
+
+    embed
+}
+
+/*
+ * Send embeds
+ */
 
 pub async fn send_channel_embed(http: Arc<Http>, channel: &GuildChannel, embed: CreateEmbed, delete_after: Option<u64>) -> Result<Message, MusicBotError> {
     let created_message = CreateMessage::default()

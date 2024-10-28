@@ -1,6 +1,7 @@
 use crate::bot::Context;
 use crate::handlers::queue_handler::QueueHandler;
 use crate::service::embed_service;
+use rand::seq::SliceRandom;
 use serenity::all::{CreateEmbed, GuildId};
 use songbird::input::YoutubeDl;
 use songbird::tracks::TrackHandle;
@@ -31,6 +32,7 @@ pub struct Track {
 
 #[derive(Debug, Clone)]
 pub struct TrackMetadata {
+    pub id: String,
     pub title: String,
     pub channel: String,
     pub track_url: String,
@@ -58,6 +60,20 @@ impl Default for Player {
 }
 
 impl Player {
+    pub async fn add_tracks_to_queue(&mut self, ctx: Context<'_>, tracks: Vec<Track>) -> Result<(), PlaybackError> {
+        println!("Adding {} tracks to queue", tracks.len());
+        
+        for track in tracks {
+            self.queue.push(track.clone());
+        }
+        
+        if !self.is_playing {
+            self.start_playback(ctx).await?;
+        }
+        
+        Ok(())
+    }
+    
     pub async fn add_track_to_queue(&mut self, ctx: Context<'_>, track: Track) -> Result<(), PlaybackError> {
         println!("Adding track to queue: {}", track.metadata.track_url);
 
@@ -196,8 +212,19 @@ impl Player {
         }
     }
 
+    pub async fn shuffle(&mut self) -> Result<(), PlaybackError> {
+        println!("Shuffling queue");
+
+        if self.queue.len() > 1 {
+            let mut rng = rand::thread_rng();
+            self.queue.shuffle(&mut rng);
+        }
+
+        Ok(())
+    }
+    
     pub async fn set_volume(&mut self, mut volume: f32) -> Result<(), PlaybackError> {
-        volume = volume / 20.0;
+        volume = volume / 100.0;
         
         if let Some(track_handle) = &self.track_handle {
             let _ = track_handle.set_volume(volume);

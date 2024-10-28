@@ -1,5 +1,5 @@
-use crate::service::embed_service;
 use crate::player::player::{PlaybackError, Player};
+use crate::service::embed_service;
 use async_trait::async_trait;
 use lombok::AllArgsConstructor;
 use poise::serenity_prelude;
@@ -10,29 +10,29 @@ use songbird::{
     {Call, Event, EventContext, EventHandler}
 };
 use std::sync::Arc;
-use tokio::sync::{Mutex, MutexGuard, RwLock};
+use tokio::sync::{Mutex, MutexGuard, RwLock, RwLockWriteGuard};
 
 #[derive(AllArgsConstructor, Clone)]
 pub struct QueueHandler {
     serenity_ctx: serenity_prelude::Context,
     manager: Arc<Mutex<Call>>,
     req_client: reqwest::Client,
-    playback: Arc<RwLock<Player>>,
+    player: Arc<RwLock<Player>>,
     guild_channel: GuildChannel,
 }
 
 #[async_trait]
 impl EventHandler for QueueHandler {
     async fn act(&self, _e: &EventContext<'_>) -> Option<Event> {
-        let mut playback = self.playback.write().await;
+        let mut player: RwLockWriteGuard<Player> = self.player.write().await;
 
-        if !playback.is_playing {
+        if !player.is_playing {
             return None;
         }
 
         println!("Track has ended. Requesting next song to play.");
 
-        match playback.queue.pop() {
+        match player.queue.pop() {
             Some(next_track) => {
                 println!("- Playing next track: {}", next_track.metadata.title);
 
@@ -52,6 +52,9 @@ impl EventHandler for QueueHandler {
                 
                 let track: YoutubeDl = YoutubeDl::new(self.req_client.clone(), next_track.metadata.track_url.clone());
                 let track_handle: TrackHandle = guard.play(track.into());
+                
+                // Set volume
+                let _ = track_handle.set_volume(player.volume);
 
                 // Add event to handle the track end
                 let _ = track_handle.add_event(
@@ -62,14 +65,14 @@ impl EventHandler for QueueHandler {
                     println!("Error adding event to track handle: {:?}", e);
                 });
 
-                playback.track_handle = Some(track_handle);
+                player.track_handle = Some(track_handle);
             }
 
             None => {
                 println!("- No more tracks to play. Stopping playback.");
-                playback.is_playing = false;
-                playback.current_track = None;
-                playback.track_handle = None;
+                player.is_playing = false;
+                player.current_track = None;
+                player.track_handle = None;
             }
         }
 

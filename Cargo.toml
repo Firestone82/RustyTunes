@@ -22,3 +22,4 @@ sqlx = { version = "0.8.2", features = ["runtime-tokio-rustls", "sqlite"] }
 regex = "1.11.1"
 crypto = "0.5.1"
 log = "0.4.22"
+rand = "0.9.0-alpha.2"

@@ -14,14 +14,14 @@ pub async fn volume(ctx: Context<'_>, mut volume: Option<f32>) -> Result<(), Mus
     let mut player: RwLockWriteGuard<Player> = ctx.data().player.write().await;
 
     if let Some(vol) = volume {
-        volume = vol.clamp(1.0, 100.0).into();
+        volume = vol.clamp(1.0, 1000.0).into();
     }
-    
-    println!("Setting volume to: {:?}", volume);
 
     if let Some(volume) = volume {
         match player.set_volume(volume).await {
             Ok(_) => {
+                println!("Setting volume to: {:?}", volume);
+                
                 let embed: CreateEmbed = embed_service::create_volume_change_embed(volume);
                 let _ = embed_service::send_context_embed(ctx, embed, true, Some(30)).await?;
 
@@ -40,7 +40,7 @@ pub async fn volume(ctx: Context<'_>, mut volume: Option<f32>) -> Result<(), Mus
             }
         }
     } else {
-        let embed: CreateEmbed = embed_service::create_volume_embed(player.volume);
+        let embed: CreateEmbed = embed_service::create_volume_embed(player.volume * 100.0);
         let _ = embed_service::send_context_embed(ctx, embed, true, Some(30)).await?;
     }
 
