@@ -1,2 +1,3 @@
-pub mod playlist_embeds;
 pub mod player_embed;
+pub mod queue_embed;
+pub mod bot_embeds;

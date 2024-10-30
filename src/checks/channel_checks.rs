@@ -1,8 +1,11 @@
 use crate::bot::{Context, MusicBotError};
+use crate::embeds::bot_embeds::BotEmbed;
+use crate::embeds::player_embed::PlayerEmbed;
+use crate::embeds::queue_embed::QueueEmbed;
 use crate::player::player::Player;
 use crate::service::channel_service;
-use crate::service::embed_service;
-use serenity::all::{ChannelId, CreateEmbed};
+use crate::service::embed_service::SendEmbed;
+use serenity::all::ChannelId;
 use tokio::sync::RwLockReadGuard;
 
 pub async fn check_author_in_voice_channel(ctx: Context<'_>) -> Result<bool, MusicBotError> {
@@ -12,8 +15,8 @@ pub async fn check_author_in_voice_channel(ctx: Context<'_>) -> Result<bool, Mus
 
     match user_found {
         Some(false) => {
-            let embed: CreateEmbed = embed_service::create_user_not_in_voice_embed();
-            let _ = embed_service::send_context_embed(ctx, embed, true, Some(30)).await?;
+            BotEmbed::UserNotInVoiceChannel.to_embed().send_context(ctx, true, Some(30)).await?;
+            // let _ = embed_service::send_context_embed(ctx, embed, true, Some(30)).await?;
             
             Ok(false)
         }
@@ -23,11 +26,7 @@ pub async fn check_author_in_voice_channel(ctx: Context<'_>) -> Result<bool, Mus
         },
 
         None => {
-            let error: MusicBotError = MusicBotError::InternalError("Could not validate if author in voice channel".to_owned());
-            
-            let embed: CreateEmbed = embed_service::create_error_embed(error);
-            let _ = embed_service::send_context_embed(ctx, embed, true, Some(30)).await?;
-            
+            println!("User not found in any voice channel");
             Ok(false)
         }
     }
@@ -42,8 +41,9 @@ pub async fn check_author_in_same_voice_channel(ctx: Context<'_>) -> Result<bool
             if user_channel == bot_channel {
                 Ok(true)
             } else {
-                let embed: CreateEmbed = embed_service::create_user_not_in_shared_voice_channel_embed(bot_channel);
-                let _ = embed_service::send_context_embed(ctx, embed, true, Some(30)).await?;
+                BotEmbed::UserNotInSharedChannel(&bot_channel)
+                    .to_embed()
+                    .send_context(ctx, true, Some(30)).await?;
                 
                 Ok(false)
             }
@@ -54,8 +54,9 @@ pub async fn check_author_in_same_voice_channel(ctx: Context<'_>) -> Result<bool
         }
 
         (None, None) | (None, Some(_)) => {
-            let embed: CreateEmbed = embed_service::create_user_not_in_voice_embed();
-            let _ = embed_service::send_context_embed(ctx, embed, true, Some(30)).await?;
+            BotEmbed::UserNotInVoiceChannel
+                .to_embed()
+                .send_context(ctx, true, Some(30)).await?;
             
             Ok(false)
         }
@@ -68,9 +69,10 @@ pub async fn check_if_player_is_playing(ctx: Context<'_>) -> Result<bool, MusicB
     if player.is_playing {
         Ok(true)
     } else {
-        let embed: CreateEmbed = embed_service::create_no_song_playing_embed();
-        let _ = embed_service::send_context_embed(ctx, embed, true, Some(30)).await?;
-        
+         PlayerEmbed::NoSongPlaying
+             .to_embed()
+                .send_context(ctx, true, Some(30)).await?;
+
         Ok(false)
     }
 }
@@ -79,9 +81,10 @@ pub async fn check_if_queue_is_not_empty(ctx: Context<'_>) -> Result<bool, Music
     let player: RwLockReadGuard<Player> = ctx.data().player.read().await;
 
     if player.queue.is_empty() {
-        let embed: CreateEmbed = embed_service::create_empty_queue_embed();
-        let _ = embed_service::send_context_embed(ctx, embed, true, Some(30)).await?;
-        
+        QueueEmbed::IsEmpty
+            .to_embed()
+            .send_context(ctx, true, Some(30)).await?;
+
         Ok(false)
     } else {
         Ok(true)

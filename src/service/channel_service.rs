@@ -3,8 +3,9 @@ use crate::handlers::disconnect_handler::DisconnectHandler;
 use crate::handlers::error_handler::ErrorHandler;
 use crate::handlers::inactivity_handler::InactivityHandler;
 use serenity::all::{ChannelId, GuildId, UserId};
-use songbird::{CoreEvent, Event, Songbird};
+use songbird::{Call, CoreEvent, Event, Songbird};
 use std::sync::Arc;
+use tokio::sync::MutexGuard;
 
 pub async fn join_user_channel(ctx: Context<'_>) -> Result<ChannelId, MusicBotError> {
     let guild_id: GuildId = ctx.guild_id().ok_or_else(|| {
@@ -12,7 +13,7 @@ pub async fn join_user_channel(ctx: Context<'_>) -> Result<ChannelId, MusicBotEr
         MusicBotError::InternalError("Could not locate voice channel. Guild ID is none".to_owned())
     })?;
 
-    let chanel_id = match get_user_voice_channel(ctx, &ctx.author().id) {
+    let chanel_id: ChannelId = match get_user_voice_channel(ctx, &ctx.author().id) {
         Some(user_channel) => user_channel,
         None => {
             println!("User not in voice channel");
@@ -25,7 +26,7 @@ pub async fn join_user_channel(ctx: Context<'_>) -> Result<ChannelId, MusicBotEr
 
     match manager.join(guild_id, chanel_id).await {
         Ok(handle_lock) => {
-            let mut handle = handle_lock.lock().await;
+            let mut handle: MutexGuard<Call> = handle_lock.lock().await;
 
             // Event listener to disconnect the bot if the driver disconnects
             handle.add_global_event(
@@ -44,8 +45,6 @@ pub async fn join_user_channel(ctx: Context<'_>) -> Result<ChannelId, MusicBotEr
                 Event::Track(songbird::TrackEvent::Error),
                 ErrorHandler
             );
-
-            drop(handle);
         }
 
         Err(error) => {
@@ -68,7 +67,7 @@ pub async fn leave_channel(ctx: Context<'_>) -> Result<(), MusicBotError> {
 
     match manager.get(guild_id) {
         Some(handle_lock) => {
-            let mut handle = handle_lock.lock().await;
+            let mut handle: MutexGuard<Call> = handle_lock.lock().await;
 
             let _ = handle.remove_all_global_events();
             let _ = handle.leave().await

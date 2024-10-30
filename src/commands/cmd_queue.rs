@@ -1,7 +1,8 @@
 use crate::bot::{Context, MusicBotError};
+use crate::embeds::queue_embed::QueueEmbed;
 use crate::player::player::Player;
-use crate::service::embed_service;
-use serenity::all::CreateEmbed;
+use crate::service::embed_service::SendEmbed;
+use serenity::all::Message;
 use tokio::sync::RwLockWriteGuard;
 
 #[poise::command(
@@ -11,11 +12,16 @@ pub async fn queue(ctx: Context<'_>, page: Option<usize>) -> Result<(), MusicBot
     let player: RwLockWriteGuard<Player> = ctx.data().player.write().await;
 
     if player.queue.is_empty() {
-        let embed: CreateEmbed = embed_service::create_empty_queue_embed();
-        let _ = embed_service::send_context_embed(ctx, embed, true, Some(30)).await?;
+        QueueEmbed::IsEmpty
+            .to_embed()
+            .send_context(ctx, true, Some(30)).await?;
     } else {
-        let embed: CreateEmbed = embed_service::create_queue_embed(&player.queue, page.unwrap_or(1));
-        let _ = embed_service::send_context_embed(ctx, embed, true, Some(30)).await?;
+        let message: Message = QueueEmbed::Current {
+            queue: &player.queue, 
+            page: page.unwrap_or(1)
+        }
+            .to_embed()
+            .send_context(ctx, true, Some(60)).await?;
     }
 
     Ok(())

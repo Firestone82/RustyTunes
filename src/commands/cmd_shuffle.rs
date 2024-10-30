@@ -4,9 +4,9 @@ use crate::checks::channel_checks::{
     check_if_player_is_playing,
     check_if_queue_is_not_empty
 };
+use crate::embeds::player_embed::PlayerEmbed;
 use crate::player::player::Player;
-use crate::service::embed_service;
-use serenity::all::CreateEmbed;
+use crate::service::embed_service::SendEmbed;
 use tokio::sync::RwLockWriteGuard;
 
 #[poise::command(
@@ -20,8 +20,9 @@ pub async fn shuffle(ctx: Context<'_>) -> Result<(), MusicBotError> {
 
     player.shuffle().await?;
 
-    let embed: CreateEmbed = embed_service::create_shuffle_song_embed();
-    let _ = embed_service::send_context_embed(ctx, embed, true, Some(30)).await?;
+    PlayerEmbed::Shuffled
+        .to_embed()
+        .send_context(ctx, true, Some(30)).await?;
 
     Ok(())
 }

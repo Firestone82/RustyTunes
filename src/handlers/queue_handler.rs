@@ -1,9 +1,10 @@
+use crate::embeds::player_embed::PlayerEmbed;
 use crate::player::player::{PlaybackError, Player};
-use crate::service::embed_service;
+use crate::service::embed_service::SendEmbed;
 use async_trait::async_trait;
 use lombok::AllArgsConstructor;
 use poise::serenity_prelude;
-use serenity::all::{CreateEmbed, GuildChannel};
+use serenity::all::GuildChannel;
 use songbird::{
     input::YoutubeDl,
     tracks::TrackHandle,
@@ -37,8 +38,9 @@ impl EventHandler for QueueHandler {
                 println!("- Playing next track: {}", next_track.metadata.title);
 
                 // Send "Now playing message"
-                let embed: CreateEmbed = embed_service::create_now_playing_embed(&next_track);
-                let _ = embed_service::send_channel_embed(self.serenity_ctx.http.clone(), &self.guild_channel, embed, Some(30))
+                let _ = PlayerEmbed::NowPlaying(&next_track)
+                    .to_embed()
+                    .send_channel(self.serenity_ctx.http.clone(), &self.guild_channel, Some(30))
                     .await
                     .map_err(|error| {
                         println!("Error sending now playing embed: {:?}", error);
@@ -61,15 +63,17 @@ impl EventHandler for QueueHandler {
                     Event::Track(songbird::TrackEvent::End),
                     self.clone()
                 );
-                
+
                 player.track_handle = Some(track_handle);
+                player.current_track = Some(next_track);
+                player.is_playing = true;
             }
 
             None => {
                 println!("- No more tracks to play. Stopping playback.");
-                player.is_playing = false;
-                player.current_track = None;
                 player.track_handle = None;
+                player.current_track = None;
+                player.is_playing = false;
             }
         }
 

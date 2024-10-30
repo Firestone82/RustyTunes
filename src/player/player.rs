@@ -1,8 +1,9 @@
 use crate::bot::Context;
+use crate::embeds::player_embed::PlayerEmbed;
 use crate::handlers::queue_handler::QueueHandler;
-use crate::service::embed_service;
+use crate::service::embed_service::SendEmbed;
 use rand::seq::SliceRandom;
-use serenity::all::{CreateEmbed, GuildId};
+use serenity::all::GuildId;
 use songbird::input::YoutubeDl;
 use songbird::tracks::TrackHandle;
 use songbird::{Call, Event, TrackEvent};
@@ -62,10 +63,9 @@ impl Default for Player {
 impl Player {
     pub async fn add_tracks_to_queue(&mut self, ctx: Context<'_>, tracks: Vec<Track>) -> Result<(), PlaybackError> {
         println!("Adding {} tracks to queue", tracks.len());
-        
-        for track in tracks {
-            self.queue.push(track.clone());
-        }
+
+        self.queue.extend(tracks);
+        println!("- Queue length: {}", self.queue.len());
         
         if !self.is_playing {
             self.start_playback(ctx).await?;
@@ -77,7 +77,7 @@ impl Player {
     pub async fn add_track_to_queue(&mut self, ctx: Context<'_>, track: Track) -> Result<(), PlaybackError> {
         println!("Adding track to queue: {}", track.metadata.track_url);
 
-        self.queue.push(track.clone());
+        self.queue.push(track);
         println!("- Queue length: {}", self.queue.len());
 
         if !self.is_playing {
@@ -159,8 +159,9 @@ impl Player {
                 println!("- Found: {}", next_track.metadata.title);
 
                 // Send "Now playing message"
-                let embed: CreateEmbed = embed_service::create_now_playing_embed(&next_track);
-                let _ = embed_service::send_context_embed(ctx, embed, false, Some(30)).await?;
+                PlayerEmbed::NowPlaying(&next_track)
+                    .to_embed()
+                    .send_context(ctx, false, Some(30)).await?;
 
                 // Play the next track
                 let mut guard: MutexGuard<Call> = manager
@@ -247,5 +248,4 @@ impl Player {
 
         Ok(())
     }
-
 }

@@ -37,17 +37,6 @@ pub enum MusicBotError {
 
     #[error("Unable to join voice channel")]
     UnableToJoinVoiceChannelError,
-
-    // // --- Player errors ---
-    //
-    // #[error("No tracks in queue")]
-    // NoTracksInQueue,
-    //
-    // #[error("Playback is not active")]
-    // PlaybackNotActive,
-    //
-    // #[error("Playback is already active")]
-    // PlaybackAlreadyActive
 }
 
 impl From<serenity_prelude::Error> for MusicBotError {
@@ -106,6 +95,8 @@ impl MusicBotClient {
                     commands::cmd_leave::leave(),
                     commands::cmd_shuffle::shuffle(),
                     commands::cmd_playing::playing(),
+                    commands::cmd_uwu::uwu(),
+                    commands::cmd_uwu::uwu_me(),
                 ],
                 prefix_options: poise::PrefixFrameworkOptions {
                     prefix: Some(String::from(".")),

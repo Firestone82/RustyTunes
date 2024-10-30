@@ -218,7 +218,7 @@ impl YoutubeClient {
             // println!("{:?}", metadata);
             // println!("{:?}/{:?}", PLAYLIST_URI, metadata);
 
-            if let Some(metadata) = (metadata) {
+            if let Some(metadata) = metadata {
                 tracks.push(Track {
                     id: metadata.id.clone(),
                     metadata,
