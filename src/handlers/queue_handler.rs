@@ -50,8 +50,8 @@ impl EventHandler for QueueHandler {
                     .lock()
                     .await;
                 
-                let track: YoutubeDl = YoutubeDl::new(self.req_client.clone(), next_track.metadata.track_url.clone());
-                let track_handle: TrackHandle = guard.play(track.into());
+                let track_data: YoutubeDl = YoutubeDl::new(self.req_client.clone(), next_track.metadata.track_url.clone());
+                let track_handle: TrackHandle = guard.play(track_data.into());
                 
                 // Set volume
                 let _ = track_handle.set_volume(player.volume);
@@ -60,11 +60,8 @@ impl EventHandler for QueueHandler {
                 let _ = track_handle.add_event(
                     Event::Track(songbird::TrackEvent::End),
                     self.clone()
-                )
-                .map_err(|e| {
-                    println!("Error adding event to track handle: {:?}", e);
-                });
-
+                );
+                
                 player.track_handle = Some(track_handle);
             }
 

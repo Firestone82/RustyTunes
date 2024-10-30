@@ -1,7 +1,9 @@
 use crate::bot::{Context, MusicBotError};
+use crate::player::player::Player;
 use crate::service::channel_service;
-use serenity::all::{ChannelId, CreateEmbed};
 use crate::service::embed_service;
+use serenity::all::{ChannelId, CreateEmbed};
+use tokio::sync::RwLockReadGuard;
 
 pub async fn check_author_in_voice_channel(ctx: Context<'_>) -> Result<bool, MusicBotError> {
     let user_found: Option<bool> = ctx
@@ -57,5 +59,31 @@ pub async fn check_author_in_same_voice_channel(ctx: Context<'_>) -> Result<bool
             
             Ok(false)
         }
+    }
+}
+
+pub async fn check_if_player_is_playing(ctx: Context<'_>) -> Result<bool, MusicBotError> {
+    let player: RwLockReadGuard<Player> = ctx.data().player.read().await;
+
+    if player.is_playing {
+        Ok(true)
+    } else {
+        let embed: CreateEmbed = embed_service::create_no_song_playing_embed();
+        let _ = embed_service::send_context_embed(ctx, embed, true, Some(30)).await?;
+        
+        Ok(false)
+    }
+}
+
+pub async fn check_if_queue_is_not_empty(ctx: Context<'_>) -> Result<bool, MusicBotError> {
+    let player: RwLockReadGuard<Player> = ctx.data().player.read().await;
+
+    if player.queue.is_empty() {
+        let embed: CreateEmbed = embed_service::create_empty_queue_embed();
+        let _ = embed_service::send_context_embed(ctx, embed, true, Some(30)).await?;
+        
+        Ok(false)
+    } else {
+        Ok(true)
     }
 }

@@ -159,6 +159,13 @@ pub fn create_queue_embed(queue: &Vec<Track>, page: usize) -> CreateEmbed {
     embed
 }
 
+pub fn create_empty_queue_embed() -> CreateEmbed {
+    CreateEmbed::new()
+        .color(Color::DARK_RED)
+        .title("🚫  Empty queue")
+        .description("The queue is empty.")
+}
+
 /*
  * Send embeds
  */

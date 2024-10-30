@@ -1,7 +1,7 @@
 use crate::commands;
 use crate::handlers::error_handler;
-use crate::player::player::Player;
-use crate::sources::youtube::youtube_client::YoutubeClient;
+use crate::player::player::{PlaybackError, Player};
+use crate::sources::youtube::youtube_client::{SearchError, YoutubeClient};
 use dotenv::var;
 use poise::serenity_prelude;
 use serenity::all::GatewayIntents;
@@ -37,10 +37,39 @@ pub enum MusicBotError {
 
     #[error("Unable to join voice channel")]
     UnableToJoinVoiceChannelError,
+
+    // // --- Player errors ---
+    //
+    // #[error("No tracks in queue")]
+    // NoTracksInQueue,
+    //
+    // #[error("Playback is not active")]
+    // PlaybackNotActive,
+    //
+    // #[error("Playback is already active")]
+    // PlaybackAlreadyActive
 }
 
 impl From<serenity_prelude::Error> for MusicBotError {
     fn from(value: serenity_prelude::Error) -> Self {
+        MusicBotError::InternalError(value.to_string())
+    }
+}
+
+impl From<PlaybackError> for MusicBotError {
+    fn from(value: PlaybackError) -> Self {
+        MusicBotError::InternalError(value.to_string())
+    }
+}
+
+impl From<MusicBotError> for PlaybackError {
+    fn from(value: MusicBotError) -> Self {
+        PlaybackError::InternalError(value.to_string())
+    }
+}
+
+impl From<SearchError> for MusicBotError {
+    fn from(value: SearchError) -> Self {
         MusicBotError::InternalError(value.to_string())
     }
 }
@@ -79,7 +108,7 @@ impl MusicBotClient {
                     commands::cmd_playing::playing(),
                 ],
                 prefix_options: poise::PrefixFrameworkOptions {
-                    prefix: Some(String::from("!")),
+                    prefix: Some(String::from(".")),
                     ..Default::default()
                 },
                 ..Default::default()

@@ -80,13 +80,6 @@ impl Player {
         self.queue.push(track.clone());
         println!("- Queue length: {}", self.queue.len());
 
-        let embed: CreateEmbed = embed_service::create_track_added_to_queue(&self.queue, &track);
-        let _ = embed_service::send_context_embed(ctx, embed, true, Some(30)).await
-            .map_err(|error| {
-                println!("Error sending track added to queue embed: {:?}", error);
-                PlaybackError::InternalError("Error sending track added to queue embed".to_owned())
-            })?;
-
         if !self.is_playing {
             self.start_playback(ctx).await?;
         }
@@ -135,7 +128,9 @@ impl Player {
             return Err(PlaybackError::NoTracksInQueue);
         }
 
-        let _ = self.next_track(ctx).await?;
+        self.is_playing = true;
+        self.next_track(ctx).await?;
+        
         Ok(())
     }
 
@@ -165,19 +160,15 @@ impl Player {
 
                 // Send "Now playing message"
                 let embed: CreateEmbed = embed_service::create_now_playing_embed(&next_track);
-                let _ = embed_service::send_context_embed(ctx, embed, true, Some(30)).await
-                    .map_err(|error| {
-                        println!("Error sending now playing embed: {:?}", error);
-                        PlaybackError::InternalError("Error sending now playing embed".to_owned())
-                    })?;
+                let _ = embed_service::send_context_embed(ctx, embed, false, Some(30)).await?;
 
                 // Play the next track
                 let mut guard: MutexGuard<Call> = manager
                     .lock()
                     .await;
 
-                let track: YoutubeDl = YoutubeDl::new(ctx.data().request_client.clone(), next_track.metadata.track_url.clone());
-                let track_handle: TrackHandle = guard.play(track.into());
+                let track_data: YoutubeDl = YoutubeDl::new(ctx.data().request_client.clone(), next_track.metadata.track_url.clone());
+                let track_handle: TrackHandle = guard.play(track_data.into());
                 
                 // Set volume
                 let _ = track_handle.set_volume(self.volume);
@@ -192,10 +183,7 @@ impl Player {
                         ctx.data().player.clone(),
                         ctx.guild_channel().await.unwrap()
                     )
-                )
-                .map_err(|e| {
-                    println!("Error adding event to track handle: {:?}", e);
-                });
+                );
 
                 self.current_track = Some(next_track);
                 self.track_handle = Some(track_handle);
@@ -219,7 +207,7 @@ impl Player {
             let mut rng = rand::thread_rng();
             self.queue.shuffle(&mut rng);
         }
-
+        
         Ok(())
     }
     
@@ -236,9 +224,9 @@ impl Player {
 
     pub async fn stop_track(&mut self) -> Result<(), PlaybackError> {
         if self.is_playing {
-            println!("Stopping track");
-
             if let Some(track_handle) = &self.track_handle {
+                println!("Stopping track");
+                
                 if let Err(error) = track_handle.stop() {
                     println!("- Error stopping track: {:?}", error);
                     return Err(PlaybackError::InternalError(format!("Error stopping track: {:?}", error)));

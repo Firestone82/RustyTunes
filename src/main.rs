@@ -8,6 +8,7 @@ pub mod commands;
 pub mod sources;
 pub mod checks;
 pub mod service;
+pub mod embeds;
 
 #[tokio::main]
 async fn main() -> Result<(), MusicBotError> {
