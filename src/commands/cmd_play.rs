@@ -5,7 +5,7 @@ use crate::embeds::queue_embed::QueueEmbed;
 use crate::player::player::{Player, Track};
 use crate::service::channel_service;
 use crate::service::embed_service::SendEmbed;
-use crate::sources::youtube::youtube_client::{SearchError, SearchResult, YoutubeClient};
+use crate::sources::youtube::youtube_client::{SearchError, YouTubeSearchResult, YoutubeClient};
 use serenity::all::{Message, ReactionType};
 use std::convert::Into;
 use std::str::FromStr;
@@ -25,7 +25,7 @@ const SPOTIFY_PLAYLIST_URL: &str = "https://open.spotify.com/playlist/";
 pub async fn play(ctx: Context<'_>, track_source: Vec<String>) -> Result<(), MusicBotError> {
     let track_source: String = track_source.join(" ");
     
-    let mut result: Result<SearchResult, SearchError> = Err(SearchError::InternalError("No search result found".into()));
+    let mut result: Result<YouTubeSearchResult, SearchError> = Err(SearchError::InternalError("No search result found".into()));
 
     // Search YouTube
     if track_source.starts_with(&YOUTUBE_VIDEO_URL) || track_source.starts_with(&YOUTUBE_PLAYLIST_URL) {
@@ -49,20 +49,18 @@ pub async fn play(ctx: Context<'_>, track_source: Vec<String>) -> Result<(), Mus
     }
 
     match result {
-        Ok(SearchResult::Track(track)) => {
+        Ok(YouTubeSearchResult::Track(track)) => {
             let mut player: RwLockWriteGuard<Player> = ctx.data().player.write().await;
-            player.add_track_to_queue(ctx, track.clone()).await?;
-            channel_service::join_user_channel(ctx).await?;
-            
-            QueueEmbed::TrackAdded { 
-                queue: &player.queue, 
-                track: &track 
-            }
+
+            QueueEmbed::TrackAdded(&track)
                 .to_embed()
                 .send_context(ctx, true, Some(30)).await?;
+
+            player.add_track_to_queue(ctx, track.clone()).await?;
+            channel_service::join_user_channel(ctx).await?;
         }
 
-        Ok(SearchResult::Tracks(mut tracks)) => {
+        Ok(YouTubeSearchResult::Tracks(mut tracks)) => {
             let message: Message = PlayerEmbed::Search(&tracks)
                 .to_embed()
                 .send_context(ctx, true, None).await?;
@@ -85,15 +83,15 @@ pub async fn play(ctx: Context<'_>, track_source: Vec<String>) -> Result<(), Mus
                     let track: Track = tracks.swap_remove(track_index);
 
                     let mut player: RwLockWriteGuard<Player> = ctx.data().player.write().await;
-                    player.add_track_to_queue(ctx, track.clone()).await?;
-                    channel_service::join_user_channel(ctx).await?;
-                    
-                    QueueEmbed::TrackAdded {
-                        queue: &player.queue, 
-                        track: &track
+
+                    if !player.queue.is_empty() {
+                        QueueEmbed::TrackAdded(&track)
+                            .to_embed()
+                            .send_context(ctx, true, Some(30)).await?;
                     }
-                        .to_embed()
-                        .send_context(ctx, true, Some(30)).await?;
+
+                    player.add_track_to_queue(ctx, track).await?;
+                    channel_service::join_user_channel(ctx).await?;
                 },
                 None => {
                     message.delete(ctx.http()).await?;
@@ -107,10 +105,14 @@ pub async fn play(ctx: Context<'_>, track_source: Vec<String>) -> Result<(), Mus
             };
         }
 
-        Ok(SearchResult::Playlist(playlist)) => {
+        Ok(YouTubeSearchResult::Playlist(playlist)) => {
             let mut player: RwLockWriteGuard<Player> = ctx.data().player.write().await;
 
-            player.add_tracks_to_queue(ctx, playlist).await?;
+            QueueEmbed::PlaylistAdded(&playlist)
+                .to_embed()
+                .send_context(ctx, true, Some(30)).await?;
+            
+            player.add_playlist_to_queue(ctx, playlist).await?;
             channel_service::join_user_channel(ctx).await?;
         }
 

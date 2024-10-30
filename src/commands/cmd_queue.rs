@@ -16,7 +16,7 @@ pub async fn queue(ctx: Context<'_>, page: Option<usize>) -> Result<(), MusicBot
             .to_embed()
             .send_context(ctx, true, Some(30)).await?;
     } else {
-        let message: Message = QueueEmbed::Current {
+        QueueEmbed::Current {
             queue: &player.queue, 
             page: page.unwrap_or(1)
         }

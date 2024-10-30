@@ -26,6 +26,15 @@ pub enum PlaybackError {
 }
 
 #[derive(Debug, Clone)]
+pub struct Playlist {
+    pub id: String,
+    pub title: String,
+    pub description: String,
+    pub playlist_url: String,
+    pub tracks: Vec<Track>
+}
+
+#[derive(Debug, Clone)]
 pub struct Track {
     pub id: String,
     pub metadata: TrackMetadata
@@ -37,7 +46,6 @@ pub struct TrackMetadata {
     pub title: String,
     pub channel: String,
     pub track_url: String,
-    pub thumbnail_url: String,
 }
 
 pub struct Player {
@@ -61,10 +69,10 @@ impl Default for Player {
 }
 
 impl Player {
-    pub async fn add_tracks_to_queue(&mut self, ctx: Context<'_>, tracks: Vec<Track>) -> Result<(), PlaybackError> {
-        println!("Adding {} tracks to queue", tracks.len());
+    pub async fn add_playlist_to_queue(&mut self, ctx: Context<'_>, playlist: Playlist) -> Result<(), PlaybackError> {
+        println!("Adding playlist to queue, tracks: {}", playlist.tracks.len());
 
-        self.queue.extend(tracks);
+        self.queue.extend(playlist.tracks);
         println!("- Queue length: {}", self.queue.len());
         
         if !self.is_playing {
