@@ -2,7 +2,6 @@ use crate::bot::{Context, MusicBotError};
 use crate::embeds::queue_embed::QueueEmbed;
 use crate::player::player::Player;
 use crate::service::embed_service::SendEmbed;
-use serenity::all::Message;
 use tokio::sync::RwLockWriteGuard;
 
 #[poise::command(

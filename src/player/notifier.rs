@@ -28,7 +28,7 @@ pub struct MessageNotify {
 }
 
 pub struct Notifier {
-    messages: Vec<MessageNotify>,
+    pub messages: Vec<MessageNotify>,
     database: Arc<Database>,
     serenity_context: serenity::prelude::Context
 }
@@ -108,7 +108,7 @@ impl Notifier {
                     .guild()
                     .expect("Failed to get guild channel");
                 
-                let message = NotifyEmbed::Notification(&message)
+                NotifyEmbed::Notification(message)
                     .to_embed()
                     .send_channel(self.serenity_context.http.clone(), &guild_channel, None, Some(format!("||{}||", message.user_id.mention())))
                     .await
@@ -121,7 +121,7 @@ impl Notifier {
                     .await
                     .expect("Failed to delete message from database");
                 
-                self.messages.retain(|m| m.message_id != message.id);
+                self.messages.retain(|m| m.message_id != message.message_id);
             }
         }
     }

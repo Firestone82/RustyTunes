@@ -159,7 +159,7 @@ impl MusicBotClient {
                     let notifier: Notifier = Notifier::new(ctx.clone(), database.clone()).await;
                     let notifier_handle: Arc<RwLock<Notifier>> = Arc::new(RwLock::new(notifier));
                     let notifier_handle_clone: Arc<RwLock<Notifier>> = Arc::clone(&notifier_handle);
-                    
+
                     // Start notifier scheduler
                     tokio::spawn(async move {
                         loop {
@@ -202,10 +202,5 @@ impl MusicBotClient {
                 println!("- Failed to start server. Error: {:?}", e);
                 MusicBotError::InternalError(e.to_string())
             })
-    }
-
-    pub async fn stop(&mut self) -> Result<(), MusicBotError> {
-        // TODO: Implement stop method
-        Ok(())
     }
 }

@@ -31,7 +31,7 @@ pub async fn join_user_channel(ctx: Context<'_>) -> Result<ChannelId, MusicBotEr
             // Event listener to disconnect the bot if the driver disconnects
             handle.add_global_event(
                 Event::Core(CoreEvent::DriverDisconnect),
-                DisconnectHandler::new(guild_id, manager.clone(), ctx.serenity_context().clone()),
+                DisconnectHandler::new(guild_id, manager.clone(), ctx.data().player.clone()),
             );
 
             // Event listener to disconnect the bot if there is no activity in the voice channel
@@ -69,12 +69,12 @@ pub async fn leave_channel(ctx: Context<'_>) -> Result<(), MusicBotError> {
         Some(handle_lock) => {
             let mut handle: MutexGuard<Call> = handle_lock.lock().await;
 
-            let _ = handle.remove_all_global_events();
-            let _ = handle.leave().await
+            handle.remove_all_global_events();
+            handle.leave().await
                 .map_err(|error| {
                     println!("Could not leave voice channel. Error: {:?}", error);
                     MusicBotError::InternalError("Could not leave voice channel".to_owned())
-                });
+                }).expect("Could not leave voice channel");
         }
 
         None => {

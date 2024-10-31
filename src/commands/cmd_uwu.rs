@@ -4,6 +4,9 @@ use serenity::all::{Color, CreateEmbed};
 use serenity::all::{Mention, Mentionable};
 use uwuifier::uwuify_str_sse;
 
+/**
+ * This command requested by adaxiik
+ */
 #[poise::command(
     prefix_command, slash_command,
 )]

@@ -9,14 +9,14 @@ use tokio::sync::RwLockWriteGuard;
 )]
 pub async fn notify_me(ctx: Context<'_>, time: Vec<String>) -> Result<(), MusicBotError> {
     let mut notifier: RwLockWriteGuard<Notifier> = ctx.data().notifier.write().await;
-    
+
     let notify: MessageNotify = notifier.add_message(ctx, convert_time_string(&time.join(" "))?).await?;
 
     NotifyEmbed::Created(&notify)
         .to_embed()
         .send_context(ctx, true, None)
         .await?;
-    
+
     Ok(())
 }
 

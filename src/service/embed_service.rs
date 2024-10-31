@@ -1,5 +1,5 @@
 use crate::bot::{Context, MusicBotError};
-use serenity::all::{Color, CreateEmbed, CreateMessage, GuildChannel, Http, Message};
+use serenity::all::{ChannelId, Color, CreateEmbed, CreateMessage, GuildChannel, Http, Message, MessageId};
 use std::sync::Arc;
 
 /*
@@ -44,8 +44,8 @@ pub async fn send_context_embed(ctx: Context<'_>, embed: CreateEmbed, reply: boo
 }
 
 async fn process_message(http: Arc<Http>, message: &Message, delete_after: Option<u64>) {
-    let channel_id = message.channel_id.clone();
-    let message_id = message.id.clone();
+    let channel_id: ChannelId = message.channel_id;
+    let message_id: MessageId = message.id;
 
     if let Some(seconds) = delete_after {
         tokio::spawn(async move {

@@ -61,7 +61,7 @@ pub struct Player {
 impl Player {
     pub async fn new(guild_id: GuildId, database: Arc<Database>) -> Self {
         let guild_id_map: i64 = guild_id.get() as i64;
-        
+
         let volume = sqlx::query!(
             "SELECT * FROM guilds WHERE guild_id = $1",
             guild_id_map
@@ -73,7 +73,7 @@ impl Player {
             });
 
         let volume: f32 = match volume {
-            Ok(volume) => volume.volume.unwrap_or(0.5 as i64) as f32,
+            Ok(volume) => volume.volume.unwrap_or(0.5) as f32,
             Err(_) => 0.5
         };
 
@@ -241,15 +241,15 @@ impl Player {
     
     pub async fn set_volume(&mut self, mut volume: f32) -> Result<(), PlaybackError> {
         println!("Setting volume to: {:?}", volume);
-        
+
         // Normalize volume
-        volume = volume / 100.0;
+        volume /= 100.0;
         volume = volume.max(0.0);
         
         if let Some(track_handle) = &self.track_handle {
             let _ = track_handle.set_volume(volume);
         }
-        
+
         let guild_id_map: i64 = self.guild_id.get() as i64;
 
         sqlx::query!(

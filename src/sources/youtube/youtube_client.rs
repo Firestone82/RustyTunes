@@ -108,10 +108,7 @@ impl YoutubeClient {
 
         match max_tracks {
             1 => {
-                let track: &Track = tracks.iter()
-                    .next()
-                    .ok_or_else(|| SearchError::VideoNotFound(format!("No video found for url: {}", url)))?;
-
+                let track: &Track = tracks.first().expect("No track found");
                 Ok(YouTubeSearchResult::Track(track.clone()))
             }
             _ => Ok(YouTubeSearchResult::Tracks(tracks)),

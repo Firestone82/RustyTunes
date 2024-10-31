@@ -28,18 +28,18 @@ pub async fn play(ctx: Context<'_>, track_source: Vec<String>) -> Result<(), Mus
     let mut result: Result<YouTubeSearchResult, SearchError> = Err(SearchError::InternalError("No search result found".into()));
 
     // Search YouTube
-    if track_source.starts_with(&YOUTUBE_VIDEO_URL) || track_source.starts_with(&YOUTUBE_PLAYLIST_URL) {
+    if track_source.starts_with(YOUTUBE_VIDEO_URL) || track_source.starts_with(YOUTUBE_PLAYLIST_URL) {
         let youtube_client: &YoutubeClient = &ctx.data().youtube_client;
 
-        if track_source.starts_with(&YOUTUBE_VIDEO_URL) {
+        if track_source.starts_with(YOUTUBE_VIDEO_URL) {
             result = youtube_client.search_track_url(track_source, 1).await;
         }
-        else if track_source.starts_with(&YOUTUBE_PLAYLIST_URL) {
+        else if track_source.starts_with(YOUTUBE_PLAYLIST_URL) {
             result = youtube_client.search_playlist_url(track_source).await;
         }
     }
     // Search Spotify
-    else if track_source.starts_with(&SPOTIFY_TRACK_URL) || track_source.starts_with(&SPOTIFY_PLAYLIST_URL) {
+    else if track_source.starts_with(SPOTIFY_TRACK_URL) || track_source.starts_with(SPOTIFY_PLAYLIST_URL) {
         // TODO: Implement search for tracks using Spotify
     }
     // Search using text on YouTube
@@ -122,7 +122,6 @@ pub async fn play(ctx: Context<'_>, track_source: Vec<String>) -> Result<(), Mus
         }
 
         Err(error) => {
-            // TODO: Question: Is there way to handle it efficiently?
             return Err(MusicBotError::from(error));
         }
     }

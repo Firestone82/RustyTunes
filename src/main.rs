@@ -1,4 +1,3 @@
-use tokio::signal;
 use crate::bot::{MusicBotClient, MusicBotError};
 
 pub mod bot;
@@ -13,10 +12,12 @@ pub mod embeds;
 #[tokio::main]
 async fn main() -> Result<(), MusicBotError> {
     println!("Starting server.");
-    let _ = MusicBotClient::new()
+    MusicBotClient::new()
         .await
         .start()
         .await?;
+    
+    // TODO: Properly handle shutdown logic
 
     Ok(())
 }
