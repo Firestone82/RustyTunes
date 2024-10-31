@@ -54,7 +54,8 @@ pub async fn play(ctx: Context<'_>, track_source: Vec<String>) -> Result<(), Mus
 
             QueueEmbed::TrackAdded(&track)
                 .to_embed()
-                .send_context(ctx, true, Some(30)).await?;
+                .send_context(ctx, true, Some(30))
+                .await?;
 
             player.add_track_to_queue(ctx, track.clone()).await?;
             channel_service::join_user_channel(ctx).await?;
@@ -63,7 +64,8 @@ pub async fn play(ctx: Context<'_>, track_source: Vec<String>) -> Result<(), Mus
         Ok(YouTubeSearchResult::Tracks(mut tracks)) => {
             let message: Message = PlayerEmbed::Search(&tracks)
                 .to_embed()
-                .send_context(ctx, true, None).await?;
+                .send_context(ctx, true, None)
+                .await?;
             
             let emojis = ["1️⃣", "2️⃣", "3️⃣", "4️⃣", "5️⃣", "6️⃣", "7️⃣", "8️⃣", "9️⃣", "🔟"];
             for i in 0..tracks.len() {
@@ -87,7 +89,8 @@ pub async fn play(ctx: Context<'_>, track_source: Vec<String>) -> Result<(), Mus
                     if !player.queue.is_empty() {
                         QueueEmbed::TrackAdded(&track)
                             .to_embed()
-                            .send_context(ctx, true, Some(30)).await?;
+                            .send_context(ctx, true, Some(30))
+                            .await?;
                     }
 
                     player.add_track_to_queue(ctx, track).await?;
@@ -98,7 +101,8 @@ pub async fn play(ctx: Context<'_>, track_source: Vec<String>) -> Result<(), Mus
                     
                     PlayerEmbed::SearchExpired
                         .to_embed()
-                        .send_context(ctx, true, Some(30)).await?;
+                        .send_context(ctx, true, Some(30))
+                        .await?;
                     
                     return Ok(());
                 }
@@ -110,7 +114,8 @@ pub async fn play(ctx: Context<'_>, track_source: Vec<String>) -> Result<(), Mus
 
             QueueEmbed::PlaylistAdded(&playlist)
                 .to_embed()
-                .send_context(ctx, true, Some(30)).await?;
+                .send_context(ctx, true, Some(30))
+                .await?;
             
             player.add_playlist_to_queue(ctx, playlist).await?;
             channel_service::join_user_channel(ctx).await?;

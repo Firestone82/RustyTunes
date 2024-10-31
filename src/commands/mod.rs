@@ -9,3 +9,4 @@ pub mod cmd_leave;
 pub mod cmd_shuffle;
 pub mod cmd_playing;
 pub mod cmd_uwu;
+pub mod cmd_notify;

@@ -8,6 +8,7 @@ use songbird::input::YoutubeDl;
 use songbird::tracks::TrackHandle;
 use songbird::{Call, Event, TrackEvent};
 use std::sync::Arc;
+use sqlx::{Pool, Sqlite};
 use tokio::sync::{Mutex, MutexGuard};
 
 #[derive(Debug, thiserror::Error)]

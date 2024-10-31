@@ -10,14 +10,18 @@ use sqlx::sqlite::SqlitePoolOptions;
 use sqlx::{Pool, Sqlite};
 use std::sync::Arc;
 use tokio::sync::RwLock;
+use crate::player::notifier::Notifier;
 
 pub struct MusicBotData {
     pub request_client: reqwest::Client,
     pub youtube_client: YoutubeClient,
     // pub spotify_client: SpotifyClient,
-    pub database: Pool<Sqlite>,
+    pub database_pool: Arc<Database>,
     pub player: Arc<RwLock<Player>>,
+    pub notifier: Arc<RwLock<Notifier>>
 }
+
+pub type Database = Pool<Sqlite>;
 
 pub type Context<'a> = poise::Context<'a, MusicBotData, MusicBotError>;
 
@@ -120,19 +124,21 @@ impl MusicBotClient {
                         })?;
 
                     println!("- Connecting to database");
-                    let pool: Pool<Sqlite> = SqlitePoolOptions::new()
-                        .connect(&database_url)
-                        .await
-                        .map_err(|e| {
-                            println!("Failed to connect to database. Error: {:?}", e);
-                            MusicBotError::InternalError(e.to_string())
-                        })?;
+                    let database: Arc<Database> = Arc::new(
+                        SqlitePoolOptions::new()
+                            .connect(&database_url)
+                            .await
+                            .map_err(|e| {
+                                println!("Failed to connect to database. Error: {:?}", e);
+                                MusicBotError::InternalError(e.to_string())
+                            })?
+                    );
 
                     // Insert guild into database if it doesn't exist
                     let _ = sqlx::query!(
                         "INSERT OR IGNORE INTO guilds (guild_id, volume) VALUES ($1, $2)",
                         guild_id, 0.5
-                    ).execute(&pool)
+                    ).execute(&*database)
                         .await
                         .map_err(|e| {
                             println!("Failed to insert guild into database. Error: {:?}", e);
@@ -142,7 +148,7 @@ impl MusicBotClient {
                     let guild_record = sqlx::query!(
                         "SELECT * FROM guilds WHERE guild_id = $1",
                         guild_id
-                    ).fetch_one(&pool)
+                    ).fetch_one(&*database)
                         .await
                         .map_err(|e| {
                             println!("Failed to fetch volume from database. Error: {:?}", e);
@@ -159,13 +165,16 @@ impl MusicBotClient {
                                 MusicBotError::InternalError(e.to_string())
                             })?;
                     }
+
+                    let notifier: Notifier = Notifier::new(ctx.clone(), database.clone()).await;
                     
                     Ok(MusicBotData {
                         request_client: reqwest::Client::new(),
                         youtube_client: YoutubeClient::new(),
                         // spotify_client: SpotifyClient::new(),
-                        database: pool,
+                        database_pool: database,
                         player: Arc::new(RwLock::new(player)),
+                        notifier: Arc::new(RwLock::new(notifier))
                     })
                 })
             })

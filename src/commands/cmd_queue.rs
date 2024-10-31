@@ -14,14 +14,16 @@ pub async fn queue(ctx: Context<'_>, page: Option<usize>) -> Result<(), MusicBot
     if player.queue.is_empty() {
         QueueEmbed::IsEmpty
             .to_embed()
-            .send_context(ctx, true, Some(30)).await?;
+            .send_context(ctx, true, Some(30))
+            .await?;
     } else {
         QueueEmbed::Current {
             queue: &player.queue, 
             page: page.unwrap_or(1)
         }
             .to_embed()
-            .send_context(ctx, true, Some(60)).await?;
+            .send_context(ctx, true, Some(60))
+            .await?;
     }
 
     Ok(())

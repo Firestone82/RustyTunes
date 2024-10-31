@@ -1,13 +1,10 @@
 use crate::bot::{Context, MusicBotError};
-use crate::checks::channel_checks::{
-    check_author_in_same_voice_channel,
-    check_if_player_is_playing,
-    check_if_queue_is_not_empty
-};
+use crate::checks::channel_checks::check_author_in_same_voice_channel;
 use crate::embeds::player_embed::PlayerEmbed;
 use crate::player::player::Player;
 use crate::service::embed_service::SendEmbed;
 use tokio::sync::RwLockWriteGuard;
+use crate::checks::player_checks::{check_if_player_is_playing, check_if_queue_is_not_empty};
 
 #[poise::command(
     prefix_command, slash_command,
@@ -22,7 +19,8 @@ pub async fn shuffle(ctx: Context<'_>) -> Result<(), MusicBotError> {
 
     PlayerEmbed::Shuffled
         .to_embed()
-        .send_context(ctx, true, Some(30)).await?;
+        .send_context(ctx, true, Some(30))
+        .await?;
 
     Ok(())
 }
