@@ -13,11 +13,13 @@ pub async fn playing(ctx: Context<'_>) -> Result<(), MusicBotError> {
     if let Some(track) = &player.current_track {
         PlayerEmbed::NowPlaying(&track)
             .to_embed()
-            .send_context(ctx, true, Some(30)).await?;
+            .send_context(ctx, true, Some(30))
+            .await?;
     } else {
         PlayerEmbed::NoSongPlaying
             .to_embed()
-            .send_context(ctx, true, Some(30)).await?;
+            .send_context(ctx, true, Some(30))
+            .await?;
     }
 
     Ok(())

@@ -1,13 +1,8 @@
 use crate::bot::{Context, MusicBotError};
 use crate::embeds::bot_embeds::BotEmbed;
-use crate::embeds::player_embed::PlayerEmbed;
-use crate::embeds::queue_embed::QueueEmbed;
-use crate::player::player::Player;
 use crate::service::channel_service;
 use crate::service::embed_service::SendEmbed;
 use serenity::all::ChannelId;
-use tokio::sync::RwLockReadGuard;
-
 pub async fn check_author_in_voice_channel(ctx: Context<'_>) -> Result<bool, MusicBotError> {
     let user_found: Option<bool> = ctx
         .guild()
@@ -15,9 +10,11 @@ pub async fn check_author_in_voice_channel(ctx: Context<'_>) -> Result<bool, Mus
 
     match user_found {
         Some(false) => {
-            BotEmbed::UserNotInVoiceChannel.to_embed().send_context(ctx, true, Some(30)).await?;
-            // let _ = embed_service::send_context_embed(ctx, embed, true, Some(30)).await?;
-            
+            BotEmbed::UserNotInVoiceChannel
+                .to_embed()
+                .send_context(ctx, true, Some(30))
+                .await?;
+
             Ok(false)
         }
 
@@ -43,7 +40,8 @@ pub async fn check_author_in_same_voice_channel(ctx: Context<'_>) -> Result<bool
             } else {
                 BotEmbed::UserNotInSharedChannel(&bot_channel)
                     .to_embed()
-                    .send_context(ctx, true, Some(30)).await?;
+                    .send_context(ctx, true, Some(30))
+                    .await?;
                 
                 Ok(false)
             }
@@ -56,37 +54,10 @@ pub async fn check_author_in_same_voice_channel(ctx: Context<'_>) -> Result<bool
         (None, None) | (None, Some(_)) => {
             BotEmbed::UserNotInVoiceChannel
                 .to_embed()
-                .send_context(ctx, true, Some(30)).await?;
+                .send_context(ctx, true, Some(30))
+                .await?;
             
             Ok(false)
         }
-    }
-}
-
-pub async fn check_if_player_is_playing(ctx: Context<'_>) -> Result<bool, MusicBotError> {
-    let player: RwLockReadGuard<Player> = ctx.data().player.read().await;
-
-    if player.is_playing {
-        Ok(true)
-    } else {
-         PlayerEmbed::NoSongPlaying
-             .to_embed()
-                .send_context(ctx, true, Some(30)).await?;
-
-        Ok(false)
-    }
-}
-
-pub async fn check_if_queue_is_not_empty(ctx: Context<'_>) -> Result<bool, MusicBotError> {
-    let player: RwLockReadGuard<Player> = ctx.data().player.read().await;
-
-    if player.queue.is_empty() {
-        QueueEmbed::IsEmpty
-            .to_embed()
-            .send_context(ctx, true, Some(30)).await?;
-
-        Ok(false)
-    } else {
-        Ok(true)
     }
 }

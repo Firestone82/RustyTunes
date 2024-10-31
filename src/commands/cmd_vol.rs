@@ -25,18 +25,20 @@ pub async fn volume(ctx: Context<'_>, mut volume: Option<f32>) -> Result<(), Mus
 
         PlayerEmbed::VolumeChanged(volume)
             .to_embed()
-            .send_context(ctx, true, Some(30)).await?;
+            .send_context(ctx, true, Some(30))
+            .await?;
 
         let guild_id: i64 = ctx.guild_id().unwrap().into();
 
         sqlx::query!(
             "UPDATE guilds SET volume = $1 WHERE guild_id = $2",
             volume, guild_id
-        ).execute(&ctx.data().database).await.expect("TODO: panic message");
+        ).execute(&*ctx.data().database_pool).await.expect("TODO: panic message");
     } else {
         PlayerEmbed::Volume(player.volume * 100.0)
             .to_embed()
-            .send_context(ctx, true, Some(30)).await?;
+            .send_context(ctx, true, Some(30))
+            .await?;
     }
 
     Ok(())

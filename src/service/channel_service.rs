@@ -31,7 +31,7 @@ pub async fn join_user_channel(ctx: Context<'_>) -> Result<ChannelId, MusicBotEr
             // Event listener to disconnect the bot if the driver disconnects
             handle.add_global_event(
                 Event::Core(CoreEvent::DriverDisconnect),
-                DisconnectHandler::new(guild_id, manager.clone()),
+                DisconnectHandler::new(guild_id, manager.clone(), ctx.serenity_context().clone()),
             );
 
             // Event listener to disconnect the bot if there is no activity in the voice channel
