@@ -1,8 +1,9 @@
 CREATE TABLE IF NOT EXISTS notify_me (
-    guild_id BIGINT NOT NULL,
-    channel_id BIGINT NOT NULL,
-    user_id BIGINT NOT NULL,
-    message_id BIGINT NOT NULL,
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    guild_id INTEGER NOT NULL,
+    channel_id INTEGER NOT NULL,
+    user_id INTEGER NOT NULL,
+    message_id INTEGER NOT NULL,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     notify_at DATETIME
 );

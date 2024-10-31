@@ -1,16 +1,16 @@
 use crate::commands;
 use crate::handlers::error_handler;
+use crate::player::notifier::{Notifier, NotifierError};
 use crate::player::player::{PlaybackError, Player};
 use crate::sources::youtube::youtube_client::{SearchError, YoutubeClient};
 use dotenv::var;
 use poise::serenity_prelude;
-use serenity::all::GatewayIntents;
+use serenity::all::{GatewayIntents, GuildId};
 use songbird::SerenityInit;
 use sqlx::sqlite::SqlitePoolOptions;
 use sqlx::{Pool, Sqlite};
 use std::sync::Arc;
-use tokio::sync::RwLock;
-use crate::player::notifier::Notifier;
+use tokio::sync::{RwLock, RwLockWriteGuard};
 
 pub struct MusicBotData {
     pub request_client: reqwest::Client,
@@ -67,6 +67,12 @@ impl From<SearchError> for MusicBotError {
     }
 }
 
+impl From<NotifierError> for MusicBotError {
+    fn from(value: NotifierError) -> Self {
+        MusicBotError::InternalError(value.to_string())
+    }
+}
+
 pub struct MusicBotClient {
     serenity_client: serenity_prelude::Client,
 }
@@ -101,6 +107,7 @@ impl MusicBotClient {
                     commands::cmd_playing::playing(),
                     commands::cmd_uwu::uwu(),
                     commands::cmd_uwu::uwu_me(),
+                    commands::cmd_notify::notify_me(),
                 ],
                 prefix_options: poise::PrefixFrameworkOptions {
                     prefix: Some(String::from(".")),
@@ -110,7 +117,8 @@ impl MusicBotClient {
             })
             .setup(move |ctx, ready, fw| {
                 Box::pin(async move {
-                    let guild_id: i64 = ready.guilds[0].id.get() as i64;
+                    let guild_id: GuildId = ready.guilds[0].id;
+                    let guild_id_map: i64 = guild_id.get() as i64;
 
                     println!("Bot ready");
                     println!("- Logged in as {}", ready.user.name);
@@ -137,7 +145,7 @@ impl MusicBotClient {
                     // Insert guild into database if it doesn't exist
                     let _ = sqlx::query!(
                         "INSERT OR IGNORE INTO guilds (guild_id, volume) VALUES ($1, $2)",
-                        guild_id, 0.5
+                        guild_id_map, 0.5
                     ).execute(&*database)
                         .await
                         .map_err(|e| {
@@ -145,42 +153,37 @@ impl MusicBotClient {
                             MusicBotError::InternalError(e.to_string())
                         })?;
 
-                    let guild_record = sqlx::query!(
-                        "SELECT * FROM guilds WHERE guild_id = $1",
-                        guild_id
-                    ).fetch_one(&*database)
-                        .await
-                        .map_err(|e| {
-                            println!("Failed to fetch volume from database. Error: {:?}", e);
-                            MusicBotError::InternalError(e.to_string())
-                        })?;
-
-                    let mut player: Player = Player::default();
-                    
-                    if let Some(volume) = guild_record.volume {
-                        player.set_volume(volume as f32)
-                            .await
-                            .map_err(|e| {
-                                println!("Failed to set volume. Error: {:?}", e);
-                                MusicBotError::InternalError(e.to_string())
-                            })?;
-                    }
+                    let player: Player = Player::new(guild_id, database.clone()).await;
+                    let player_handle: Arc<RwLock<Player>> = Arc::new(RwLock::new(player));
 
                     let notifier: Notifier = Notifier::new(ctx.clone(), database.clone()).await;
+                    let notifier_handle: Arc<RwLock<Notifier>> = Arc::new(RwLock::new(notifier));
+                    let notifier_handle_clone: Arc<RwLock<Notifier>> = Arc::clone(&notifier_handle);
+                    
+                    // Start notifier scheduler
+                    tokio::spawn(async move {
+                        loop {
+                            let mut notifier: RwLockWriteGuard<Notifier> = notifier_handle_clone.write().await;
+                            notifier.check_messages().await;
+                            drop(notifier);
+
+                            tokio::time::sleep(tokio::time::Duration::from_secs(10)).await;
+                        }
+                    });
                     
                     Ok(MusicBotData {
                         request_client: reqwest::Client::new(),
                         youtube_client: YoutubeClient::new(),
                         // spotify_client: SpotifyClient::new(),
                         database_pool: database,
-                        player: Arc::new(RwLock::new(player)),
-                        notifier: Arc::new(RwLock::new(notifier))
+                        player: player_handle,
+                        notifier: notifier_handle
                     })
                 })
             })
             .build();
 
-        let serenity_client = poise::serenity_prelude::Client::builder(discord_token, intents)
+        let serenity_client = serenity_prelude::Client::builder(discord_token, intents)
             .register_songbird()
             .framework(framework)
             .await

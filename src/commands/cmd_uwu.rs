@@ -10,7 +10,7 @@ use uwuifier::uwuify_str_sse;
 pub async fn uwu(ctx: Context<'_>, text: Vec<String>) -> Result<(), MusicBotError> {
     let embed: CreateEmbed = CreateEmbed::new()
         .color(Color::from(0x36393F))
-        .title("Converted message to uwu")
+        .title("Converted message to UwU format:")
         .description(format!("```{}```", uwuify_str_sse(&text.join(" "))));
     
     embed.send_context(ctx, false, None).await?;

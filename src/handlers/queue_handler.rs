@@ -40,7 +40,7 @@ impl EventHandler for QueueHandler {
                 // Send "Now playing message"
                 let _ = PlayerEmbed::NowPlaying(&next_track)
                     .to_embed()
-                    .send_channel(self.serenity_ctx.http.clone(), &self.guild_channel, Some(30))
+                    .send_channel(self.serenity_ctx.http.clone(), &self.guild_channel, Some(30), None)
                     .await
                     .map_err(|error| {
                         println!("Error sending now playing embed: {:?}", error);

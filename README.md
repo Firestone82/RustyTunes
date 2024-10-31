@@ -34,7 +34,17 @@ This project is a simple Discord bot developed in Rust, designed to play music i
     
     # Edit the .env file and add your Discord bot token
     ```
-3. Build and run the bot
+3. Setup database
+    ```bash
+    cargo install sqlx-cli
+    sqlx database create
+    sqlx migrate run
+     ```
+4. Install dependencies
+    ```bash
+    cargo build
+    ```
+5. Build and run the bot
     ```bash
     cargo build --release
     cargo run

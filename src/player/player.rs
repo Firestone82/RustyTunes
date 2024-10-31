@@ -1,4 +1,4 @@
-use crate::bot::Context;
+use crate::bot::{Context, Database, MusicBotError};
 use crate::embeds::player_embed::PlayerEmbed;
 use crate::handlers::queue_handler::QueueHandler;
 use crate::service::embed_service::SendEmbed;
@@ -8,7 +8,6 @@ use songbird::input::YoutubeDl;
 use songbird::tracks::TrackHandle;
 use songbird::{Call, Event, TrackEvent};
 use std::sync::Arc;
-use sqlx::{Pool, Sqlite};
 use tokio::sync::{Mutex, MutexGuard};
 
 #[derive(Debug, thiserror::Error)]
@@ -54,22 +53,41 @@ pub struct Player {
     pub track_handle: Option<TrackHandle>,
     pub current_track: Option<Track>,
     pub queue: Vec<Track>,
-    pub volume: f32
+    pub volume: f32,
+    guild_id: GuildId,
+    database: Arc<Database>,
 }
 
-impl Default for Player {
-    fn default() -> Self {
+impl Player {
+    pub async fn new(guild_id: GuildId, database: Arc<Database>) -> Self {
+        let guild_id_map: i64 = guild_id.get() as i64;
+        
+        let volume = sqlx::query!(
+            "SELECT * FROM guilds WHERE guild_id = $1",
+            guild_id_map
+        ).fetch_one(&*database)
+            .await
+            .map_err(|e| {
+                println!("Failed to fetch volume from database. Error: {:?}", e);
+                MusicBotError::InternalError(e.to_string())
+            });
+
+        let volume: f32 = match volume {
+            Ok(volume) => volume.volume.unwrap_or(0.5 as i64) as f32,
+            Err(_) => 0.5
+        };
+
         Player {
             is_playing: false,
             track_handle: None,
             current_track: None,
             queue: Vec::new(),
-            volume: 0.5
+            volume,
+            guild_id,
+            database
         }
     }
-}
 
-impl Player {
     pub async fn add_playlist_to_queue(&mut self, ctx: Context<'_>, playlist: Playlist) -> Result<(), PlaybackError> {
         println!("Adding playlist to queue, tracks: {}", playlist.tracks.len());
 
@@ -222,11 +240,22 @@ impl Player {
     }
     
     pub async fn set_volume(&mut self, mut volume: f32) -> Result<(), PlaybackError> {
+        println!("Setting volume to: {:?}", volume);
+        
+        // Normalize volume
         volume = volume / 100.0;
+        volume = volume.max(0.0);
         
         if let Some(track_handle) = &self.track_handle {
             let _ = track_handle.set_volume(volume);
         }
+        
+        let guild_id_map: i64 = self.guild_id.get() as i64;
+
+        sqlx::query!(
+            "UPDATE guilds SET volume = $1 WHERE guild_id = $2",
+            volume, guild_id_map
+        ).execute(&*self.database).await.expect("TODO: panic message");
 
         self.volume = volume;
         Ok(())

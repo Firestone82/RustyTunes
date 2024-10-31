@@ -13,8 +13,9 @@ pub fn create_embed(color: Color, title: &str, description: &str) -> CreateEmbed
         .description(description)
 }
 
-pub async fn send_channel_embed(http: Arc<Http>, channel: &GuildChannel, embed: CreateEmbed, delete_after: Option<u64>) -> Result<Message, MusicBotError> {
+pub async fn send_channel_embed(http: Arc<Http>, channel: &GuildChannel, embed: CreateEmbed, delete_after: Option<u64>, message: Option<String>) -> Result<Message, MusicBotError> {
     let created_message = CreateMessage::default()
+        .content(message.unwrap_or_default())
         .embed(embed);
 
     let message = channel.send_message(http.clone(), created_message).await
@@ -59,7 +60,7 @@ pub trait SendEmbed {
     fn send_context(&self, ctx: Context<'_>, reply: bool, delete_after: Option<u64>) 
         -> impl std::future::Future<Output = Result<Message, MusicBotError>> + Send;
     
-    fn send_channel(&self, http: Arc<Http>, channel: &GuildChannel, delete_after: Option<u64>) 
+    fn send_channel(&self, http: Arc<Http>, channel: &GuildChannel, delete_after: Option<u64>, message: Option<String>)
         -> impl std::future::Future<Output = Result<Message, MusicBotError>> + Send;
 }
 
@@ -69,8 +70,8 @@ impl SendEmbed for CreateEmbed {
         Ok(message)
     }
     
-    async fn send_channel(&self, http: Arc<Http>, channel: &GuildChannel, delete_after: Option<u64>) -> Result<Message, MusicBotError> {
-        let message: Message = send_channel_embed(http, channel, self.clone(), delete_after).await?;
+    async fn send_channel(&self, http: Arc<Http>, channel: &GuildChannel, delete_after: Option<u64>, message: Option<String>) -> Result<Message, MusicBotError> {
+        let message: Message = send_channel_embed(http, channel, self.clone(), delete_after, message).await?;
         Ok(message)
     }
 }
