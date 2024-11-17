@@ -23,5 +23,7 @@ regex = "1.11.1"
 crypto = "0.5.1"
 log = "0.4.22"
 rand = "0.9.0-alpha.2"
-uwuify = "^0.2"
 datetime = "0.5.2"
+
+[target.'cfg(windows)'.dependencies]
+uwuify = "^0.2"
