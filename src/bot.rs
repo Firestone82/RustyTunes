@@ -108,6 +108,7 @@ impl MusicBotClient {
                     commands::cmd_uwu::uwu(),
                     commands::cmd_uwu::uwu_me(),
                     commands::cmd_notify::notify_me(),
+                    commands::cmd_wakeup::wakeup(),
                 ],
                 prefix_options: poise::PrefixFrameworkOptions {
                     prefix: Some(String::from(".")),

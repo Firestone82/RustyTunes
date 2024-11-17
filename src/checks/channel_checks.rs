@@ -10,7 +10,7 @@ pub async fn check_author_in_voice_channel(ctx: Context<'_>) -> Result<bool, Mus
 
     match user_found {
         Some(false) => {
-            BotEmbed::UserNotInVoiceChannel
+            BotEmbed::CurrentUserNotInVoiceChannel
                 .to_embed()
                 .send_context(ctx, true, Some(30))
                 .await?;
@@ -38,7 +38,7 @@ pub async fn check_author_in_same_voice_channel(ctx: Context<'_>) -> Result<bool
             if user_channel == bot_channel {
                 Ok(true)
             } else {
-                BotEmbed::UserNotInSharedChannel(&bot_channel)
+                BotEmbed::CurrentUserNotInSharedChannel(&bot_channel)
                     .to_embed()
                     .send_context(ctx, true, Some(30))
                     .await?;
@@ -52,7 +52,7 @@ pub async fn check_author_in_same_voice_channel(ctx: Context<'_>) -> Result<bool
         }
 
         (None, None) | (None, Some(_)) => {
-            BotEmbed::UserNotInVoiceChannel
+            BotEmbed::CurrentUserNotInVoiceChannel
                 .to_embed()
                 .send_context(ctx, true, Some(30))
                 .await?;
