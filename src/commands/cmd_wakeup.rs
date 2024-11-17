@@ -31,6 +31,8 @@ pub async fn wakeup(ctx: Context<'_>, target: Member, count: Option<usize>) -> R
                 return Ok(());
             }
             
+            tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
+            
             if let Err(_) = target.move_to_voice_channel(ctx.http(), user_channel).await {
                 BotEmbed::Error(MusicBotError::InternalError("Failed to move user back to original channel".to_string()))
                     .to_embed()
@@ -38,6 +40,8 @@ pub async fn wakeup(ctx: Context<'_>, target: Member, count: Option<usize>) -> R
                     .await?;
                 return Ok(());
             }
+            
+            tokio::time::sleep(tokio::time::Duration::from_millis(250)).await;
         }
     } else {
         BotEmbed::CurrentUserNotInVoiceChannel

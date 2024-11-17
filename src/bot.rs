@@ -115,6 +115,9 @@ impl MusicBotClient {
                     commands::cmd_notify::notify_me(),
                     commands::cmd_wakeup::wakeup(),
                 ],
+                pre_command: |ctx| Box::pin(async move {
+                    println!("CMD: {} is executing {} ({})", ctx.author().name, ctx.command().name, ctx.invocation_string());
+                }),
                 prefix_options: poise::PrefixFrameworkOptions {
                     prefix: Some(String::from(".")),
                     ..Default::default()

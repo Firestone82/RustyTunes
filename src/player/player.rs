@@ -127,7 +127,7 @@ impl Player {
             amount = amount.min(self.queue.len());
         }
 
-        if self.queue.is_empty() && self.is_playing {
+        if self.queue.is_empty() || self.is_playing {
             println!("- No tracks in queue. Stopping playback");
             self.stop_playback().await?;
 

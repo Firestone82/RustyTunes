@@ -8,7 +8,9 @@ pub mod cmd_join;
 pub mod cmd_leave;
 pub mod cmd_shuffle;
 pub mod cmd_playing;
+
 #[cfg(any(target_os = "windows"))]
 pub mod cmd_uwu;
+
 pub mod cmd_notify;
 pub mod cmd_wakeup;
