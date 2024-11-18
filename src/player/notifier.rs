@@ -7,6 +7,7 @@ use sqlx::types::time::OffsetDateTime;
 use std::ops::Add;
 use std::sync::Arc;
 use std::time::Duration;
+use time::{Date, PrimitiveDateTime, Time};
 
 #[derive(Debug, thiserror::Error)]
 pub enum NotifierError {
@@ -17,14 +18,15 @@ pub enum NotifierError {
     InvalidTimeFormat
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 pub struct MessageNotify {
     pub guild_id: GuildId,
     pub channel_id: ChannelId,
     pub user_id: UserId,
     pub message_id: MessageId,
     pub created_at: OffsetDateTime,
-    pub notify_at: OffsetDateTime
+    pub notify_at: OffsetDateTime,
+    pub note: Option<String>
 }
 
 pub struct Notifier {
@@ -37,7 +39,7 @@ impl Notifier {
     pub async fn new(serenity_context: serenity::prelude::Context, database: Arc<Database>) -> Self {
         // Sqlx didn't want to refresh. So I was forced to add a random column to the query.
         let messages = sqlx::query!(
-            "SELECT *, 'a' as REE FROM notify_me" 
+            "SELECT *, 'b' as REE FROM notify_me"
         ).fetch_all(&*database)
             .await
             .expect("Failed to fetch all messages from database");
@@ -49,7 +51,8 @@ impl Notifier {
                 user_id: UserId::new(message.user_id as u64),
                 message_id: MessageId::new(message.message_id as u64),
                 created_at: message.created_at.unwrap(),
-                notify_at: message.notify_at.unwrap()
+                notify_at: message.notify_at.unwrap(),
+                note: message.note.clone()
             }
         }).collect();
 
@@ -60,7 +63,7 @@ impl Notifier {
         }
     }
 
-    pub async fn add_message<'a>(&mut self, ctx: Context<'a>, notify_at: OffsetDateTime) -> Result<MessageNotify, NotifierError> {
+    pub async fn add_message<'a>(&mut self, ctx: Context<'a>, notify_at: OffsetDateTime, note: Option<String>) -> Result<MessageNotify, NotifierError> {
         let msg: &Message = match ctx {
             Context::Prefix(ctx) => {
                 ctx.msg
@@ -76,7 +79,8 @@ impl Notifier {
             user_id: ctx.author().id,
             message_id: msg.id,
             created_at: OffsetDateTime::now_utc(),
-            notify_at
+            notify_at,
+            note
         };
 
         let guild_id: i64 = notify.guild_id.get() as i64;
@@ -84,15 +88,16 @@ impl Notifier {
         let user_id: i64 = notify.user_id.get() as i64;
         let message_id: i64 = notify.message_id.get() as i64;
         let current_time: OffsetDateTime = OffsetDateTime::now_local().unwrap();
+        let note: Option<String> = notify.note.clone();
 
         sqlx::query!(
-            "INSERT INTO notify_me (guild_id, channel_id, user_id, message_id, created_at, notify_at) VALUES (?, ?, ?, ?, ?, ?)",
-            guild_id, channel_id, user_id, message_id, current_time, notify_at
+            "INSERT INTO notify_me (guild_id, channel_id, user_id, message_id, created_at, notify_at, note) VALUES (?, ?, ?, ?, ?, ?, ?)",
+            guild_id, channel_id, user_id, message_id, current_time, notify_at, note
         ).execute(&*self.database)
             .await
             .expect("Failed to insert message into database");
 
-        self.messages.push(notify);
+        self.messages.push(notify.clone());
 
         Ok(notify)
     }
@@ -127,41 +132,95 @@ impl Notifier {
     }
 }
 
-pub fn convert_time_string(time: &str) -> Result<OffsetDateTime, NotifierError> {
-    let re: Regex = Regex::new(r"(?:(\d+)\s*mo(?:nths?)?)?\s*(?:(\d+)\s*d(?:ays?)?)?\s*(?:(\d+)\s*h(?:ours?)?)?\s*(?:(\d+)\s*m(?:inutes?)?)?\s*(?:(\d+)\s*s(?:econds?)?)?")
-        .map_err(|e| NotifierError::InternalError(e.to_string()))?;
+pub fn parse_text(text: String) -> Result<OffsetDateTime, NotifierError> {
+    let time = convert_literal_from_string(text.clone())
+        .or_else(|| convert_time_date_from_string(text.clone()))
+        .or_else(|| convert_time_offset_from_string(text.clone()));
 
-    let mut seconds_to_add: i64 = 0;
-
-    if let Some(captures) = re.captures(time) {
-        let months: i64 = captures.get(1)
-            .map_or(0, |m| m.as_str().parse::<i64>().unwrap_or(0));
-        seconds_to_add += months * 30 * 24 * 3600;
-
-        let days: i64  = captures.get(2)
-            .map_or(0, |d| d.as_str().parse::<i64>().unwrap_or(0));
-        seconds_to_add += days * 24 * 3600;
-
-        let hours: i64  = captures.get(3)
-            .map_or(0, |h| h.as_str().parse::<i64>().unwrap_or(0));
-        seconds_to_add += hours * 3600;
-
-        let minutes: i64  = captures.get(4)
-            .map_or(0, |m| m.as_str().parse::<i64>().unwrap_or(0));
-        seconds_to_add += minutes * 60;
-
-        let seconds: i64  = captures.get(5)
-            .map_or(0, |s| s.as_str().parse::<i64>().unwrap_or(0));
-        seconds_to_add += seconds;
-
-        Ok(OffsetDateTime::now_local().unwrap().add(Duration::from_secs(seconds_to_add as u64)))
-    } else {
-        Err(NotifierError::InvalidTimeFormat)
+    if let Some(time) = time {
+        return Ok(time);
     }
+
+    Err(NotifierError::InvalidTimeFormat)
+}
+
+pub fn convert_literal_from_string(text: String) -> Option<OffsetDateTime> {
+    let re: Regex = Regex::new(r"^(week|tomorrow)$").unwrap();
+    let offset: OffsetDateTime = OffsetDateTime::now_local().unwrap();
+
+    if let Some(captures) = re.captures(&*text) {
+        let capture = captures.get(1).map_or("", |m| m.as_str());
+
+        match capture {
+            "tomorrow" => {
+                let _ = offset.add(Duration::from_secs(86400));
+            }
+
+            "week" => {
+                let _ = offset.add(Duration::from_secs(604800));
+            },
+
+            _ => {}
+        }
+
+        return Some(offset);
+    }
+
+    None
+}
+
+pub fn convert_time_date_from_string(text: String) -> Option<OffsetDateTime> {
+    let date_format = time::format_description::parse("[day]-[month]-[year]").unwrap();
+    if let Ok(date) = Date::parse(&text, &date_format) {
+        let naive_datetime = PrimitiveDateTime::new(date, Time::from_hms(9, 0, 0).unwrap());
+        return Some(naive_datetime.assume_utc());
+    }
+
+    let datetime_format = time::format_description::parse("[day]-[month]-[year]_[hour]:[minute]").unwrap();
+    if let Ok(datetime) = PrimitiveDateTime::parse(&text, &datetime_format) {
+        return Some(datetime.assume_utc());
+    }
+
+    None
+}
+
+pub fn convert_time_offset_from_string(text: String) -> Option<OffsetDateTime> {
+    let re: Regex = Regex::new(r"^(?:(\d+)mo(?:nths?)?)?(?:(\d+)\s*d(?:ays?)?)?(?:(\d+)\s*h(?:ours?)?)?(?:(\d+)\s*m(?:inutes?)?)?(?:(\d+)\s*s(?:econds?)?)?$").unwrap();
+    let offset: OffsetDateTime = OffsetDateTime::now_local().unwrap();
+
+    if let Some(captures) = re.captures(&*text) {
+        if let Some(months) = captures.get(1) {
+            let months: u64 = months.as_str().parse().unwrap_or(0);
+            let _ = offset.add(Duration::from_secs(months * 30 * 24 * 3600));
+        }
+
+        if let Some(days) = captures.get(2) {
+            let days: u64 = days.as_str().parse().unwrap_or(0);
+            let _ = offset.add(Duration::from_secs(days * 24 * 3600));
+        }
+
+        if let Some(hours) = captures.get(3) {
+            let hours: u64 = hours.as_str().parse().unwrap_or(0);
+            let _ = offset.add(Duration::from_secs(hours * 3600));
+        }
+
+        if let Some(minutes) = captures.get(4) {
+            let minutes: u64 = minutes.as_str().parse().unwrap_or(0);
+            let _ = offset.add(Duration::from_secs(minutes * 60));
+        }
+
+        if let Some(seconds) = captures.get(5) {
+            let seconds: u64 = seconds.as_str().parse().unwrap_or(0);
+            let _ = offset.add(Duration::from_secs(seconds));
+        }
+
+        return Some(offset);
+    }
+
+    None
 }
 
 pub fn format_time(offset_date_time: OffsetDateTime) -> String {
-    // Format each component manually
     format!(
         "{:04}-{:02}-{:02} {:02}:{:02}:{:02}",
         offset_date_time.year(),

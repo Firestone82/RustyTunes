@@ -105,14 +105,14 @@ impl MusicBotClient {
                     commands::cmd_leave::leave(),
                     commands::cmd_shuffle::shuffle(),
                     commands::cmd_playing::playing(),
-                    
+
                     #[cfg(any(target_os = "windows"))]
                     commands::cmd_uwu::uwu(),
-                    
+
                     #[cfg(any(target_os = "windows"))]
                     commands::cmd_uwu::uwu_me(),
-                    
-                    commands::cmd_notify::notify_me(),
+
+                    commands::cmd_notify::notify(),
                     commands::cmd_wakeup::wakeup(),
                 ],
                 pre_command: |ctx| Box::pin(async move {

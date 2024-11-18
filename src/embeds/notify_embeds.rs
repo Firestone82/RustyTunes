@@ -2,7 +2,7 @@ use crate::player::notifier::{format_time, MessageNotify};
 use serenity::all::{Color, CreateEmbed, Mentionable};
 
 pub enum NotifyEmbed<'a> {
-    InvalidTimeFormat,
+    InvalidNotifyFormat,
     Created(&'a MessageNotify),
     Notification(&'a MessageNotify)
 }
@@ -10,30 +10,47 @@ pub enum NotifyEmbed<'a> {
 impl<'a> NotifyEmbed<'a> {
     pub fn to_embed(&self) -> CreateEmbed {
         match self {
-            NotifyEmbed::InvalidTimeFormat => {
+            NotifyEmbed::InvalidNotifyFormat => {
+                let description = r#"
+                Invalid notify format. Please use the following format: `notify <time> (note)`.
+
+                Available time formats:
+                 » `1mo 15s`            - Notifies in 1 month and 15 seconds.
+                 » `1-1-2024`           - Notifies on 1st November 2024 at 9:00 AM.
+                 » `24-12-2024_15:30`   - Notifies on 24th December 2024 at 3:30 PM.
+                 » `tomorrow`           - Notifies tomorrow.
+                "#;
+
                 CreateEmbed::new()
                     .color(Color::DARK_RED)
-                    .title("🚫  Invalid time format")
-                    .description(r#"
-                        Invalid time format. Please use the following format: `1mo 2d 3h 4m 5s`.
-                        Examples:
-                         - `2h  30m` - Notifies in 2 hours and 30 minutes.
-                         - `1mo 15m` - Notifies in 1 month and 15 minutes.
-                    "#)
-            },
+                    .title("🚫  Invalid notify format")
+                    .description(description)
+            }
             NotifyEmbed::Created(notify) => {
-                CreateEmbed::new()
+                let builder = CreateEmbed::new()
                     .color(Color::DARK_BLUE)
                     .title("🔔  Notification created")
-                    .description(format!("You will be notified at `{}`", format_time(notify.notify_at)))
+                    .description(format!("You will be notified at `{}`", format_time(notify.notify_at)));
+
+                if notify.note.is_some() {
+                    builder.field("Added note:", format!("```{}```", notify.note.clone().unwrap()), false)
+                } else {
+                    builder
+                }
             },
             NotifyEmbed::Notification(notify) => {
-                CreateEmbed::new()
+                let builder = CreateEmbed::new()
                     .color(Color::DARK_BLUE)
                     .title("🔔  Notification")
                     .description(format!("Hey {}, \nyou wanted to be notified at `{}`", notify.user_id.mention(), format_time(notify.notify_at)))
                     .field("Requested at:", format!("`{}`", format_time(notify.created_at)), true)
-                    .field("Message:", create_link(notify), true)
+                    .field("Message:", create_link(notify), true);
+
+                if notify.note.is_some() {
+                    builder.field("Note:", format!("```{}```", notify.note.clone().unwrap()), false)
+                } else {
+                    builder
+                }
             }
         }
     }
