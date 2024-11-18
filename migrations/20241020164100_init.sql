@@ -1,0 +1,14 @@
+CREATE TABLE IF NOT EXISTS notify_me (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    guild_id INTEGER NOT NULL,
+    channel_id INTEGER NOT NULL,
+    user_id INTEGER NOT NULL,
+    message_id INTEGER NOT NULL,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    notify_at DATETIME
+);
+
+CREATE TABLE IF NOT EXISTS guilds (
+    guild_id TEXT NOT NULL PRIMARY KEY,
+    volume FLOAT DEFAULT 1
+)

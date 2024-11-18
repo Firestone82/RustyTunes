@@ -1,0 +1,5 @@
+/target
+database.sqlite*
+.sqlx
+.env
+.idea

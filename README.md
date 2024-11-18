@@ -20,7 +20,9 @@ This project is a simple Discord bot developed in Rust, designed to play music i
 - Installed youtube-dl from [ytdl-org.github.io](https://ytdl-org.github.io/youtube-dl/)
   - `ffmpeg` is required for youtube-dl to work properly
   - `youtube-dl` should be in the system PATH
+- YouTube DL token from [YouTube Data API](https://developers.google.com/youtube/registering_an_application)
 - Discord bot token from [Discord Developer Portal](https://discord.com/developers/applications)
+- Installed CMAKE. Required for an [audiopus_sys](https://github.com/Lakelezz/audiopus_sys) library
 
 ### Installation
 1. Clone this repository
@@ -32,9 +34,24 @@ This project is a simple Discord bot developed in Rust, designed to play music i
     ```bash
     cp .env.example .env
     
-    # Edit the .env file and add your Discord bot token
+    # Edit the .env file with your discord bot token and youtube dl API key.
     ```
-3. Build and run the bot
+3. Setup database
+    ```bash
+    cargo install sqlx-cli
+    sqlx database create
+    sqlx migrate run
+     ```
+4. Install dependencies
+    ```bash
+   # Youtube DL
+   sudo curl -L https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp -o /usr/local/bin/yt-dlp
+   sudo chmod a+rx /usr/local/bin/yt-dlp
+   
+   # CMAKE
+   sudo apt-get install cmake
+    ```
+5. Build and run the bot
     ```bash
     cargo build --release
     cargo run
