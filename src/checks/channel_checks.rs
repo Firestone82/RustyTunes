@@ -3,6 +3,7 @@ use crate::embeds::bot_embeds::BotEmbed;
 use crate::service::channel_service;
 use crate::service::embed_service::SendEmbed;
 use serenity::all::ChannelId;
+
 pub async fn check_author_in_voice_channel(ctx: Context<'_>) -> Result<bool, MusicBotError> {
     let user_found: Option<bool> = ctx
         .guild()
