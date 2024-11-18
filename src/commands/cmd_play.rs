@@ -18,6 +18,9 @@ const YOUTUBE_PLAYLIST_URL: &str = "https://www.youtube.com/playlist?list=";
 const SPOTIFY_TRACK_URL: &str = "https://open.spotify.com/track/";
 const SPOTIFY_PLAYLIST_URL: &str = "https://open.spotify.com/playlist/";
 
+/**
+* Play a track or playlist from YouTube or Spotify
+*/
 #[poise::command(
     prefix_command, slash_command,
     check = "check_author_in_same_voice_channel",

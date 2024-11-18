@@ -1,5 +1,8 @@
 use crate::bot::{Context, MusicBotError};
 
+/**
+* Help command
+*/
 #[poise::command(
     prefix_command, slash_command,
     track_edits,

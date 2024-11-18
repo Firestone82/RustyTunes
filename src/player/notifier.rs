@@ -146,18 +146,18 @@ pub fn parse_text(text: String) -> Result<OffsetDateTime, NotifierError> {
 
 pub fn convert_literal_from_string(text: String) -> Option<OffsetDateTime> {
     let re: Regex = Regex::new(r"^(week|tomorrow)$").unwrap();
-    let offset: OffsetDateTime = OffsetDateTime::now_local().unwrap();
+    let mut offset: OffsetDateTime = OffsetDateTime::now_local().unwrap();
 
     if let Some(captures) = re.captures(&*text) {
         let capture = captures.get(1).map_or("", |m| m.as_str());
 
         match capture {
             "tomorrow" => {
-                let _ = offset.add(Duration::from_secs(86400));
+                offset = offset.add(Duration::from_secs(24 * 60 * 60));
             }
 
             "week" => {
-                let _ = offset.add(Duration::from_secs(604800));
+                offset = offset.add(Duration::from_secs(7 * 24 * 60 * 60));
             },
 
             _ => {}
@@ -186,32 +186,32 @@ pub fn convert_time_date_from_string(text: String) -> Option<OffsetDateTime> {
 
 pub fn convert_time_offset_from_string(text: String) -> Option<OffsetDateTime> {
     let re: Regex = Regex::new(r"^(?:(\d+)mo(?:nths?)?)?(?:(\d+)\s*d(?:ays?)?)?(?:(\d+)\s*h(?:ours?)?)?(?:(\d+)\s*m(?:inutes?)?)?(?:(\d+)\s*s(?:econds?)?)?$").unwrap();
-    let offset: OffsetDateTime = OffsetDateTime::now_local().unwrap();
+    let mut offset: OffsetDateTime = OffsetDateTime::now_local().unwrap();
 
     if let Some(captures) = re.captures(&*text) {
         if let Some(months) = captures.get(1) {
             let months: u64 = months.as_str().parse().unwrap_or(0);
-            let _ = offset.add(Duration::from_secs(months * 30 * 24 * 3600));
+            offset = offset.add(Duration::from_secs(months * 30 * 24 * 3600));
         }
 
         if let Some(days) = captures.get(2) {
             let days: u64 = days.as_str().parse().unwrap_or(0);
-            let _ = offset.add(Duration::from_secs(days * 24 * 3600));
+            offset = offset.add(Duration::from_secs(days * 24 * 3600));
         }
 
         if let Some(hours) = captures.get(3) {
             let hours: u64 = hours.as_str().parse().unwrap_or(0);
-            let _ = offset.add(Duration::from_secs(hours * 3600));
+            offset = offset.add(Duration::from_secs(hours * 3600));
         }
 
         if let Some(minutes) = captures.get(4) {
             let minutes: u64 = minutes.as_str().parse().unwrap_or(0);
-            let _ = offset.add(Duration::from_secs(minutes * 60));
+            offset = offset.add(Duration::from_secs(minutes * 60));
         }
 
         if let Some(seconds) = captures.get(5) {
             let seconds: u64 = seconds.as_str().parse().unwrap_or(0);
-            let _ = offset.add(Duration::from_secs(seconds));
+            offset = offset.add(Duration::from_secs(seconds));
         }
 
         return Some(offset);

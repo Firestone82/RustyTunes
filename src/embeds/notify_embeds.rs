@@ -27,30 +27,30 @@ impl<'a> NotifyEmbed<'a> {
                     .description(description)
             }
             NotifyEmbed::Created(notify) => {
-                let builder = CreateEmbed::new()
+                let mut builder = CreateEmbed::new()
                     .color(Color::DARK_BLUE)
                     .title("🔔  Notification created")
                     .description(format!("You will be notified at `{}`", format_time(notify.notify_at)));
 
-                if notify.note.is_some() {
-                    builder.field("Added note:", format!("```{}```", notify.note.clone().unwrap()), false)
-                } else {
-                    builder
+                if let Some(note) = notify.note.as_ref() {
+                    builder = builder.field("Note:", format!("```{}```", note), false)
                 }
+                
+                builder
             },
             NotifyEmbed::Notification(notify) => {
-                let builder = CreateEmbed::new()
+                let mut builder = CreateEmbed::new()
                     .color(Color::DARK_BLUE)
                     .title("🔔  Notification")
                     .description(format!("Hey {}, \nyou wanted to be notified at `{}`", notify.user_id.mention(), format_time(notify.notify_at)))
                     .field("Requested at:", format!("`{}`", format_time(notify.created_at)), true)
                     .field("Message:", create_link(notify), true);
 
-                if notify.note.is_some() {
-                    builder.field("Note:", format!("```{}```", notify.note.clone().unwrap()), false)
-                } else {
-                    builder
+                if let Some(note) = notify.note.as_ref() {
+                    builder = builder.field("Note:", format!("```{}```", note), false);
                 }
+                
+                builder
             }
         }
     }

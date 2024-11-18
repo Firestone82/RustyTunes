@@ -5,6 +5,9 @@ use crate::player::player::Player;
 use crate::service::embed_service::SendEmbed;
 use tokio::sync::{RwLockReadGuard, RwLockWriteGuard};
 
+/**
+* Change the volume of the player
+*/
 #[poise::command(
     prefix_command, slash_command,
     check = "check_author_in_same_voice_channel",

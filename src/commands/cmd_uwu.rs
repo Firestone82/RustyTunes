@@ -2,11 +2,12 @@ use crate::bot::{Context, MusicBotError};
 use crate::service::embed_service::SendEmbed;
 use serenity::all::{Color, CreateEmbed};
 use serenity::all::{Mention, Mentionable};
-use uwuifier::uwuify_str_sse;
+use uwu_rs::uwuify;
 
 /**
- * This command requested by adaxiik
- */
+* Convert provided text to UwU format
+* -> This command requested by adaxiik
+*/
 #[poise::command(
     prefix_command, slash_command,
 )]
@@ -14,12 +15,16 @@ pub async fn uwu(ctx: Context<'_>, text: Vec<String>) -> Result<(), MusicBotErro
     let embed: CreateEmbed = CreateEmbed::new()
         .color(Color::from(0x36393F))
         .title("Converted message to UwU format:")
-        .description(format!("```{}```", uwuify_str_sse(&text.join(" "))));
+        .description(format!("```{}```", uwuify(&text.join(" ")).unwrap()));
     
     embed.send_context(ctx, false, None).await?;
     Ok(())
 }
 
+/**
+* Convert provided text to UwU format and send it as author
+* -> This command requested by adaxiik
+*/
 #[poise::command(
     prefix_command, slash_command,
 )]
@@ -29,7 +34,7 @@ pub async fn uwu_me(ctx: Context<'_>, text: Vec<String>) -> Result<(), MusicBotE
     }
 
     let author: Mention = ctx.author().mention();
-    let uwu_text: String = uwuify_str_sse(&text.join(" "));
+    let uwu_text: String = uwuify(&text.join(" ")).unwrap();
 
     ctx.say(format!("{}: {}", author, uwu_text)).await?;
     Ok(())

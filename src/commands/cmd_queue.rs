@@ -4,6 +4,9 @@ use crate::player::player::Player;
 use crate::service::embed_service::SendEmbed;
 use tokio::sync::RwLockWriteGuard;
 
+/**
+* Display the current queue
+*/
 #[poise::command(
     prefix_command, slash_command,
 )]
