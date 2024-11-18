@@ -11,6 +11,7 @@ use sqlx::sqlite::SqlitePoolOptions;
 use sqlx::{Pool, Sqlite};
 use std::sync::Arc;
 use tokio::sync::{RwLock, RwLockWriteGuard};
+use crate::commands::{music, utility};
 
 pub struct MusicBotData {
     pub request_client: reqwest::Client,
@@ -96,20 +97,20 @@ impl MusicBotClient {
                 on_error: |err| Box::pin(error_handler::handle(err)),
                 commands: vec![
                     commands::cmd_help::help(),
-                    commands::cmd_play::play(),
-                    commands::cmd_skip::skip(),
-                    commands::cmd_stop::stop(),
-                    commands::cmd_vol::volume(),
-                    commands::cmd_join::join(),
-                    commands::cmd_queue::queue(),
-                    commands::cmd_leave::leave(),
-                    commands::cmd_shuffle::shuffle(),
-                    commands::cmd_playing::playing(),
-                    commands::cmd_uwu::uwu(),
-                    commands::cmd_uwu::uwu_me(),
-                    commands::cmd_notify::notify(),
-                    commands::cmd_wakeup::wakeup(),
-                    commands::cmd_wakeup::wakeup_context(),
+                    music::cmd_play::play(),
+                    music::cmd_skip::skip(),
+                    music::cmd_stop::stop(),
+                    music::cmd_vol::volume(),
+                    music::cmd_join::join(),
+                    music::cmd_queue::queue(),
+                    music::cmd_leave::leave(),
+                    music::cmd_shuffle::shuffle(),
+                    music::cmd_playing::playing(),
+                    utility::cmd_uwu::uwu(),
+                    utility::cmd_uwu::uwu_me(),
+                    utility::cmd_notify::notify(),
+                    utility::cmd_wakeup::wakeup(),
+                    utility::cmd_wakeup::wakeup_context(),
                 ],
                 pre_command: |ctx| Box::pin(async move {
                     println!("CMD: {} is executing {} ({})", ctx.author().name, ctx.command().name, ctx.invocation_string());
