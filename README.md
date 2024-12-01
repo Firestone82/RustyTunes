@@ -1,7 +1,7 @@
 <img width="20%" src="assets/icon-no-bg.png" align="right" alt="Icon">
 <br>
 
-# Project for PvR (Discord MusicBot in Rust)
+# Project for PvR: Discord MusicBot in Rust
 - Author: Pavel Mikula (MIK0486)
 - Took approximately 40 hours
 
@@ -62,3 +62,7 @@ This project is a simple Discord bot developed in Rust, designed to play music i
 - Queue management: add, remove, or reorder songs
 - Basic music controls: play, pause, resume, and skip tracks
 - Volume control
+- Custom addons
+  - Wakeup command (Moves client between rooms to make sound!)
+  - Notify command (Notify user to specific message after some time.)
+  - Uwu command (Uwuify text provided)
