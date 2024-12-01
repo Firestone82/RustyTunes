@@ -3,11 +3,12 @@ use crate::embeds::notify_embeds::NotifyEmbed;
 use crate::service::embed_service::SendEmbed;
 use regex::Regex;
 use serenity::all::{ChannelId, GuildChannel, GuildId, Mentionable, Message, MessageId, UserId};
+use sqlx::types::chrono;
 use sqlx::types::time::OffsetDateTime;
 use std::ops::Add;
 use std::sync::Arc;
 use std::time::Duration;
-use time::{Date, PrimitiveDateTime, Time};
+use time::{Date, PrimitiveDateTime, Time, UtcOffset};
 
 #[derive(Debug, thiserror::Error)]
 pub enum NotifierError {
@@ -78,7 +79,7 @@ impl Notifier {
             channel_id: ctx.channel_id(),
             user_id: ctx.author().id,
             message_id: msg.id,
-            created_at: OffsetDateTime::now_utc(),
+            created_at: get_current_time(),
             notify_at,
             note
         };
@@ -87,7 +88,7 @@ impl Notifier {
         let channel_id: i64 = notify.channel_id.get() as i64;
         let user_id: i64 = notify.user_id.get() as i64;
         let message_id: i64 = notify.message_id.get() as i64;
-        let current_time: OffsetDateTime = OffsetDateTime::now_local().unwrap();
+        let current_time: OffsetDateTime = get_current_time();
         let note: Option<String> = notify.note.clone();
 
         sqlx::query!(
@@ -104,7 +105,7 @@ impl Notifier {
 
     pub async fn check_messages(&mut self) {
         for message in self.messages.clone().iter() {
-            if message.notify_at <= OffsetDateTime::now_local().unwrap() {
+            if message.notify_at <= get_current_time() {
                 let message_id: i64 = message.message_id.get() as i64;
                 
                 let guild_channel: GuildChannel = self.serenity_context.http.get_channel(message.channel_id)
@@ -146,7 +147,7 @@ pub fn parse_text(text: String) -> Result<OffsetDateTime, NotifierError> {
 
 pub fn convert_literal_from_string(text: String) -> Option<OffsetDateTime> {
     let re: Regex = Regex::new(r"^(week|tomorrow)$").unwrap();
-    let mut offset: OffsetDateTime = OffsetDateTime::now_local().unwrap();
+    let mut offset: OffsetDateTime = get_current_time();
 
     if let Some(captures) = re.captures(&*text) {
         let capture = captures.get(1).map_or("", |m| m.as_str());
@@ -169,6 +170,21 @@ pub fn convert_literal_from_string(text: String) -> Option<OffsetDateTime> {
     None
 }
 
+// Function that returns fucking time, cuz rust is dum..
+pub fn get_current_time() -> OffsetDateTime {
+    let now_utc = OffsetDateTime::now_utc();
+    let current_mont = now_utc.month() as u8;
+
+    // Determine if the current time is during DST (CEST)
+    let prague_offset = if current_mont >= 3 && current_mont <= 10 {
+        UtcOffset::from_whole_seconds(7200).unwrap() // UTC +2
+    } else {
+        UtcOffset::from_whole_seconds(3600).unwrap() // UTC +1
+    };
+
+    now_utc.to_offset(prague_offset)
+}
+
 pub fn convert_time_date_from_string(text: String) -> Option<OffsetDateTime> {
     let date_format = time::format_description::parse("[day]-[month]-[year]").unwrap();
     if let Ok(date) = Date::parse(&text, &date_format) {
@@ -186,7 +202,7 @@ pub fn convert_time_date_from_string(text: String) -> Option<OffsetDateTime> {
 
 pub fn convert_time_offset_from_string(text: String) -> Option<OffsetDateTime> {
     let re: Regex = Regex::new(r"^(?:(\d+)mo(?:nths?)?)?(?:(\d+)\s*d(?:ays?)?)?(?:(\d+)\s*h(?:ours?)?)?(?:(\d+)\s*m(?:inutes?)?)?(?:(\d+)\s*s(?:econds?)?)?$").unwrap();
-    let mut offset: OffsetDateTime = OffsetDateTime::now_local().unwrap();
+    let mut offset: OffsetDateTime = get_current_time();
 
     if let Some(captures) = re.captures(&*text) {
         if let Some(months) = captures.get(1) {
