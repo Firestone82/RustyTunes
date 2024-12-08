@@ -3,7 +3,6 @@ use crate::embeds::notify_embeds::NotifyEmbed;
 use crate::service::embed_service::SendEmbed;
 use regex::Regex;
 use serenity::all::{ChannelId, GuildChannel, GuildId, Mentionable, Message, MessageId, UserId};
-use sqlx::types::chrono;
 use sqlx::types::time::OffsetDateTime;
 use std::ops::Add;
 use std::sync::Arc;
@@ -172,17 +171,16 @@ pub fn convert_literal_from_string(text: String) -> Option<OffsetDateTime> {
 
 // Function that returns fucking time, cuz rust is dum..
 pub fn get_current_time() -> OffsetDateTime {
-    let now_utc = OffsetDateTime::now_utc();
-    let current_mont = now_utc.month() as u8;
+    let now_utc: OffsetDateTime = OffsetDateTime::now_utc();
+    let current_mont: u8 = now_utc.month() as u8;
 
-    // Determine if the current time is during DST (CEST)
-    let prague_offset = if current_mont >= 3 && current_mont <= 10 {
+    let utc_offset: UtcOffset = if current_mont >= 3 && current_mont <= 10 {
         UtcOffset::from_whole_seconds(7200).unwrap() // UTC +2
     } else {
         UtcOffset::from_whole_seconds(3600).unwrap() // UTC +1
     };
 
-    now_utc.to_offset(prague_offset)
+    now_utc.to_offset(utc_offset)
 }
 
 pub fn convert_time_date_from_string(text: String) -> Option<OffsetDateTime> {

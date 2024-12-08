@@ -5,6 +5,7 @@ pub enum BotEmbed<'a> {
     CurrentUserNotInVoiceChannel,
     CurrentUserNotInSharedChannel(&'a ChannelId),
     TargetUserNotInVoiceChannel,
+    YouShallNotKickMe,
     Error(MusicBotError)
 }
 
@@ -30,6 +31,12 @@ impl<'a> BotEmbed<'a> {
                     .title("🚫  Target user not in voice channel")
                     .description("The target user needs to be in a voice channel to use this command.")
             },
+            BotEmbed::YouShallNotKickMe => {
+                CreateEmbed::new()
+                    .color(Color::DARK_RED)
+                    .title("🤬 Hey you, fucker!")
+                    .description("You shall not remove me forcefully! Next time, use `!leave` to ask me to leave politely. 🙃")
+            }
             BotEmbed::Error(error) => {
                 CreateEmbed::new()
                     .color(Color::DARK_RED)

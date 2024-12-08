@@ -1,17 +1,21 @@
 use crate::commands;
+use crate::commands::{music, utility};
+use crate::embeds::bot_embeds::BotEmbed;
 use crate::handlers::error_handler;
 use crate::player::notifier::{Notifier, NotifierError};
 use crate::player::player::{PlaybackError, Player};
+use crate::service::embed_service::SendEmbed;
 use crate::sources::youtube::youtube_client::{SearchError, YoutubeClient};
 use dotenv::var;
 use poise::serenity_prelude;
-use serenity::all::{GatewayIntents, GuildId};
+use serenity::all::audit_log::Action;
+use serenity::all::{ChannelId, FullEvent, GatewayIntents, GuildChannel, GuildId, MemberAction};
 use songbird::SerenityInit;
 use sqlx::sqlite::SqlitePoolOptions;
 use sqlx::{Pool, Sqlite};
+use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::{RwLock, RwLockWriteGuard};
-use crate::commands::{music, utility};
 
 pub struct MusicBotData {
     pub request_client: reqwest::Client,
@@ -115,8 +119,43 @@ impl MusicBotClient {
                 pre_command: |ctx| Box::pin(async move {
                     println!("CMD: {} is executing {} ({})", ctx.author().name, ctx.command().name, ctx.invocation_string());
                 }),
+                event_handler: |ctx, event, a, b| Box::pin(async move {
+                    match event {
+                        // TODO: Move this somewhere else
+                        FullEvent::GuildAuditLogEntryCreate { entry, guild_id } => {
+                            match entry.action {
+                                Action::Member(MemberAction::MemberDisconnect) => {
+                                    if entry.user_id == a.bot_id {
+                                        return Ok(());
+                                    }
+
+                                    guild_id.disconnect_member(ctx.http.clone(), entry.user_id).await?;
+
+                                    let music_channel_id: ChannelId = ChannelId::new(829704972122718268);
+                                    let guild_channels: HashMap<ChannelId, GuildChannel> = guild_id.channels(ctx.http.clone()).await?;
+
+                                    let target_channel: Option<(&ChannelId, &GuildChannel)> = guild_channels
+                                        .iter()
+                                        .find(|(c, _): &(&ChannelId, &GuildChannel) | **c == music_channel_id);
+
+                                    if let Some((_, guild_channel)) = target_channel {
+                                        BotEmbed::YouShallNotKickMe
+                                            .to_embed()
+                                            .send_channel(ctx.http.clone(), guild_channel, None, None)
+                                            .await?;
+                                    }
+                                }
+
+                                _ => {}
+                            };
+                        }
+                        _ => {}
+                    }
+                    
+                    Ok(())
+                }),
                 prefix_options: poise::PrefixFrameworkOptions {
-                    prefix: Some(String::from(".")),
+                    prefix: Some(String::from("!")),
                     ..Default::default()
                 },
                 ..Default::default()
