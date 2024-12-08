@@ -9,7 +9,7 @@ use crate::sources::youtube::youtube_client::{SearchError, YoutubeClient};
 use dotenv::var;
 use poise::serenity_prelude;
 use serenity::all::audit_log::Action;
-use serenity::all::{ChannelId, FullEvent, GatewayIntents, GuildChannel, GuildId, MemberAction};
+use serenity::all::{ChannelId, FullEvent, GatewayIntents, GuildChannel, GuildId, MemberAction, Mentionable};
 use songbird::SerenityInit;
 use sqlx::sqlite::SqlitePoolOptions;
 use sqlx::{Pool, Sqlite};
@@ -137,11 +137,13 @@ impl MusicBotClient {
                                     let target_channel: Option<(&ChannelId, &GuildChannel)> = guild_channels
                                         .iter()
                                         .find(|(c, _): &(&ChannelId, &GuildChannel) | **c == music_channel_id);
-
+                                    
+                                    let target_mention = entry.user_id.mention();
+                                    
                                     if let Some((_, guild_channel)) = target_channel {
                                         BotEmbed::YouShallNotKickMe
                                             .to_embed()
-                                            .send_channel(ctx.http.clone(), guild_channel, None, None)
+                                            .send_channel(ctx.http.clone(), guild_channel, None, Some(format!("{}", target_mention)))
                                             .await?;
                                     }
                                 }
