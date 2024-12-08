@@ -138,12 +138,10 @@ impl MusicBotClient {
                                         .iter()
                                         .find(|(c, _): &(&ChannelId, &GuildChannel) | **c == music_channel_id);
                                     
-                                    let target_mention = entry.user_id.mention();
-                                    
                                     if let Some((_, guild_channel)) = target_channel {
                                         BotEmbed::YouShallNotKickMe
                                             .to_embed()
-                                            .send_channel(ctx.http.clone(), guild_channel, None, Some(format!("{}", target_mention)))
+                                            .send_channel(ctx.http.clone(), guild_channel, None, Some(format!("{}", entry.user_id.mention())))
                                             .await?;
                                     }
                                 }
