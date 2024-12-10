@@ -119,41 +119,53 @@ impl MusicBotClient {
                 pre_command: |ctx| Box::pin(async move {
                     println!("CMD: {} is executing {} ({})", ctx.author().name, ctx.command().name, ctx.invocation_string());
                 }),
-                event_handler: |ctx, event, a, b| Box::pin(async move {
-                    match event {
+                // TODO: Unable to receive targeted member of DisconnectEvent. :( Since revenge is not possible to make in current state.
+                // event_handler: |ctx, event, a, _| Box::pin(async move {
+                    // match event {
                         // TODO: Move this somewhere else
-                        FullEvent::GuildAuditLogEntryCreate { entry, guild_id } => {
-                            match entry.action {
-                                Action::Member(MemberAction::MemberDisconnect) => {
-                                    if entry.user_id == a.bot_id {
-                                        return Ok(());
-                                    }
-
-                                    guild_id.disconnect_member(ctx.http.clone(), entry.user_id).await?;
-
-                                    let music_channel_id: ChannelId = ChannelId::new(829704972122718268);
-                                    let guild_channels: HashMap<ChannelId, GuildChannel> = guild_id.channels(ctx.http.clone()).await?;
-
-                                    let target_channel: Option<(&ChannelId, &GuildChannel)> = guild_channels
-                                        .iter()
-                                        .find(|(c, _): &(&ChannelId, &GuildChannel) | **c == music_channel_id);
-                                    
-                                    if let Some((_, guild_channel)) = target_channel {
-                                        BotEmbed::YouShallNotKickMe
-                                            .to_embed()
-                                            .send_channel(ctx.http.clone(), guild_channel, None, Some(format!("{}", entry.user_id.mention())))
-                                            .await?;
-                                    }
-                                }
-
-                                _ => {}
-                            };
-                        }
-                        _ => {}
-                    }
-                    
-                    Ok(())
-                }),
+                        // FullEvent::GuildAuditLogEntryCreate { entry, guild_id } => {
+                        //     match entry.action {
+                        //         Action::Member(MemberAction::MemberDisconnect) => {
+                        //             // Ignore if the one that's disconnecting is the bot
+                        //             if entry.user_id == a.bot_id {
+                        //                 return Ok(());
+                        //             }
+                        //             
+                        //             // Ignore if the target is not the bot
+                        //             if let Some(target) = entry.target_id {
+                        //                 if target.get() != a.bot_id.get() {
+                        //                     return Ok(());
+                        //                 }
+                        //             } else {
+                        //                 return Ok(());
+                        //             };
+                        // 
+                        //             println!("User {} disconnected me, taking revenge!", entry.user_id);
+                        //             guild_id.disconnect_member(ctx.http.clone(), entry.user_id).await?;
+                        // 
+                        //             let music_channel_id: ChannelId = ChannelId::new(829704972122718268);
+                        //             let guild_channels: HashMap<ChannelId, GuildChannel> = guild_id.channels(ctx.http.clone()).await?;
+                        // 
+                        //             let target_channel: Option<(&ChannelId, &GuildChannel)> = guild_channels
+                        //                 .iter()
+                        //                 .find(|(c, _): &(&ChannelId, &GuildChannel) | **c == music_channel_id);
+                        //             
+                        //             if let Some((_, guild_channel)) = target_channel {
+                        //                 BotEmbed::YouShallNotKickMe
+                        //                     .to_embed()
+                        //                     .send_channel(ctx.http.clone(), guild_channel, None, Some(format!("{}", entry.user_id.mention())))
+                        //                     .await?;
+                        //             }
+                        //         }
+                        // 
+                        //         _ => {}
+                        //     };
+                        // }
+                        // _ => {}
+                    // }
+                    // 
+                    // Ok(())
+                // }),
                 prefix_options: poise::PrefixFrameworkOptions {
                     prefix: Some(String::from("!")),
                     ..Default::default()
