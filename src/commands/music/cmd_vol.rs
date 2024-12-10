@@ -17,7 +17,7 @@ pub async fn volume(ctx: Context<'_>, volume: Option<f32>) -> Result<(), MusicBo
     if let Some(mut volume) = volume {
         let mut player: RwLockWriteGuard<Player> = ctx.data().player.write().await;
 
-        volume = volume.clamp(1.0, 1000.0);
+        volume = volume.clamp(1.0, 100.0);
         player.set_volume(volume).await?;
 
         PlayerEmbed::VolumeChanged(volume)
