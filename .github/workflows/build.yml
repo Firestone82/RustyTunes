@@ -33,7 +33,9 @@ jobs:
           path: migrations
 
   build:
+    name: Build
     runs-on: ubuntu-latest
+    needs: prepare
     steps:
       - uses: actions/checkout@v4
 
