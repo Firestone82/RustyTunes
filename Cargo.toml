@@ -1,6 +1,7 @@
 [package]
-name = "project_v2"
-version = "0.1.0"
+name = "RustTunes"
+description = "A discord bot that plays music from youtube"
+version = "1.0.0"
 edition = "2021"
 
 [dependencies]
@@ -9,9 +10,8 @@ tokio = { version = "1.40.0", features = ["macros", "rt-multi-thread", "signal"]
 hyper = { version = "1.5.0", features = ["client", "http1"] }
 hyper-rustls = "0.27.3"
 google-youtube3 = "5.0.5"# Must stay this version, cuz I don't know how to work with the new one
-reqwest = "0.11.6" # Must stay this version, cut above is broooken :(
+reqwest = "0.11.6" # Must stay this version, cuz above is broooken :(
 songbird = "0.4.3"
-symphonia = { version = "0.5.4", features = ["all"] }
 serenity = "0.12.2"
 poise = "0.6.1"
 dotenv = "0.15"
@@ -20,9 +20,6 @@ html-escape = "0.2.13"
 lombok = "0.4.0"
 sqlx = { version = "0.8.2", features = ["runtime-tokio-rustls", "sqlite", "time", "chrono"] }
 regex = "1.11.1"
-crypto = "0.5.1"
-log = "0.4.22"
-rand = "0.9.0-alpha.2"
-datetime = "0.5.2"
+rand = { version = "0.9.0-alpha.2", features = ["std_rng"] }
 time = "0.3.36"
 uwu-rs = "1.0.0"
