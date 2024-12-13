@@ -9,20 +9,41 @@ on:
 env:
   CARGO_TERM_COLOR: always
 
+runs-on: ubuntu-latest
+
 jobs:
-  build:
-    runs-on: ubuntu-latest
+  prepare:
+    name: Prepare
     steps:
       - uses: actions/checkout@v4
-      - name: Copy .env.example
+
+      - name: Create environment file
         run: cp .env.example .env
+
       - name: Prepare database
         run: |
           cargo install sqlx-cli
           sqlx database create
           sqlx migrate run
           cargo sqlx prepare
+
+      - name: Save prepared database
+        uses: actions/upload-artifact@v3
+        with:
+          name: prepared-database
+          path: migrations
+
+  build:
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download prepared database
+        uses: actions/download-artifact@v3
+        with:
+          name: prepared-database
+
       - name: Build
         run: cargo build --verbose
+
       - name: Run tests
         run: cargo test --verbose
