@@ -14,6 +14,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - name: Prepare database
+        run: |
+          cargo install sqlx-cli
+          sqlx database create
+          sqlx migrate run
+          cargo sqlx prepare
       - name: Build
         run: cargo build --verbose
       - name: Run tests
