@@ -10,15 +10,6 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
-  check:
-    name: Check
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Check
-        run: cargo check --verbose
-
   build:
     name: Build
     runs-on: ubuntu-latest
