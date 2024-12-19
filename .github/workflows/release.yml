@@ -8,21 +8,15 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
-  check:
-    name: Check
+  release:
+    name: release ${{ matrix.target }}
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        target: [x86_64-pc-windows-gnu, x86_64-unknown-linux-musl]
     steps:
-      - uses: actions/checkout@v4
-
-      - name: Check
-        run: cargo check --verbose
-
-  prepare:
-    runs-on: ubuntu-latest
-    name: Prepare
-    needs: check
-    steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@master
 
       - name: Create environment file
         run: cp .env.example .env
@@ -33,31 +27,6 @@ jobs:
           sqlx database create
           sqlx migrate run
           cargo sqlx prepare
-
-      - name: Save prepared database
-        uses: actions/upload-artifact@v3
-        with:
-          name: prepared-database
-          path: |
-            target
-            .env
-            .sqlx
-
-  release:
-    name: release ${{ matrix.target }}
-    needs: [prepare, check]
-    runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        target: [x86_64-pc-windows-gnu, x86_64-unknown-linux-musl]
-    steps:
-      - uses: actions/checkout@master
-
-      - name: Download prepared database
-        uses: actions/download-artifact@v3
-        with:
-          name: prepared-database
 
       - name: Compile and release
         uses: rust-build/rust-build.action@v1.4.5

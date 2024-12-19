@@ -10,9 +10,18 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
-  prepare:
+  check:
+    name: Check
     runs-on: ubuntu-latest
-    name: Prepare
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check
+        run: cargo check --verbose
+
+  build:
+    name: Build
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
@@ -25,27 +34,6 @@ jobs:
           sqlx database create
           sqlx migrate run
           cargo sqlx prepare
-
-      - name: Save prepared database
-        uses: actions/upload-artifact@v3
-        with:
-          name: prepared-database
-          path: |
-            target
-            .env
-            .sqlx
-
-  build:
-    name: Build
-    runs-on: ubuntu-latest
-    needs: prepare
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Download prepared database
-        uses: actions/download-artifact@v3
-        with:
-          name: prepared-database
 
       - name: Build
         run: cargo build --verbose
