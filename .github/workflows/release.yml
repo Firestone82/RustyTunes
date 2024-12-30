@@ -8,13 +8,6 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
-  check:
-    name: Check
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - name: Check
-        run: cargo check --verbose
   release:
     name: release ${{ matrix.target }}
     runs-on: ubuntu-latest
@@ -24,6 +17,17 @@ jobs:
         target: [x86_64-pc-windows-gnu, x86_64-unknown-linux-musl]
     steps:
       - uses: actions/checkout@master
+
+      - name: Create environment file
+        run: cp .env.example .env
+
+      - name: Prepare database
+        run: |
+          cargo install sqlx-cli
+          sqlx database create
+          sqlx migrate run
+          cargo sqlx prepare
+
       - name: Compile and release
         uses: rust-build/rust-build.action@v1.4.5
         env:
