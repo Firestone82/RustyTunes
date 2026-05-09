@@ -5,7 +5,7 @@ use crate::embeds::queue_embed::QueueEmbed;
 use crate::player::player::{Player, Track};
 use crate::service::channel_service;
 use crate::service::embed_service::SendEmbed;
-use crate::sources::spotify::spotify_client::{SpotifyError, SpotifySearchResult};
+use crate::sources::spotify::spotify_client::{SpotifyClient, SpotifyError, SpotifySearchResult};
 use crate::sources::youtube::youtube_client::{SearchError, YouTubeSearchResult, YoutubeClient};
 use serenity::all::{ButtonStyle, CreateActionRow, CreateButton, Message};
 use std::convert::Into;
@@ -14,9 +14,6 @@ use tokio::sync::RwLockWriteGuard;
 
 const YOUTUBE_VIDEO_URL: &str = "https://www.youtube.com/watch?v=";
 const YOUTUBE_PLAYLIST_URL: &str = "https://www.youtube.com/playlist?list=";
-
-const SPOTIFY_TRACK_URL: &str = "https://open.spotify.com/track/";
-const SPOTIFY_PLAYLIST_URL: &str = "https://open.spotify.com/playlist/";
 
 /**
 * Play a track or playlist from YouTube or Spotify
@@ -56,11 +53,10 @@ async fn do_play(ctx: Context<'_>, track_source: String, top: bool) -> Result<()
         }
     }
     // Search Spotify
-    else if track_source.starts_with(SPOTIFY_TRACK_URL) || track_source.starts_with(SPOTIFY_PLAYLIST_URL) {
+    else if SpotifyClient::is_spotify_url(&track_source) {
         let spotify_client = &ctx.data().spotify_client;
-        let youtube_client: &YoutubeClient = &ctx.data().youtube_client;
 
-        match spotify_client.search(&track_source, youtube_client).await {
+        match spotify_client.search(&track_source).await {
             Ok(SpotifySearchResult::Track(track)) => {
                 result = Ok(YouTubeSearchResult::Track(track));
             }

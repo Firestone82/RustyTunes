@@ -1,8 +1,8 @@
 use crate::player::player::{Playlist, Track, TrackMetadata};
-use crate::sources::youtube::youtube_client::{SearchError, YouTubeSearchResult, YoutubeClient};
 use base64::engine::general_purpose::STANDARD as BASE64;
 use base64::Engine;
 use dotenv::var;
+use regex::Regex;
 use serde::Deserialize;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -11,8 +11,13 @@ use tokio::sync::Mutex;
 const SPOTIFY_TOKEN_URL: &str = "https://accounts.spotify.com/api/token";
 const SPOTIFY_API: &str = "https://api.spotify.com/v1";
 
-const SPOTIFY_TRACK_URL: &str = "https://open.spotify.com/track/";
 const SPOTIFY_PLAYLIST_URL: &str = "https://open.spotify.com/playlist/";
+
+#[derive(Debug, Clone, Copy)]
+pub enum SpotifyKind {
+    Track,
+    Playlist,
+}
 
 pub enum SpotifySearchResult {
     Track(Track),
@@ -40,12 +45,6 @@ pub enum SpotifyError {
 impl From<reqwest::Error> for SpotifyError {
     fn from(value: reqwest::Error) -> Self {
         SpotifyError::ApiError(value.to_string())
-    }
-}
-
-impl From<SearchError> for SpotifyError {
-    fn from(value: SearchError) -> Self {
-        SpotifyError::ResolveError(value.to_string())
     }
 }
 
@@ -130,13 +129,29 @@ impl SpotifyClient {
         }
     }
 
-    pub fn is_spotify_url(url: &str) -> bool {
-        url.starts_with(SPOTIFY_TRACK_URL) || url.starts_with(SPOTIFY_PLAYLIST_URL)
+    pub fn parse_url(url: &str) -> Option<(SpotifyKind, String)> {
+        // Matches:
+        //   https://open.spotify.com/track/<id>
+        //   https://open.spotify.com/intl-en/track/<id>
+        //   https://open.spotify.com/playlist/<id>?si=...
+        //   spotify:track:<id>
+        //   spotify:playlist:<id>
+        let re = Regex::new(
+            r"(?:https?://open\.spotify\.com/(?:intl-[a-zA-Z-]+/)?(track|playlist)/|spotify:(track|playlist):)([A-Za-z0-9]+)"
+        ).ok()?;
+        let caps = re.captures(url)?;
+        let kind_str = caps.get(1).or_else(|| caps.get(2))?.as_str();
+        let id = caps.get(3)?.as_str().to_string();
+        let kind = match kind_str {
+            "track" => SpotifyKind::Track,
+            "playlist" => SpotifyKind::Playlist,
+            _ => return None,
+        };
+        Some((kind, id))
     }
 
-    fn extract_id(url: &str, prefix: &str) -> String {
-        let rest = url.trim_start_matches(prefix);
-        rest.split(['?', '/', '#']).next().unwrap_or(rest).to_string()
+    pub fn is_spotify_url(url: &str) -> bool {
+        Self::parse_url(url).is_some()
     }
 
     async fn access_token(&self) -> Result<String, SpotifyError> {
@@ -229,65 +244,55 @@ impl SpotifyClient {
         Ok(response.json().await?)
     }
 
-    pub async fn search(
-        &self,
-        url: &str,
-        youtube: &YoutubeClient,
-    ) -> Result<SpotifySearchResult, SpotifyError> {
-        if url.starts_with(SPOTIFY_TRACK_URL) {
-            let id = Self::extract_id(url, SPOTIFY_TRACK_URL);
-            let track = self.fetch_track(&id).await?;
-            let resolved = resolve_via_youtube(youtube, &track).await?;
-            Ok(SpotifySearchResult::Track(resolved))
-        } else if url.starts_with(SPOTIFY_PLAYLIST_URL) {
-            let id = Self::extract_id(url, SPOTIFY_PLAYLIST_URL);
-            let playlist = self.fetch_playlist(&id).await?;
+    pub async fn search(&self, url: &str) -> Result<SpotifySearchResult, SpotifyError> {
+        let (kind, id) = Self::parse_url(url)
+            .ok_or_else(|| SpotifyError::ApiError(format!("Unsupported Spotify URL: {url}")))?;
 
-            let mut sp_tracks: Vec<SpTrack> = playlist.tracks.items
-                .into_iter()
-                .filter_map(|item| item.track)
-                .filter(|t| t.id.is_some())
-                .collect();
+        match kind {
+            SpotifyKind::Track => {
+                let track = self.fetch_track(&id).await?;
+                Ok(SpotifySearchResult::Track(build_track(&track)))
+            }
+            SpotifyKind::Playlist => {
+                let playlist = self.fetch_playlist(&id).await?;
 
-            // Cap pagination so we don't hammer YouTube quota; mirrors YT 50 max.
-            let mut next = playlist.tracks.next;
-            while let Some(url) = next {
-                if sp_tracks.len() >= 50 {
-                    break;
+                let mut sp_tracks: Vec<SpTrack> = playlist.tracks.items
+                    .into_iter()
+                    .filter_map(|item| item.track)
+                    .filter(|t| t.id.is_some())
+                    .collect();
+
+                let mut next = playlist.tracks.next;
+                while let Some(url) = next {
+                    if sp_tracks.len() >= 100 {
+                        break;
+                    }
+                    let page = self.fetch_playlist_page(&url).await?;
+                    sp_tracks.extend(
+                        page.items.into_iter()
+                            .filter_map(|item| item.track)
+                            .filter(|t| t.id.is_some())
+                    );
+                    next = page.next;
                 }
-                let page = self.fetch_playlist_page(&url).await?;
-                sp_tracks.extend(
-                    page.items.into_iter()
-                        .filter_map(|item| item.track)
-                        .filter(|t| t.id.is_some())
-                );
-                next = page.next;
-            }
-            sp_tracks.truncate(50);
+                sp_tracks.truncate(100);
 
-            let mut tracks: Vec<Track> = Vec::with_capacity(sp_tracks.len());
-            for sp in sp_tracks {
-                match resolve_via_youtube(youtube, &sp).await {
-                    Ok(t) => tracks.push(t),
-                    Err(e) => tracing::warn!("Skipping Spotify track '{}': {}", sp.name, e),
+                let tracks: Vec<Track> = sp_tracks.iter().map(build_track).collect();
+
+                if tracks.is_empty() {
+                    return Err(SpotifyError::PlaylistNotFound(format!(
+                        "Playlist {id} has no playable tracks"
+                    )));
                 }
-            }
 
-            if tracks.is_empty() {
-                return Err(SpotifyError::PlaylistNotFound(format!(
-                    "No playable tracks resolved for playlist {id}"
-                )));
+                Ok(SpotifySearchResult::Playlist(Playlist {
+                    id: playlist.id.clone(),
+                    title: playlist.name,
+                    description: playlist.description,
+                    playlist_url: format!("{SPOTIFY_PLAYLIST_URL}{}", playlist.id),
+                    tracks,
+                }))
             }
-
-            Ok(SpotifySearchResult::Playlist(Playlist {
-                id: playlist.id.clone(),
-                title: playlist.name,
-                description: playlist.description,
-                playlist_url: format!("{SPOTIFY_PLAYLIST_URL}{}", playlist.id),
-                tracks,
-            }))
-        } else {
-            Err(SpotifyError::ApiError(format!("Unsupported Spotify URL: {url}")))
         }
     }
 }
@@ -304,31 +309,22 @@ fn track_query(track: &SpTrack) -> String {
     }
 }
 
-async fn resolve_via_youtube(youtube: &YoutubeClient, sp: &SpTrack) -> Result<Track, SpotifyError> {
+// Build a Track that yt-dlp resolves at playback time via its built-in
+// `ytsearch1:` prefix. Avoids the YouTube Data API (and its 100-unit
+// per-search quota cost) entirely — a Spotify playlist with many tracks
+// would otherwise blow through the daily 10k quota almost immediately.
+fn build_track(sp: &SpTrack) -> Track {
     let query = track_query(sp);
-    match youtube.search_track_url(query.clone(), 1).await? {
-        YouTubeSearchResult::Track(mut t) => {
-            // Override title/channel with Spotify metadata so the user sees what they asked for.
-            t.metadata = TrackMetadata {
-                id: t.metadata.id,
-                title: sp.name.clone(),
-                channel: sp.artists.iter().map(|a| a.name.clone()).collect::<Vec<_>>().join(", "),
-                track_url: t.metadata.track_url,
-            };
-            Ok(t)
-        }
-        YouTubeSearchResult::Tracks(mut tracks) => {
-            if tracks.is_empty() {
-                Err(SpotifyError::ResolveError(format!("No YouTube match for '{query}'")))
-            } else {
-                let mut t = tracks.swap_remove(0);
-                t.metadata.title = sp.name.clone();
-                t.metadata.channel = sp.artists.iter().map(|a| a.name.clone()).collect::<Vec<_>>().join(", ");
-                Ok(t)
-            }
-        }
-        YouTubeSearchResult::Playlist(_) => {
-            Err(SpotifyError::ResolveError("Unexpected playlist result".to_string()))
-        }
+    let id = sp.id.clone().unwrap_or_else(|| query.clone());
+    let channel = sp.artists.iter().map(|a| a.name.clone()).collect::<Vec<_>>().join(", ");
+    Track {
+        id: id.clone(),
+        metadata: TrackMetadata {
+            id,
+            title: sp.name.clone(),
+            channel,
+            track_url: format!("ytsearch1:{query}"),
+        },
+        added_by: String::new(),
     }
 }
