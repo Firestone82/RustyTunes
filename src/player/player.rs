@@ -192,10 +192,6 @@ impl Player {
             })?
             .get_or_insert(guild_id);
 
-        if let Some(track) = self.current_track.clone() {
-            self.push_to_history(track);
-        }
-
         if self.is_playing {
             self.stop_track().await?;
         }
@@ -233,6 +229,7 @@ impl Player {
                     )
                 );
 
+                self.push_to_history(next_track.clone());
                 self.current_track = Some(next_track);
                 self.track_handle = Some(track_handle);
                 self.is_playing = true;

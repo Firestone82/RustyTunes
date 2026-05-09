@@ -39,11 +39,6 @@ impl EventHandler for QueueHandler {
             Some(next_track) => {
                 tracing::info!("Playing next track: {}", next_track.metadata.title);
 
-                // Save finished track to history
-                if let Some(finished) = player.current_track.clone() {
-                    player.push_to_history(finished);
-                }
-
                 // Send "Now playing message"
                 let _ = PlayerEmbed::NowPlaying(&next_track)
                     .to_embed()
@@ -71,6 +66,7 @@ impl EventHandler for QueueHandler {
                     self.clone()
                 );
 
+                player.push_to_history(next_track.clone());
                 player.track_handle = Some(track_handle);
                 player.current_track = Some(next_track);
                 player.is_playing = true;
@@ -78,11 +74,6 @@ impl EventHandler for QueueHandler {
 
             None => {
                 tracing::info!("No more tracks to play. Stopping playback.");
-
-                // Save the last track to history
-                if let Some(finished) = player.current_track.clone() {
-                    player.push_to_history(finished);
-                }
 
                 player.track_handle = None;
                 player.current_track = None;
