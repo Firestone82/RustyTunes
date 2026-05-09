@@ -5,6 +5,7 @@ use crate::embeds::queue_embed::QueueEmbed;
 use crate::player::player::{Player, Track};
 use crate::service::channel_service;
 use crate::service::embed_service::SendEmbed;
+use crate::sources::spotify::spotify_client::{SpotifyClient, SpotifyError, SpotifySearchResult};
 use crate::sources::youtube::youtube_client::{SearchError, YouTubeSearchResult, YoutubeClient};
 use serenity::all::{ButtonStyle, CreateActionRow, CreateButton, Message};
 use std::convert::Into;
@@ -13,9 +14,6 @@ use tokio::sync::RwLockWriteGuard;
 
 const YOUTUBE_VIDEO_URL: &str = "https://www.youtube.com/watch?v=";
 const YOUTUBE_PLAYLIST_URL: &str = "https://www.youtube.com/playlist?list=";
-
-const SPOTIFY_TRACK_URL: &str = "https://open.spotify.com/track/";
-const SPOTIFY_PLAYLIST_URL: &str = "https://open.spotify.com/playlist/";
 
 /**
 * Play a track or playlist from YouTube or Spotify
@@ -51,12 +49,27 @@ async fn do_play(ctx: Context<'_>, track_source: String, top: bool) -> Result<()
             result = youtube_client.search_track_url(track_source.clone(), 1).await;
         }
         else if track_source.starts_with(YOUTUBE_PLAYLIST_URL) {
-            result = youtube_client.search_playlist_url(track_source.clone()).await;
+            result = youtube_client.fetch_playlist_lazy(track_source.clone()).await;
         }
     }
     // Search Spotify
-    else if track_source.starts_with(SPOTIFY_TRACK_URL) || track_source.starts_with(SPOTIFY_PLAYLIST_URL) {
-        // TODO: Implement search for tracks using Spotify
+    else if SpotifyClient::is_spotify_url(&track_source) {
+        let spotify_client = &ctx.data().spotify_client;
+
+        match spotify_client.search(&track_source).await {
+            Ok(SpotifySearchResult::Track(track)) => {
+                result = Ok(YouTubeSearchResult::Track(track));
+            }
+            Ok(SpotifySearchResult::Playlist(playlist)) => {
+                result = Ok(YouTubeSearchResult::Playlist(playlist));
+            }
+            Err(SpotifyError::TrackNotFound(_)) | Err(SpotifyError::PlaylistNotFound(_)) => {
+                result = Err(SearchError::VideoNotFound(track_source.clone()));
+            }
+            Err(error) => {
+                return Err(MusicBotError::from(error));
+            }
+        }
     }
     // Search using text on YouTube
     else {

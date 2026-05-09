@@ -5,6 +5,7 @@ use crate::handlers::error_handler;
 use crate::player::notifier::{Notifier, NotifierError};
 use crate::player::player::{PlaybackError, Player};
 use crate::service::embed_service::SendEmbed;
+use crate::sources::spotify::spotify_client::{SpotifyClient, SpotifyError};
 use crate::sources::youtube::youtube_client::{SearchError, YoutubeClient};
 use dotenv::var;
 use poise::serenity_prelude;
@@ -20,7 +21,7 @@ use tokio::sync::{RwLock, RwLockWriteGuard};
 pub struct MusicBotData {
     pub request_client: reqwest::Client,
     pub youtube_client: YoutubeClient,
-    // pub spotify_client: SpotifyClient,
+    pub spotify_client: SpotifyClient,
     pub database_pool: Arc<Database>,
     pub player: Arc<RwLock<Player>>,
     pub notifier: Arc<RwLock<Notifier>>
@@ -68,6 +69,12 @@ impl From<MusicBotError> for PlaybackError {
 
 impl From<SearchError> for MusicBotError {
     fn from(value: SearchError) -> Self {
+        MusicBotError::InternalError(value.to_string())
+    }
+}
+
+impl From<SpotifyError> for MusicBotError {
+    fn from(value: SpotifyError) -> Self {
         MusicBotError::InternalError(value.to_string())
     }
 }
@@ -359,7 +366,7 @@ impl MusicBotClient {
                     Ok(MusicBotData {
                         request_client: reqwest::Client::new(),
                         youtube_client: YoutubeClient::new(),
-                        // spotify_client: SpotifyClient::new(),
+                        spotify_client: SpotifyClient::new(),
                         database_pool: database,
                         player: player_handle,
                         notifier: notifier_handle

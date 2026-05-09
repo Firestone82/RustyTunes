@@ -7,6 +7,7 @@ name = "RustTunes"
 version = "1.0.0"
 dependencies = [
  "async-trait",
+ "base64 0.22.1",
  "dotenv",
  "google-youtube3",
  "html-escape",
@@ -18,6 +19,8 @@ dependencies = [
  "regex",
  "reqwest 0.12.9",
  "rustls 0.23.15",
+ "serde",
+ "serde_json",
  "serenity",
  "songbird",
  "sqlx",
