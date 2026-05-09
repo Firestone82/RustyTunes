@@ -6,9 +6,8 @@ use crate::player::player::{Player, Track};
 use crate::service::channel_service;
 use crate::service::embed_service::SendEmbed;
 use crate::sources::youtube::youtube_client::{SearchError, YouTubeSearchResult, YoutubeClient};
-use serenity::all::{Message, ReactionType};
+use serenity::all::{ButtonStyle, CreateActionRow, CreateButton, Message};
 use std::convert::Into;
-use std::str::FromStr;
 use std::time::Duration;
 use tokio::sync::RwLockWriteGuard;
 
@@ -65,26 +64,43 @@ pub async fn play(ctx: Context<'_>, track_source: Vec<String>) -> Result<(), Mus
         }
 
         Ok(YouTubeSearchResult::Tracks(mut tracks)) => {
-            let message: Message = PlayerEmbed::Search(&tracks)
-                .to_embed()
-                .send_context(ctx, true, None)
-                .await?;
-            
-            let emojis = ["1️⃣", "2️⃣", "3️⃣", "4️⃣", "5️⃣", "6️⃣", "7️⃣", "8️⃣", "9️⃣", "🔟"];
-            for i in 0..tracks.len() {
-                let emoji: ReactionType = ReactionType::from_str(emojis[i]).unwrap();
-                message.react(ctx.http(), emoji.clone()).await?;
-            }
-            
+            let buttons: Vec<CreateButton> = (0..tracks.len())
+                .map(|i| {
+                    CreateButton::new(format!("track_{}", i))
+                        .label((i + 1).to_string())
+                        .style(ButtonStyle::Secondary)
+                })
+                .collect();
+
+            let rows: Vec<CreateActionRow> = buttons
+                .chunks(5)
+                .map(|chunk| CreateActionRow::Buttons(chunk.to_vec()))
+                .collect();
+
+            let reply_handle = ctx.send(
+                poise::CreateReply::default()
+                    .embed(PlayerEmbed::Search(&tracks).to_embed())
+                    .components(rows)
+                    .reply(true)
+            ).await
+                .map_err(|error| MusicBotError::InternalError(error.to_string()))?;
+
+            let message: Message = reply_handle.into_message().await
+                .map_err(|error| MusicBotError::InternalError(error.to_string()))?;
+
             let interaction = message
-                .await_reaction(ctx)
+                .await_component_interaction(ctx.serenity_context().shard.clone())
                 .timeout(Duration::from_secs(60 * 2));
-            
+
             match interaction.await {
-                Some(reaction) => {
+                Some(interaction) => {
+                    interaction.defer(ctx.http()).await?;
                     message.delete(ctx.http()).await?;
-                    
-                    let track_index: usize = emojis.iter().position(|&x| x == reaction.emoji.to_string()).unwrap();
+
+                    let track_index: usize = interaction.data.custom_id
+                        .strip_prefix("track_")
+                        .and_then(|s| s.parse().ok())
+                        .unwrap();
                     let track: Track = tracks.swap_remove(track_index);
 
                     let mut player: RwLockWriteGuard<Player> = ctx.data().player.write().await;
