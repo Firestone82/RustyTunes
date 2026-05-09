@@ -117,6 +117,7 @@ impl MusicBotClient {
                     utility::cmd_notify::notify_remove(),
                     utility::cmd_wakeup::wakeup(),
                     utility::cmd_wakeup::wakeup_context(),
+                    utility::cmd_rename::rename(),
                 ],
                 pre_command: |ctx| Box::pin(async move {
                     tracing::info!("CMD: {} is executing {} ({})", ctx.author().name, ctx.command().name, ctx.invocation_string());
