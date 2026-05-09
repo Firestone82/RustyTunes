@@ -4,6 +4,7 @@ use crate::service::embed_service::SendEmbed;
 use regex::Regex;
 use serenity::all::{ChannelId, GuildChannel, GuildId, Mentionable, MessageId, UserId};
 use sqlx::types::time::OffsetDateTime;
+use sqlx::Row;
 use std::ops::Add;
 use std::sync::Arc;
 use std::time::Duration;
@@ -41,33 +42,24 @@ pub struct Notifier {
 
 impl Notifier {
     pub async fn new(serenity_context: serenity::prelude::Context, database: Arc<Database>) -> Self {
-        // `message_id?` forces sqlx to treat the column as Option<i64> at
-        // compile time, regardless of whether the live DB still has the
-        // legacy NOT NULL constraint (which the bot patches at startup).
-        let rows = sqlx::query!(
-            r#"SELECT
-                id,
-                guild_id,
-                channel_id,
-                user_id,
-                message_id AS "message_id?: i64",
-                created_at,
-                notify_at,
-                note
-            FROM notify_me"#
+        // Runtime-checked (not query!) because the bot's startup migration
+        // recreates this table; if the live DB is mid-migration when sqlx
+        // does its compile-time verification, query! would fail to compile.
+        let rows = sqlx::query(
+            "SELECT id, guild_id, channel_id, user_id, message_id, created_at, notify_at, note FROM notify_me"
         ).fetch_all(&*database)
             .await
             .expect("Failed to fetch all messages from database");
 
         let messages: Vec<MessageNotify> = rows.into_iter().map(|r| MessageNotify {
-            id: r.id,
-            guild_id: GuildId::new(r.guild_id as u64),
-            channel_id: ChannelId::new(r.channel_id as u64),
-            user_id: UserId::new(r.user_id as u64),
-            message_id: r.message_id.map(|m| MessageId::new(m as u64)),
-            created_at: r.created_at.unwrap(),
-            notify_at: r.notify_at.unwrap(),
-            note: r.note,
+            id: r.get("id"),
+            guild_id: GuildId::new(r.get::<i64, _>("guild_id") as u64),
+            channel_id: ChannelId::new(r.get::<i64, _>("channel_id") as u64),
+            user_id: UserId::new(r.get::<i64, _>("user_id") as u64),
+            message_id: r.get::<Option<i64>, _>("message_id").map(|m| MessageId::new(m as u64)),
+            created_at: r.get("created_at"),
+            notify_at: r.get("notify_at"),
+            note: r.get("note"),
         }).collect();
 
         Notifier {
@@ -100,10 +92,16 @@ impl Notifier {
         let message_id_db: Option<i64> = source_message_id.map(|m| m.get() as i64);
         let created_at = get_current_time();
 
-        let id = sqlx::query!(
-            "INSERT INTO notify_me (guild_id, channel_id, user_id, message_id, created_at, notify_at, note) VALUES (?, ?, ?, ?, ?, ?, ?)",
-            guild_id_db, channel_id_db, user_id_db, message_id_db, created_at, notify_at, note
+        let id = sqlx::query(
+            "INSERT INTO notify_me (guild_id, channel_id, user_id, message_id, created_at, notify_at, note) VALUES (?, ?, ?, ?, ?, ?, ?)"
         )
+            .bind(guild_id_db)
+            .bind(channel_id_db)
+            .bind(user_id_db)
+            .bind(message_id_db)
+            .bind(created_at)
+            .bind(notify_at)
+            .bind(&note)
             .execute(&*self.database)
             .await
             .map_err(|e| NotifierError::InternalError(format!("DB insert failed: {e}")))?
@@ -136,7 +134,8 @@ impl Notifier {
 
         let removed = self.messages.remove(position);
 
-        sqlx::query!("DELETE FROM notify_me WHERE id = ?", id)
+        sqlx::query("DELETE FROM notify_me WHERE id = ?")
+            .bind(id)
             .execute(&*self.database)
             .await
             .map_err(|e| NotifierError::InternalError(format!("DB delete failed: {e}")))?;
@@ -198,7 +197,8 @@ impl Notifier {
     }
 
     async fn drop_notification(&mut self, id: i64) {
-        let _ = sqlx::query!("DELETE FROM notify_me WHERE id = ?", id)
+        let _ = sqlx::query("DELETE FROM notify_me WHERE id = ?")
+            .bind(id)
             .execute(&*self.database)
             .await
             .map_err(|e| tracing::error!("Failed to delete notification {}: {:?}", id, e));

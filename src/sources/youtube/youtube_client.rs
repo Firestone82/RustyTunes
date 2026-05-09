@@ -82,7 +82,7 @@ impl YoutubeClient {
         let items: Vec<SearchResult> = response.items
             .ok_or_else(|| SearchError::VideoNotFound(format!("No video found for url: {}", url)))?;
 
-        let tracks: Vec<Track> = items.iter()
+        let mut tracks: Vec<Track> = items.iter()
             .filter_map(|result| {
                 let video_id: String = result.id.as_ref()?.video_id.clone()?;
 
@@ -106,11 +106,14 @@ impl YoutubeClient {
             })
             .collect::<Result<Vec<Track>, SearchError>>()?;
 
+        if tracks.is_empty() {
+            return Err(SearchError::VideoNotFound(format!(
+                "No usable results for: {url}"
+            )));
+        }
+
         match max_tracks {
-            1 => {
-                let track: &Track = tracks.first().expect("No track found");
-                Ok(YouTubeSearchResult::Track(track.clone()))
-            }
+            1 => Ok(YouTubeSearchResult::Track(tracks.swap_remove(0))),
             _ => Ok(YouTubeSearchResult::Tracks(tracks)),
         }
     }
