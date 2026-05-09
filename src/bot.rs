@@ -113,6 +113,8 @@ impl MusicBotClient {
                     utility::cmd_uwu::uwu(),
                     utility::cmd_uwu::uwu_me(),
                     utility::cmd_notify::notify(),
+                    utility::cmd_notify::notify_list(),
+                    utility::cmd_notify::notify_remove(),
                     utility::cmd_wakeup::wakeup(),
                     utility::cmd_wakeup::wakeup_context(),
                 ],
@@ -239,6 +241,41 @@ impl MusicBotClient {
                                 MusicBotError::InternalError(e.to_string())
                             })?
                     );
+
+                    // Schema patch: relax notify_me.message_id NOT NULL so slash commands
+                    // (which have no source message) can store NULL. Idempotent: only
+                    // applied if the column is still NOT NULL.
+                    let message_id_notnull: Option<i64> = sqlx::query_scalar(
+                        "SELECT \"notnull\" FROM pragma_table_info('notify_me') WHERE name = 'message_id'"
+                    ).fetch_optional(&*database)
+                        .await
+                        .map_err(|e| MusicBotError::InternalError(format!("Schema probe failed: {e}")))?;
+
+                    if matches!(message_id_notnull, Some(1)) {
+                        tracing::info!("Migrating notify_me.message_id to NULL-able");
+                        let stmts = [
+                            "CREATE TABLE notify_me_new (\
+                                id INTEGER PRIMARY KEY AUTOINCREMENT,\
+                                guild_id INTEGER NOT NULL,\
+                                channel_id INTEGER NOT NULL,\
+                                user_id INTEGER NOT NULL,\
+                                message_id INTEGER,\
+                                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,\
+                                notify_at DATETIME,\
+                                note TEXT DEFAULT NULL\
+                            )",
+                            "INSERT INTO notify_me_new (id, guild_id, channel_id, user_id, message_id, created_at, notify_at, note) \
+                                SELECT id, guild_id, channel_id, user_id, message_id, created_at, notify_at, note FROM notify_me",
+                            "DROP TABLE notify_me",
+                            "ALTER TABLE notify_me_new RENAME TO notify_me",
+                        ];
+                        for stmt in stmts {
+                            sqlx::query(stmt).execute(&*database).await.map_err(|e| {
+                                tracing::error!("notify_me migration failed at `{}`: {:?}", stmt, e);
+                                MusicBotError::InternalError(e.to_string())
+                            })?;
+                        }
+                    }
 
                     // Insert guild into database if it doesn't exist
                     let _ = sqlx::query!(
