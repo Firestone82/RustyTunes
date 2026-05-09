@@ -6,6 +6,9 @@ use google_youtube3::hyper::client::HttpConnector;
 use google_youtube3::hyper_rustls::HttpsConnector;
 use google_youtube3::YouTube;
 use html_escape::decode_html_entities;
+use serde_json::Value;
+use std::process::Stdio;
+use tokio::io::{AsyncBufReadExt, BufReader};
 
 pub struct YoutubeClient {
     api_key: String,
@@ -202,4 +205,86 @@ impl YoutubeClient {
         }
     }
 
+    /// Enumerate a YouTube playlist using yt-dlp's `--flat-playlist` mode.
+    /// Streams results line-by-line so we get track titles immediately from
+    /// yt-dlp scraping — zero YouTube Data API quota used.
+    pub async fn fetch_playlist_lazy(&self, url: String) -> Result<YouTubeSearchResult, SearchError> {
+        let playlist_id = url.trim_start_matches(PLAYLIST_URI).to_string();
+
+        let mut child = tokio::process::Command::new("yt-dlp")
+            .args([
+                "--flat-playlist",
+                "--no-warnings",
+                "--print", "%j",  // one JSON object per line
+                &url,
+            ])
+            .stdout(Stdio::piped())
+            .stderr(Stdio::null())
+            .spawn()
+            .map_err(|e| SearchError::InternalError(format!("Failed to spawn yt-dlp: {e}")))?;
+
+        let stdout = child.stdout.take()
+            .ok_or_else(|| SearchError::InternalError("yt-dlp stdout missing".into()))?;
+
+        let mut lines = BufReader::new(stdout).lines();
+
+        let mut playlist_title = String::new();
+        let mut playlist_desc = String::new();
+        let mut tracks: Vec<Track> = Vec::new();
+
+        while let Ok(Some(line)) = lines.next_line().await {
+            let Ok(v): Result<Value, _> = serde_json::from_str(&line) else {
+                continue;
+            };
+
+            // Grab playlist metadata from the first entry.
+            if tracks.is_empty() {
+                if let Some(t) = v["playlist_title"].as_str().filter(|s| !s.is_empty()) {
+                    playlist_title = t.to_string();
+                }
+                if let Some(d) = v["playlist_description"].as_str() {
+                    playlist_desc = d.to_string();
+                }
+            }
+
+            let Some(id) = v["id"].as_str() else { continue };
+            let title = v["title"].as_str().unwrap_or(id).to_string();
+            let channel = v["channel"].as_str()
+                .or_else(|| v["uploader"].as_str())
+                .unwrap_or("")
+                .to_string();
+
+            tracks.push(Track {
+                id: id.to_string(),
+                metadata: TrackMetadata {
+                    id: id.to_string(),
+                    title,
+                    channel,
+                    track_url: format!("{SINGLE_URI}{id}"),
+                },
+                added_by: String::new(),
+            });
+        }
+
+        // Reap the child process.
+        let _ = child.wait().await;
+
+        if tracks.is_empty() {
+            return Err(SearchError::PlaylistNotFound(format!(
+                "No tracks found in playlist: {url}"
+            )));
+        }
+
+        if playlist_title.is_empty() {
+            playlist_title = format!("Playlist {playlist_id}");
+        }
+
+        Ok(YouTubeSearchResult::Playlist(Playlist {
+            id: playlist_id.clone(),
+            title: playlist_title,
+            description: playlist_desc,
+            playlist_url: format!("{PLAYLIST_URI}{playlist_id}"),
+            tracks,
+        }))
+    }
 }

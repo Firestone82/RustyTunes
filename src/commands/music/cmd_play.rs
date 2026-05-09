@@ -49,7 +49,7 @@ async fn do_play(ctx: Context<'_>, track_source: String, top: bool) -> Result<()
             result = youtube_client.search_track_url(track_source.clone(), 1).await;
         }
         else if track_source.starts_with(YOUTUBE_PLAYLIST_URL) {
-            result = youtube_client.search_playlist_url(track_source.clone()).await;
+            result = youtube_client.fetch_playlist_lazy(track_source.clone()).await;
         }
     }
     // Search Spotify
