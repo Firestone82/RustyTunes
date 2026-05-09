@@ -1,9 +1,7 @@
 use crate::bot::{Context, MusicBotError};
-use crate::handlers::disconnect_handler::DisconnectHandler;
 use crate::handlers::error_handler::ErrorHandler;
-use crate::handlers::inactivity_handler::InactivityHandler;
 use serenity::all::{ChannelId, GuildId, UserId};
-use songbird::{Call, CoreEvent, Event, Songbird};
+use songbird::{Call, Event, Songbird};
 use std::sync::Arc;
 use tokio::sync::MutexGuard;
 
@@ -28,19 +26,10 @@ pub async fn join_user_channel(ctx: Context<'_>) -> Result<ChannelId, MusicBotEr
         Ok(handle_lock) => {
             let mut handle: MutexGuard<Call> = handle_lock.lock().await;
 
-            // Event listener to disconnect the bot if the driver disconnects
-            handle.add_global_event(
-                Event::Core(CoreEvent::DriverDisconnect),
-                DisconnectHandler::new(guild_id, manager.clone(), ctx.data().player.clone()),
-            );
-
-            // Event listener to disconnect the bot if there is no activity in the voice channel
-            handle.add_global_event(
-                Event::Core(CoreEvent::ClientDisconnect),
-                InactivityHandler::new(guild_id, manager.clone(), ctx.serenity_context().clone())
-            );
-
-            // Event listener for when there is an error with the track
+            // Inactivity / disconnect handling lives in bot.rs's VoiceStateUpdate
+            // listener — songbird's CoreEvent::DriverDisconnect also fires on
+            // transient drops (e.g. when an admin moves the bot), which is too
+            // aggressive for a "leave the channel" trigger.
             handle.add_global_event(
                 Event::Track(songbird::TrackEvent::Error),
                 ErrorHandler

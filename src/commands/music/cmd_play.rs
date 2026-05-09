@@ -47,7 +47,7 @@ pub async fn play(ctx: Context<'_>, track_source: Vec<String>) -> Result<(), Mus
     // Search using text on YouTube
     else {
         let youtube_client: &YoutubeClient = &ctx.data().youtube_client;
-        result = youtube_client.search_track_url(track_source, 6).await;
+        result = youtube_client.search_track_url(track_source, 5).await;
     }
 
     match result {
