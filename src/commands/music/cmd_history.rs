@@ -71,7 +71,7 @@ pub async fn history(ctx: Context<'_>) -> Result<(), MusicBotError> {
             let track: Track = tracks_rev[track_index].clone();
 
             let mut player: RwLockWriteGuard<Player> = ctx.data().player.write().await;
-            player.add_track_to_queue(ctx, track).await?;
+            player.add_track_to_queue(ctx, track, false).await?;
             drop(player);
 
             channel_service::join_user_channel(ctx).await?;

@@ -8,6 +8,9 @@ pub enum QueueEmbed<'a> {
     TrackAdded(&'a Track),
     PlaylistAdded(&'a Playlist),
     Skipped(usize),
+    TrackRemoved(&'a Track),
+    InvalidIndex(usize),
+    Cleared(usize),
 }
 
 impl<'a> QueueEmbed<'a> {
@@ -36,9 +39,14 @@ impl<'a> QueueEmbed<'a> {
                 let queue_slice: Vec<&Track> = queue.iter().skip(start).take(10).collect::<Vec<&Track>>();
 
                 for (index, track) in queue_slice.iter().enumerate() {
+                    let value = if track.added_by.is_empty() {
+                        track.metadata.track_url.clone()
+                    } else {
+                        format!("{}\nAdded by: {}", track.metadata.track_url, track.added_by)
+                    };
                     embed = embed.field(
                         format!("{}  {}", utils_service::number_to_emoji(index + start + 1), track.metadata.title),
-                        &track.metadata.track_url,
+                        value,
                         false,
                     );
                 }
@@ -67,6 +75,24 @@ impl<'a> QueueEmbed<'a> {
                     .color(Color::DARK_BLUE)
                     .title("⏭️  Skipped")
                     .description(format!("Skipped {} track(s).", amount))
+            }
+            QueueEmbed::TrackRemoved(track) => {
+                CreateEmbed::new()
+                    .color(Color::DARK_GREEN)
+                    .title("🗑️  Track removed")
+                    .description(format!("**[{}]({})**", track.metadata.title, track.metadata.track_url))
+            }
+            QueueEmbed::InvalidIndex(index) => {
+                CreateEmbed::new()
+                    .color(Color::DARK_RED)
+                    .title("🚫  Invalid index")
+                    .description(format!("No track at position **{}** in the queue.", index))
+            }
+            QueueEmbed::Cleared(amount) => {
+                CreateEmbed::new()
+                    .color(Color::DARK_GREEN)
+                    .title("🧹  Queue cleared")
+                    .description(format!("Removed **{}** track(s) from the queue.", amount))
             }
         }
     }

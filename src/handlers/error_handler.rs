@@ -1,6 +1,19 @@
 use crate::bot::{MusicBotData, MusicBotError};
+use crate::embeds::bot_embeds::BotEmbed;
 use async_trait::async_trait;
 use songbird::{Event, EventContext, EventHandler};
+
+pub fn schedule_prefix_delete(ctx: poise::Context<'_, MusicBotData, MusicBotError>) {
+    if let poise::Context::Prefix(prefix_ctx) = ctx {
+        let http = ctx.serenity_context().http.clone();
+        let channel_id = prefix_ctx.msg.channel_id;
+        let message_id = prefix_ctx.msg.id;
+        tokio::spawn(async move {
+            tokio::time::sleep(tokio::time::Duration::from_secs(30)).await;
+            let _ = http.delete_message(channel_id, message_id, None).await;
+        });
+    }
+}
 
 pub struct ErrorHandler;
 
@@ -22,7 +35,9 @@ pub async fn handle(error: poise::FrameworkError<'_, MusicBotData, MusicBotError
         // Command failed to execute
         poise::FrameworkError::Command { error, ctx, .. } => {
             tracing::error!("Error in command `{}`: {:?}", ctx.command().name, error);
-            let _ = ctx.reply(error.to_string()).await;
+            let embed = BotEmbed::Error(MusicBotError::InternalError(error.to_string())).to_embed();
+            let _ = ctx.send(poise::CreateReply::default().embed(embed).reply(true)).await;
+            schedule_prefix_delete(ctx);
         }
 
         // Command check failed
@@ -30,6 +45,7 @@ pub async fn handle(error: poise::FrameworkError<'_, MusicBotData, MusicBotError
             if let Some(error) = error {
                 let _ = ctx.reply(error.to_string()).await;
             }
+            schedule_prefix_delete(ctx);
         }
 
         // Unmatched errors

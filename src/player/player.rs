@@ -24,7 +24,16 @@ pub enum PlaybackError {
     PlaybackNotActive,
 
     #[error("Playback is already active")]
-    PlaybackAlreadyActive
+    PlaybackAlreadyActive,
+
+    #[error("Playback is already paused")]
+    PlaybackAlreadyPaused,
+
+    #[error("Playback is not paused")]
+    PlaybackNotPaused,
+
+    #[error("Invalid queue index: {0}")]
+    InvalidQueueIndex(usize),
 }
 
 #[derive(Debug, Clone)]
@@ -39,7 +48,8 @@ pub struct Playlist {
 #[derive(Debug, Clone)]
 pub struct Track {
     pub id: String,
-    pub metadata: TrackMetadata
+    pub metadata: TrackMetadata,
+    pub added_by: String,
 }
 
 #[derive(Debug, Clone)]
@@ -52,6 +62,7 @@ pub struct TrackMetadata {
 
 pub struct Player {
     pub is_playing: bool,
+    pub is_paused: bool,
     pub track_handle: Option<TrackHandle>,
     pub current_track: Option<Track>,
     pub queue: Vec<Track>,
@@ -83,6 +94,7 @@ impl Player {
 
         Player {
             is_playing: false,
+            is_paused: false,
             track_handle: None,
             current_track: None,
             queue: Vec::new(),
@@ -101,11 +113,15 @@ impl Player {
         }
     }
 
-    pub async fn add_playlist_to_queue(&mut self, ctx: Context<'_>, playlist: Playlist) -> Result<(), PlaybackError> {
-        tracing::info!("Adding playlist to queue, tracks: {}", playlist.tracks.len());
+    pub async fn add_playlist_to_queue(&mut self, ctx: Context<'_>, playlist: Playlist, top: bool) -> Result<(), PlaybackError> {
+        tracing::info!("Adding playlist to queue (top={}), tracks: {}", top, playlist.tracks.len());
 
         self.inactivity_cancel.store(true, Ordering::SeqCst);
-        self.queue.extend(playlist.tracks);
+        if top {
+            self.queue.splice(0..0, playlist.tracks);
+        } else {
+            self.queue.extend(playlist.tracks);
+        }
         tracing::debug!("Queue length: {}", self.queue.len());
 
         if !self.is_playing {
@@ -115,11 +131,15 @@ impl Player {
         Ok(())
     }
 
-    pub async fn add_track_to_queue(&mut self, ctx: Context<'_>, track: Track) -> Result<(), PlaybackError> {
-        tracing::info!("Adding track to queue: {}", track.metadata.track_url);
+    pub async fn add_track_to_queue(&mut self, ctx: Context<'_>, track: Track, top: bool) -> Result<(), PlaybackError> {
+        tracing::info!("Adding track to queue (top={}): {}", top, track.metadata.track_url);
 
         self.inactivity_cancel.store(true, Ordering::SeqCst);
-        self.queue.push(track);
+        if top {
+            self.queue.insert(0, track);
+        } else {
+            self.queue.push(track);
+        }
         tracing::debug!("Queue length: {}", self.queue.len());
 
         if !self.is_playing {
@@ -196,7 +216,8 @@ impl Player {
             self.stop_track().await?;
         }
 
-        match self.queue.pop() {
+        let next = if self.queue.is_empty() { None } else { Some(self.queue.remove(0)) };
+        match next {
             Some(next_track) => {
                 tracing::info!("Found: {}", next_track.metadata.title);
 
@@ -245,6 +266,23 @@ impl Player {
         }
     }
 
+    pub async fn clear_queue(&mut self) -> usize {
+        let cleared = self.queue.len();
+        tracing::info!("Clearing queue ({} tracks)", cleared);
+        self.queue.clear();
+        cleared
+    }
+
+    pub async fn remove_from_queue(&mut self, index: usize) -> Result<Track, PlaybackError> {
+        tracing::info!("Removing track at queue index {}", index);
+
+        if index == 0 || index > self.queue.len() {
+            return Err(PlaybackError::InvalidQueueIndex(index));
+        }
+
+        Ok(self.queue.remove(index - 1))
+    }
+
     pub async fn shuffle(&mut self) -> Result<(), PlaybackError> {
         tracing::info!("Shuffling queue");
 
@@ -278,11 +316,36 @@ impl Player {
         Ok(())
     }
 
+    pub async fn pause(&mut self) -> Result<(), PlaybackError> {
+        if !self.is_playing {
+            return Err(PlaybackError::PlaybackNotActive);
+        }
+        if self.is_paused {
+            return Err(PlaybackError::PlaybackAlreadyPaused);
+        }
+        if let Some(track_handle) = &self.track_handle {
+            track_handle.pause().map_err(|e| PlaybackError::InternalError(e.to_string()))?;
+        }
+        self.is_paused = true;
+        Ok(())
+    }
+
+    pub async fn resume(&mut self) -> Result<(), PlaybackError> {
+        if !self.is_paused {
+            return Err(PlaybackError::PlaybackNotPaused);
+        }
+        if let Some(track_handle) = &self.track_handle {
+            track_handle.play().map_err(|e| PlaybackError::InternalError(e.to_string()))?;
+        }
+        self.is_paused = false;
+        Ok(())
+    }
+
     pub async fn stop_track(&mut self) -> Result<(), PlaybackError> {
         if self.is_playing {
             if let Some(track_handle) = &self.track_handle {
                 tracing::info!("Stopping track");
-                
+
                 if let Err(error) = track_handle.stop() {
                     tracing::error!("Error stopping track: {:?}", error);
                     return Err(PlaybackError::InternalError(format!("Error stopping track: {:?}", error)));
@@ -291,6 +354,7 @@ impl Player {
         }
 
         self.is_playing = false;
+        self.is_paused = false;
         self.track_handle = None;
         self.current_track = None;
 

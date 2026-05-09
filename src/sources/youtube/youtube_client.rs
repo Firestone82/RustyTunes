@@ -100,7 +100,8 @@ impl YoutubeClient {
                 Some(Ok(
                     Track {
                         id: video_id,
-                        metadata
+                        metadata,
+                        added_by: String::new(),
                     }
                 ))
             })
@@ -180,7 +181,8 @@ impl YoutubeClient {
                     Some(Ok(
                         Track {
                             id: video_id,
-                            metadata
+                            metadata,
+                            added_by: String::new(),
                         }
                     ))
                 })

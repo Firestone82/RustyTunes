@@ -35,7 +35,8 @@ impl EventHandler for QueueHandler {
 
         tracing::info!("Track ended; advancing queue");
 
-        match player.queue.pop() {
+        let next = if player.queue.is_empty() { None } else { Some(player.queue.remove(0)) };
+        match next {
             Some(next_track) => {
                 tracing::info!("Playing next track: {}", next_track.metadata.title);
 
@@ -85,6 +86,7 @@ impl EventHandler for QueueHandler {
                 let serenity_ctx = self.serenity_ctx.clone();
                 let player_arc = self.player.clone();
                 let guild_id = self.guild_id;
+                let guild_channel = self.guild_channel.clone();
 
                 drop(player);
 
@@ -103,6 +105,11 @@ impl EventHandler for QueueHandler {
                     drop(player);
 
                     tracing::info!("Leaving voice channel after 5 minutes of inactivity");
+
+                    let _ = PlayerEmbed::InactivityLeave
+                        .to_embed()
+                        .send_channel(serenity_ctx.http.clone(), &guild_channel, Some(60), None)
+                        .await;
 
                     let mut player = player_arc.write().await;
                     let _ = player.stop_playback().await;

@@ -102,11 +102,16 @@ impl MusicBotClient {
                 commands: vec![
                     commands::cmd_help::help(),
                     music::cmd_play::play(),
+                    music::cmd_play::play_top(),
+                    music::cmd_pause::pause(),
+                    music::cmd_resume::resume(),
                     music::cmd_skip::skip(),
                     music::cmd_stop::stop(),
                     music::cmd_vol::volume(),
                     music::cmd_join::join(),
                     music::cmd_queue::queue(),
+                    music::cmd_clear::clear(),
+                    music::cmd_remove::remove(),
                     music::cmd_leave::leave(),
                     music::cmd_shuffle::shuffle(),
                     music::cmd_playing::playing(),
@@ -120,6 +125,9 @@ impl MusicBotClient {
                 ],
                 pre_command: |ctx| Box::pin(async move {
                     tracing::info!("CMD: {} is executing {} ({})", ctx.author().name, ctx.command().name, ctx.invocation_string());
+                }),
+                post_command: |ctx| Box::pin(async move {
+                    error_handler::schedule_prefix_delete(ctx);
                 }),
                 event_handler: |ctx, event, _fw, data| Box::pin(async move {
                     if let FullEvent::VoiceStateUpdate { new, .. } = event {

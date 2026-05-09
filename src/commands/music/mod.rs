@@ -1,9 +1,13 @@
+pub mod cmd_clear;
 pub mod cmd_history;
 pub mod cmd_join;
 pub mod cmd_leave;
+pub mod cmd_pause;
 pub mod cmd_play;
 pub mod cmd_playing;
 pub mod cmd_queue;
+pub mod cmd_remove;
+pub mod cmd_resume;
 pub mod cmd_shuffle;
 pub mod cmd_skip;
 pub mod cmd_stop;

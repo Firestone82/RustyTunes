@@ -1,5 +1,5 @@
 use crate::player::player::Track;
-use serenity::all::{Color, CreateEmbed};
+use serenity::all::{Color, CreateEmbed, CreateEmbedFooter};
 use std::collections::VecDeque;
 
 pub enum PlayerEmbed<'a> {
@@ -7,12 +7,18 @@ pub enum PlayerEmbed<'a> {
     NoSongPlaying,
     IsStopped,
     Stopped,
+    Paused(&'a Track),
+    Resumed(&'a Track),
     Volume(f32),
     VolumeChanged(f32),
     Skipped(usize),
     Shuffled,
     Search(&'a [Track]),
     SearchExpired,
+    SearchCancelled,
+    NoResults(String),
+    PlaybackErrorEmbed(String),
+    InactivityLeave,
     History(&'a VecDeque<Track>),
     HistoryEmpty,
 }
@@ -21,10 +27,14 @@ impl<'a> PlayerEmbed<'a> {
     pub fn to_embed(&self) -> CreateEmbed {
         match self {
             PlayerEmbed::NowPlaying(track) => {
-                CreateEmbed::new()
+                let mut embed = CreateEmbed::new()
                     .color(Color::DARK_BLUE)
                     .title("🎵  Now playing")
-                    .description(format!("**[{}]({})**", track.metadata.title, track.metadata.track_url))
+                    .description(format!("**[{}]({})**", track.metadata.title, track.metadata.track_url));
+                if !track.added_by.is_empty() {
+                    embed = embed.footer(CreateEmbedFooter::new(format!("Added by {}", track.added_by)));
+                }
+                embed
             },
             PlayerEmbed::NoSongPlaying => {
                 CreateEmbed::new()
@@ -43,6 +53,18 @@ impl<'a> PlayerEmbed<'a> {
                     .color(Color::DARK_RED)
                     .title("⏹️  Playback stopped")
                     .description("The playback has been stopped.")
+            },
+            PlayerEmbed::Paused(track) => {
+                CreateEmbed::new()
+                    .color(Color::ORANGE)
+                    .title("⏸️  Paused")
+                    .description(format!("**[{}]({})**", track.metadata.title, track.metadata.track_url))
+            },
+            PlayerEmbed::Resumed(track) => {
+                CreateEmbed::new()
+                    .color(Color::DARK_GREEN)
+                    .title("▶️  Resumed")
+                    .description(format!("**[{}]({})**", track.metadata.title, track.metadata.track_url))
             },
             PlayerEmbed::Volume(volume) => {
                 CreateEmbed::new()
@@ -85,6 +107,30 @@ impl<'a> PlayerEmbed<'a> {
                     .color(Color::DARK_RED)
                     .title("🚫  Search expired")
                     .description("The search has expired. Please try again.")
+            }
+            PlayerEmbed::SearchCancelled => {
+                CreateEmbed::new()
+                    .color(Color::DARK_GREY)
+                    .title("✖  Search cancelled")
+                    .description("No track was added to the queue.")
+            }
+            PlayerEmbed::NoResults(query) => {
+                CreateEmbed::new()
+                    .color(Color::DARK_GOLD)
+                    .title("🔎  No results")
+                    .description(format!("No tracks found for: **{}**", query))
+            }
+            PlayerEmbed::PlaybackErrorEmbed(message) => {
+                CreateEmbed::new()
+                    .color(Color::DARK_RED)
+                    .title("🚫  Playback error")
+                    .description(message.clone())
+            }
+            PlayerEmbed::InactivityLeave => {
+                CreateEmbed::new()
+                    .color(Color::DARK_GOLD)
+                    .title("👋  Leaving voice channel")
+                    .description("No tracks have been queued for 5 minutes — leaving the voice channel.")
             }
             PlayerEmbed::History(history) => {
                 let mut embed = CreateEmbed::new()

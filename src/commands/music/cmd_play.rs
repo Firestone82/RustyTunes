@@ -25,8 +25,22 @@ const SPOTIFY_PLAYLIST_URL: &str = "https://open.spotify.com/playlist/";
     check = "check_author_in_same_voice_channel",
 )]
 pub async fn play(ctx: Context<'_>, track_source: Vec<String>) -> Result<(), MusicBotError> {
-    let track_source: String = track_source.join(" ");
-    
+    do_play(ctx, track_source.join(" "), false).await
+}
+
+/**
+* Play a track or playlist immediately by inserting it at the front of the queue
+*/
+#[poise::command(
+    prefix_command, slash_command,
+    rename = "playtop",
+    check = "check_author_in_same_voice_channel",
+)]
+pub async fn play_top(ctx: Context<'_>, track_source: Vec<String>) -> Result<(), MusicBotError> {
+    do_play(ctx, track_source.join(" "), true).await
+}
+
+async fn do_play(ctx: Context<'_>, track_source: String, top: bool) -> Result<(), MusicBotError> {
     let mut result: Result<YouTubeSearchResult, SearchError> = Err(SearchError::InternalError("No search result found".into()));
 
     // Search YouTube
@@ -34,10 +48,10 @@ pub async fn play(ctx: Context<'_>, track_source: Vec<String>) -> Result<(), Mus
         let youtube_client: &YoutubeClient = &ctx.data().youtube_client;
 
         if track_source.starts_with(YOUTUBE_VIDEO_URL) {
-            result = youtube_client.search_track_url(track_source, 1).await;
+            result = youtube_client.search_track_url(track_source.clone(), 1).await;
         }
         else if track_source.starts_with(YOUTUBE_PLAYLIST_URL) {
-            result = youtube_client.search_playlist_url(track_source).await;
+            result = youtube_client.search_playlist_url(track_source.clone()).await;
         }
     }
     // Search Spotify
@@ -47,11 +61,12 @@ pub async fn play(ctx: Context<'_>, track_source: Vec<String>) -> Result<(), Mus
     // Search using text on YouTube
     else {
         let youtube_client: &YoutubeClient = &ctx.data().youtube_client;
-        result = youtube_client.search_track_url(track_source, 5).await;
+        result = youtube_client.search_track_url(track_source.clone(), 5).await;
     }
 
     match result {
-        Ok(YouTubeSearchResult::Track(track)) => {
+        Ok(YouTubeSearchResult::Track(mut track)) => {
+            track.added_by = ctx.author().name.clone();
             let mut player: RwLockWriteGuard<Player> = ctx.data().player.write().await;
 
             // Skip the "added to queue" confirmation when nothing is playing —
@@ -63,18 +78,28 @@ pub async fn play(ctx: Context<'_>, track_source: Vec<String>) -> Result<(), Mus
                     .await?;
             }
 
-            player.add_track_to_queue(ctx, track.clone()).await?;
+            if let Err(error) = player.add_track_to_queue(ctx, track.clone(), top).await {
+                drop(player);
+                report_playback_error(ctx, error).await?;
+                return Ok(());
+            }
+            drop(player);
             channel_service::join_user_channel(ctx).await?;
         }
 
         Ok(YouTubeSearchResult::Tracks(mut tracks)) => {
-            let buttons: Vec<CreateButton> = (0..tracks.len())
+            let mut buttons: Vec<CreateButton> = (0..tracks.len())
                 .map(|i| {
                     CreateButton::new(format!("track_{}", i))
                         .label((i + 1).to_string())
                         .style(ButtonStyle::Secondary)
                 })
                 .collect();
+            buttons.push(
+                CreateButton::new("track_cancel")
+                    .label("✖ Cancel")
+                    .style(ButtonStyle::Danger),
+            );
 
             let row_count = buttons.len().div_ceil(5);
             let per_row = buttons.len().div_ceil(row_count.max(1));
@@ -103,11 +128,20 @@ pub async fn play(ctx: Context<'_>, track_source: Vec<String>) -> Result<(), Mus
                     interaction.defer(ctx.http()).await?;
                     message.delete(ctx.http()).await?;
 
+                    if interaction.data.custom_id == "track_cancel" {
+                        PlayerEmbed::SearchCancelled
+                            .to_embed()
+                            .send_context(ctx, true, Some(30))
+                            .await?;
+                        return Ok(());
+                    }
+
                     let track_index: usize = interaction.data.custom_id
                         .strip_prefix("track_")
                         .and_then(|s| s.parse().ok())
                         .unwrap();
-                    let track: Track = tracks.swap_remove(track_index);
+                    let mut track: Track = tracks.swap_remove(track_index);
+                    track.added_by = ctx.author().name.clone();
 
                     let mut player: RwLockWriteGuard<Player> = ctx.data().player.write().await;
 
@@ -118,32 +152,54 @@ pub async fn play(ctx: Context<'_>, track_source: Vec<String>) -> Result<(), Mus
                             .await?;
                     }
 
-                    player.add_track_to_queue(ctx, track).await?;
+                    if let Err(error) = player.add_track_to_queue(ctx, track, top).await {
+                        drop(player);
+                        report_playback_error(ctx, error).await?;
+                        return Ok(());
+                    }
+                    drop(player);
                     channel_service::join_user_channel(ctx).await?;
                 },
                 None => {
                     message.delete(ctx.http()).await?;
-                    
+
                     PlayerEmbed::SearchExpired
                         .to_embed()
                         .send_context(ctx, true, Some(30))
                         .await?;
-                    
+
                     return Ok(());
                 }
             };
         }
 
-        Ok(YouTubeSearchResult::Playlist(playlist)) => {
+        Ok(YouTubeSearchResult::Playlist(mut playlist)) => {
+            let added_by = ctx.author().name.clone();
+            for track in &mut playlist.tracks {
+                track.added_by = added_by.clone();
+            }
+
             let mut player: RwLockWriteGuard<Player> = ctx.data().player.write().await;
 
             QueueEmbed::PlaylistAdded(&playlist)
                 .to_embed()
                 .send_context(ctx, true, Some(30))
                 .await?;
-            
-            player.add_playlist_to_queue(ctx, playlist).await?;
+
+            if let Err(error) = player.add_playlist_to_queue(ctx, playlist, top).await {
+                drop(player);
+                report_playback_error(ctx, error).await?;
+                return Ok(());
+            }
+            drop(player);
             channel_service::join_user_channel(ctx).await?;
+        }
+
+        Err(SearchError::VideoNotFound(_)) | Err(SearchError::PlaylistNotFound(_)) => {
+            PlayerEmbed::NoResults(track_source)
+                .to_embed()
+                .send_context(ctx, true, Some(30))
+                .await?;
         }
 
         Err(error) => {
@@ -151,5 +207,13 @@ pub async fn play(ctx: Context<'_>, track_source: Vec<String>) -> Result<(), Mus
         }
     }
 
+    Ok(())
+}
+
+async fn report_playback_error(ctx: Context<'_>, error: crate::player::player::PlaybackError) -> Result<(), MusicBotError> {
+    PlayerEmbed::PlaybackErrorEmbed(error.to_string())
+        .to_embed()
+        .send_context(ctx, true, Some(30))
+        .await?;
     Ok(())
 }
