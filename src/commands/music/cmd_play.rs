@@ -54,10 +54,14 @@ pub async fn play(ctx: Context<'_>, track_source: Vec<String>) -> Result<(), Mus
         Ok(YouTubeSearchResult::Track(track)) => {
             let mut player: RwLockWriteGuard<Player> = ctx.data().player.write().await;
 
-            QueueEmbed::TrackAdded(&track)
-                .to_embed()
-                .send_context(ctx, true, Some(30))
-                .await?;
+            // Skip the "added to queue" confirmation when nothing is playing —
+            // the new track will start immediately and NowPlaying covers it.
+            if player.is_playing {
+                QueueEmbed::TrackAdded(&track)
+                    .to_embed()
+                    .send_context(ctx, true, Some(30))
+                    .await?;
+            }
 
             player.add_track_to_queue(ctx, track.clone()).await?;
             channel_service::join_user_channel(ctx).await?;
@@ -107,10 +111,12 @@ pub async fn play(ctx: Context<'_>, track_source: Vec<String>) -> Result<(), Mus
 
                     let mut player: RwLockWriteGuard<Player> = ctx.data().player.write().await;
 
-                    QueueEmbed::TrackAdded(&track)
-                        .to_embed()
-                        .send_context(ctx, true, Some(30))
-                        .await?;
+                    if player.is_playing {
+                        QueueEmbed::TrackAdded(&track)
+                            .to_embed()
+                            .send_context(ctx, true, Some(30))
+                            .await?;
+                    }
 
                     player.add_track_to_queue(ctx, track).await?;
                     channel_service::join_user_channel(ctx).await?;
