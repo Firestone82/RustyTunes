@@ -12,6 +12,7 @@ hyper-rustls = "0.27.3"
 google-youtube3 = "5.0.5"# Must stay this version, cuz I don't know how to work with the new one
 reqwest = "0.12"
 songbird = "0.6"
+rustls = { version = "0.23", default-features = false, features = ["ring"] }
 serenity = "0.12.2"
 poise = "0.6.1"
 dotenv = "0.15"

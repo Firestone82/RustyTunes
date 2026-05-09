@@ -12,6 +12,11 @@ pub mod embeds;
 #[tokio::main]
 async fn main() -> Result<(), MusicBotError> {
     println!("Starting server.");
+
+    rustls::crypto::ring::default_provider()
+        .install_default()
+        .expect("Failed to install rustls ring CryptoProvider");
+
     MusicBotClient::new()
         .await
         .start()
