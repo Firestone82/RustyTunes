@@ -266,6 +266,13 @@ impl Player {
         }
     }
 
+    pub async fn clear_queue(&mut self) -> usize {
+        let cleared = self.queue.len();
+        tracing::info!("Clearing queue ({} tracks)", cleared);
+        self.queue.clear();
+        cleared
+    }
+
     pub async fn remove_from_queue(&mut self, index: usize) -> Result<Track, PlaybackError> {
         tracing::info!("Removing track at queue index {}", index);
 

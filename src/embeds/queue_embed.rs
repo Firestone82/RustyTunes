@@ -10,6 +10,7 @@ pub enum QueueEmbed<'a> {
     Skipped(usize),
     TrackRemoved(&'a Track),
     InvalidIndex(usize),
+    Cleared(usize),
 }
 
 impl<'a> QueueEmbed<'a> {
@@ -86,6 +87,12 @@ impl<'a> QueueEmbed<'a> {
                     .color(Color::DARK_RED)
                     .title("🚫  Invalid index")
                     .description(format!("No track at position **{}** in the queue.", index))
+            }
+            QueueEmbed::Cleared(amount) => {
+                CreateEmbed::new()
+                    .color(Color::DARK_GREEN)
+                    .title("🧹  Queue cleared")
+                    .description(format!("Removed **{}** track(s) from the queue.", amount))
             }
         }
     }

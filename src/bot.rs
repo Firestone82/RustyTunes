@@ -110,6 +110,7 @@ impl MusicBotClient {
                     music::cmd_vol::volume(),
                     music::cmd_join::join(),
                     music::cmd_queue::queue(),
+                    music::cmd_clear::clear(),
                     music::cmd_remove::remove(),
                     music::cmd_leave::leave(),
                     music::cmd_shuffle::shuffle(),

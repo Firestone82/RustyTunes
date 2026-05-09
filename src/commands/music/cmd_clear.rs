@@ -1,0 +1,26 @@
+use crate::bot::{Context, MusicBotError};
+use crate::checks::channel_checks::check_author_in_same_voice_channel;
+use crate::checks::player_checks::check_if_queue_is_not_empty;
+use crate::embeds::queue_embed::QueueEmbed;
+use crate::player::player::Player;
+use crate::service::embed_service::SendEmbed;
+use tokio::sync::RwLockWriteGuard;
+
+#[poise::command(
+    prefix_command, slash_command,
+    check = "check_author_in_same_voice_channel",
+    check = "check_if_queue_is_not_empty",
+)]
+pub async fn clear(ctx: Context<'_>) -> Result<(), MusicBotError> {
+    let mut player: RwLockWriteGuard<Player> = ctx.data().player.write().await;
+
+    let cleared = player.clear_queue().await;
+    drop(player);
+
+    QueueEmbed::Cleared(cleared)
+        .to_embed()
+        .send_context(ctx, true, Some(30))
+        .await?;
+
+    Ok(())
+}
