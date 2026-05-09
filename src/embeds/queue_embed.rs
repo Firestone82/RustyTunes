@@ -38,9 +38,14 @@ impl<'a> QueueEmbed<'a> {
                 let queue_slice: Vec<&Track> = queue.iter().skip(start).take(10).collect::<Vec<&Track>>();
 
                 for (index, track) in queue_slice.iter().enumerate() {
+                    let value = if track.added_by.is_empty() {
+                        track.metadata.track_url.clone()
+                    } else {
+                        format!("{}\nAdded by: {}", track.metadata.track_url, track.added_by)
+                    };
                     embed = embed.field(
                         format!("{}  {}", utils_service::number_to_emoji(index + start + 1), track.metadata.title),
-                        &track.metadata.track_url,
+                        value,
                         false,
                     );
                 }

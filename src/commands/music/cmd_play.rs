@@ -51,7 +51,8 @@ pub async fn play(ctx: Context<'_>, track_source: Vec<String>) -> Result<(), Mus
     }
 
     match result {
-        Ok(YouTubeSearchResult::Track(track)) => {
+        Ok(YouTubeSearchResult::Track(mut track)) => {
+            track.added_by = ctx.author().name.clone();
             let mut player: RwLockWriteGuard<Player> = ctx.data().player.write().await;
 
             // Skip the "added to queue" confirmation when nothing is playing —
@@ -107,7 +108,8 @@ pub async fn play(ctx: Context<'_>, track_source: Vec<String>) -> Result<(), Mus
                         .strip_prefix("track_")
                         .and_then(|s| s.parse().ok())
                         .unwrap();
-                    let track: Track = tracks.swap_remove(track_index);
+                    let mut track: Track = tracks.swap_remove(track_index);
+                    track.added_by = ctx.author().name.clone();
 
                     let mut player: RwLockWriteGuard<Player> = ctx.data().player.write().await;
 
@@ -134,14 +136,19 @@ pub async fn play(ctx: Context<'_>, track_source: Vec<String>) -> Result<(), Mus
             };
         }
 
-        Ok(YouTubeSearchResult::Playlist(playlist)) => {
+        Ok(YouTubeSearchResult::Playlist(mut playlist)) => {
+            let added_by = ctx.author().name.clone();
+            for track in &mut playlist.tracks {
+                track.added_by = added_by.clone();
+            }
+
             let mut player: RwLockWriteGuard<Player> = ctx.data().player.write().await;
 
             QueueEmbed::PlaylistAdded(&playlist)
                 .to_embed()
                 .send_context(ctx, true, Some(30))
                 .await?;
-            
+
             player.add_playlist_to_queue(ctx, playlist).await?;
             channel_service::join_user_channel(ctx).await?;
         }

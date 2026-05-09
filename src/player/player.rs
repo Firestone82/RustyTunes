@@ -48,7 +48,8 @@ pub struct Playlist {
 #[derive(Debug, Clone)]
 pub struct Track {
     pub id: String,
-    pub metadata: TrackMetadata
+    pub metadata: TrackMetadata,
+    pub added_by: String,
 }
 
 #[derive(Debug, Clone)]

@@ -1,5 +1,5 @@
 use crate::player::player::Track;
-use serenity::all::{Color, CreateEmbed};
+use serenity::all::{Color, CreateEmbed, CreateEmbedFooter};
 use std::collections::VecDeque;
 
 pub enum PlayerEmbed<'a> {
@@ -23,10 +23,14 @@ impl<'a> PlayerEmbed<'a> {
     pub fn to_embed(&self) -> CreateEmbed {
         match self {
             PlayerEmbed::NowPlaying(track) => {
-                CreateEmbed::new()
+                let mut embed = CreateEmbed::new()
                     .color(Color::DARK_BLUE)
                     .title("🎵  Now playing")
-                    .description(format!("**[{}]({})**", track.metadata.title, track.metadata.track_url))
+                    .description(format!("**[{}]({})**", track.metadata.title, track.metadata.track_url));
+                if !track.added_by.is_empty() {
+                    embed = embed.footer(CreateEmbedFooter::new(format!("Added by {}", track.added_by)));
+                }
+                embed
             },
             PlayerEmbed::NoSongPlaying => {
                 CreateEmbed::new()
