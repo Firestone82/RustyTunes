@@ -56,7 +56,7 @@ impl<'a> NotifyEmbed<'a> {
                 let targets = notify.targets();
                 let description = if targets.is_empty() {
                     format!(
-                        "Hey {}, \nyou wanted to be notified at `{}`",
+                        "Hey {}, you wanted to be notified at `{}`",
                         notify.user_id.mention(),
                         format_time(notify.notify_at)
                     )
@@ -67,9 +67,8 @@ impl<'a> NotifyEmbed<'a> {
                         .collect::<Vec<_>>()
                         .join(", ");
                     format!(
-                        "Hey {}, \n{} wants to remind you at `{}`",
+                        "Hey {}, you have a reminder at `{}`",
                         mentions,
-                        notify.user_id.mention(),
                         format_time(notify.notify_at)
                     )
                 };
@@ -79,6 +78,10 @@ impl<'a> NotifyEmbed<'a> {
                     .title("🔔  Notification")
                     .description(description)
                     .field("Requested at:", format!("`{}`", format_time(notify.created_at)), true);
+
+                if !targets.is_empty() {
+                    builder = builder.field("From:", notify.user_id.mention().to_string(), true);
+                }
 
                 if let Some(link) = create_link(notify) {
                     builder = builder.field("Message:", link, true);

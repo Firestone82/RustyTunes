@@ -40,17 +40,8 @@ pub async fn remind_you(
 
     let target_ids: Vec<UserId> = targets.iter().map(|u| u.id).collect();
 
-    // The note shown in the codeblock-rendered "Note:" field can't contain
-    // mentions (Discord renders <@id> verbatim inside ```), so use the plain
-    // username for the "From X:" prefix.
     let user_note = note.unwrap_or_default();
-    let prefixed = if user_note.is_empty() {
-        format!("From {}:", ctx.author().name)
-    } else {
-        format!("From {}: {}", ctx.author().name, user_note)
-    };
-
-    let stored_note = encode_targets(&target_ids, &prefixed);
+    let stored_note = encode_targets(&target_ids, &user_note);
 
     let mut notifier: RwLockWriteGuard<Notifier> = ctx.data().notifier.write().await;
     let created: MessageNotify = notifier
