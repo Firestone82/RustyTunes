@@ -15,6 +15,10 @@ pub enum PlayerEmbed<'a> {
     Shuffled,
     Search(&'a [Track]),
     SearchExpired,
+    SearchCancelled,
+    NoResults(String),
+    PlaybackErrorEmbed(String),
+    InactivityLeave,
     History(&'a VecDeque<Track>),
     HistoryEmpty,
 }
@@ -103,6 +107,30 @@ impl<'a> PlayerEmbed<'a> {
                     .color(Color::DARK_RED)
                     .title("🚫  Search expired")
                     .description("The search has expired. Please try again.")
+            }
+            PlayerEmbed::SearchCancelled => {
+                CreateEmbed::new()
+                    .color(Color::DARK_GREY)
+                    .title("✖  Search cancelled")
+                    .description("No track was added to the queue.")
+            }
+            PlayerEmbed::NoResults(query) => {
+                CreateEmbed::new()
+                    .color(Color::DARK_GOLD)
+                    .title("🔎  No results")
+                    .description(format!("No tracks found for: **{}**", query))
+            }
+            PlayerEmbed::PlaybackErrorEmbed(message) => {
+                CreateEmbed::new()
+                    .color(Color::DARK_RED)
+                    .title("🚫  Playback error")
+                    .description(message.clone())
+            }
+            PlayerEmbed::InactivityLeave => {
+                CreateEmbed::new()
+                    .color(Color::DARK_GOLD)
+                    .title("👋  Leaving voice channel")
+                    .description("No tracks have been queued for 5 minutes — leaving the voice channel.")
             }
             PlayerEmbed::History(history) => {
                 let mut embed = CreateEmbed::new()

@@ -113,11 +113,15 @@ impl Player {
         }
     }
 
-    pub async fn add_playlist_to_queue(&mut self, ctx: Context<'_>, playlist: Playlist) -> Result<(), PlaybackError> {
-        tracing::info!("Adding playlist to queue, tracks: {}", playlist.tracks.len());
+    pub async fn add_playlist_to_queue(&mut self, ctx: Context<'_>, playlist: Playlist, top: bool) -> Result<(), PlaybackError> {
+        tracing::info!("Adding playlist to queue (top={}), tracks: {}", top, playlist.tracks.len());
 
         self.inactivity_cancel.store(true, Ordering::SeqCst);
-        self.queue.extend(playlist.tracks);
+        if top {
+            self.queue.splice(0..0, playlist.tracks);
+        } else {
+            self.queue.extend(playlist.tracks);
+        }
         tracing::debug!("Queue length: {}", self.queue.len());
 
         if !self.is_playing {
@@ -127,11 +131,15 @@ impl Player {
         Ok(())
     }
 
-    pub async fn add_track_to_queue(&mut self, ctx: Context<'_>, track: Track) -> Result<(), PlaybackError> {
-        tracing::info!("Adding track to queue: {}", track.metadata.track_url);
+    pub async fn add_track_to_queue(&mut self, ctx: Context<'_>, track: Track, top: bool) -> Result<(), PlaybackError> {
+        tracing::info!("Adding track to queue (top={}): {}", top, track.metadata.track_url);
 
         self.inactivity_cancel.store(true, Ordering::SeqCst);
-        self.queue.push(track);
+        if top {
+            self.queue.insert(0, track);
+        } else {
+            self.queue.push(track);
+        }
         tracing::debug!("Queue length: {}", self.queue.len());
 
         if !self.is_playing {

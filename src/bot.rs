@@ -102,6 +102,7 @@ impl MusicBotClient {
                 commands: vec![
                     commands::cmd_help::help(),
                     music::cmd_play::play(),
+                    music::cmd_play::play_top(),
                     music::cmd_pause::pause(),
                     music::cmd_resume::resume(),
                     music::cmd_skip::skip(),

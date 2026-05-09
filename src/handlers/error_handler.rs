@@ -1,4 +1,5 @@
 use crate::bot::{MusicBotData, MusicBotError};
+use crate::embeds::bot_embeds::BotEmbed;
 use async_trait::async_trait;
 use songbird::{Event, EventContext, EventHandler};
 
@@ -22,7 +23,8 @@ pub async fn handle(error: poise::FrameworkError<'_, MusicBotData, MusicBotError
         // Command failed to execute
         poise::FrameworkError::Command { error, ctx, .. } => {
             tracing::error!("Error in command `{}`: {:?}", ctx.command().name, error);
-            let _ = ctx.reply(error.to_string()).await;
+            let embed = BotEmbed::Error(MusicBotError::InternalError(error.to_string())).to_embed();
+            let _ = ctx.send(poise::CreateReply::default().embed(embed).reply(true)).await;
         }
 
         // Command check failed
