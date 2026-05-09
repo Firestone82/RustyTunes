@@ -68,7 +68,7 @@ impl Player {
         ).fetch_one(&*database)
             .await
             .map_err(|e| {
-                println!("Failed to fetch volume from database. Error: {:?}", e);
+                tracing::error!("Failed to fetch volume from database: {:?}", e);
                 MusicBotError::InternalError(e.to_string())
             });
 
@@ -89,10 +89,10 @@ impl Player {
     }
 
     pub async fn add_playlist_to_queue(&mut self, ctx: Context<'_>, playlist: Playlist) -> Result<(), PlaybackError> {
-        println!("Adding playlist to queue, tracks: {}", playlist.tracks.len());
+        tracing::info!("Adding playlist to queue, tracks: {}", playlist.tracks.len());
 
         self.queue.extend(playlist.tracks);
-        println!("- Queue length: {}", self.queue.len());
+        tracing::debug!("Queue length: {}", self.queue.len());
         
         if !self.is_playing {
             self.start_playback(ctx).await?;
@@ -102,10 +102,10 @@ impl Player {
     }
     
     pub async fn add_track_to_queue(&mut self, ctx: Context<'_>, track: Track) -> Result<(), PlaybackError> {
-        println!("Adding track to queue: {}", track.metadata.track_url);
+        tracing::info!("Adding track to queue: {}", track.metadata.track_url);
 
         self.queue.push(track);
-        println!("- Queue length: {}", self.queue.len());
+        tracing::debug!("Queue length: {}", self.queue.len());
 
         if !self.is_playing {
             self.start_playback(ctx).await?;
@@ -115,20 +115,20 @@ impl Player {
     }
 
     pub async fn skip(&mut self, mut amount: usize) -> Result<usize, PlaybackError> {
-        println!("Skipping {} track(s)", amount);
+        tracing::info!("Skipping {} track(s)", amount);
 
         if !self.is_playing {
-            println!("- Playback is not active");
+            tracing::debug!("Playback is not active");
             return Err(PlaybackError::PlaybackNotActive);
         }
 
         if amount > self.queue.len() {
-            println!("- Amount to skip is greater than queue length. Skipping all tracks");
+            tracing::debug!("Amount to skip is greater than queue length. Skipping all tracks");
             amount = amount.min(self.queue.len());
         }
 
         if self.queue.is_empty() && self.is_playing {
-            println!("- No tracks in queue. Stopping playback");
+            tracing::info!("No tracks in queue. Stopping playback");
             self.stop_playback().await?;
 
             return Ok(1);
@@ -162,17 +162,17 @@ impl Player {
     }
 
     pub async fn next_track(&mut self, ctx: Context<'_>) -> Result<Option<&Track>, PlaybackError> {
-        println!("Requesting next track to play");
+        tracing::info!("Requesting next track to play");
 
         let guild_id: GuildId = ctx.guild_id()
             .ok_or_else(|| {
-                println!("Could not locate voice channel. Guild ID is none");
+                tracing::error!("Could not locate voice channel: guild ID is none");
                 PlaybackError::InternalError("Could not locate voice channel. Guild ID is none".to_owned())
             })?;
 
         let manager: Arc<Mutex<Call>> = songbird::get(ctx.serenity_context()).await
             .ok_or_else(|| {
-                println!("Could not locate voice channel. Guild ID is none");
+                tracing::error!("Could not locate voice channel: guild ID is none");
                 PlaybackError::InternalError("Could not locate voice channel. Guild ID is none".to_owned())
             })?
             .get_or_insert(guild_id);
@@ -183,7 +183,7 @@ impl Player {
 
         match self.queue.pop() {
             Some(next_track) => {
-                println!("- Found: {}", next_track.metadata.title);
+                tracing::info!("Found: {}", next_track.metadata.title);
 
                 // Send "Now playing message"
                 PlayerEmbed::NowPlaying(&next_track)
@@ -221,7 +221,7 @@ impl Player {
             }
 
             None => {
-                println!("- No more tracks to play. Stopping playback.");
+                tracing::info!("No more tracks to play. Stopping playback");
                 self.stop_playback().await?;
                 Ok(None)
             }
@@ -229,7 +229,7 @@ impl Player {
     }
 
     pub async fn shuffle(&mut self) -> Result<(), PlaybackError> {
-        println!("Shuffling queue");
+        tracing::info!("Shuffling queue");
 
         if self.queue.len() > 1 {
             let mut rng = rand::rng();
@@ -240,7 +240,7 @@ impl Player {
     }
     
     pub async fn set_volume(&mut self, mut volume: f32) -> Result<(), PlaybackError> {
-        println!("Setting volume to: {:?}", volume);
+        tracing::info!("Setting volume to: {:?}", volume);
 
         // Normalize volume
         volume /= 100.0;
@@ -264,10 +264,10 @@ impl Player {
     pub async fn stop_track(&mut self) -> Result<(), PlaybackError> {
         if self.is_playing {
             if let Some(track_handle) = &self.track_handle {
-                println!("Stopping track");
+                tracing::info!("Stopping track");
                 
                 if let Err(error) = track_handle.stop() {
-                    println!("- Error stopping track: {:?}", error);
+                    tracing::error!("Error stopping track: {:?}", error);
                     return Err(PlaybackError::InternalError(format!("Error stopping track: {:?}", error)));
                 }
             }

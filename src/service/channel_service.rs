@@ -7,14 +7,14 @@ use tokio::sync::MutexGuard;
 
 pub async fn join_user_channel(ctx: Context<'_>) -> Result<ChannelId, MusicBotError> {
     let guild_id: GuildId = ctx.guild_id().ok_or_else(|| {
-        println!("Could not locate voice channel. Guild ID is none");
+        tracing::error!("Could not locate voice channel: guild ID is none");
         MusicBotError::InternalError("Could not locate voice channel. Guild ID is none".to_owned())
     })?;
 
     let chanel_id: ChannelId = match get_user_voice_channel(ctx, &ctx.author().id) {
         Some(user_channel) => user_channel,
         None => {
-            println!("User not in voice channel");
+            tracing::debug!("User not in voice channel");
             return Err(MusicBotError::UserNotInVoiceChannelError)
         }
     };
@@ -37,7 +37,7 @@ pub async fn join_user_channel(ctx: Context<'_>) -> Result<ChannelId, MusicBotEr
         }
 
         Err(error) => {
-            println!("Error joining voice channel: {:?}", error);
+            tracing::error!("Error joining voice channel: {:?}", error);
             return Err(MusicBotError::UnableToJoinVoiceChannelError)
         }
     }
@@ -47,7 +47,7 @@ pub async fn join_user_channel(ctx: Context<'_>) -> Result<ChannelId, MusicBotEr
 
 pub async fn leave_channel(ctx: Context<'_>) -> Result<(), MusicBotError> {
     let guild_id: GuildId = ctx.guild_id().ok_or_else(|| {
-        println!("Could not locate voice channel. Guild ID is none");
+        tracing::error!("Could not locate voice channel: guild ID is none");
         MusicBotError::InternalError("Could not locate voice channel. Guild ID is none".to_owned())
     })?;
 
@@ -61,13 +61,13 @@ pub async fn leave_channel(ctx: Context<'_>) -> Result<(), MusicBotError> {
             handle.remove_all_global_events();
             handle.leave().await
                 .map_err(|error| {
-                    println!("Could not leave voice channel. Error: {:?}", error);
+                    tracing::error!("Could not leave voice channel: {:?}", error);
                     MusicBotError::InternalError("Could not leave voice channel".to_owned())
                 }).expect("Could not leave voice channel");
         }
 
         None => {
-            println!("Could not locate voice channel. Songbird manager does not exist");
+            tracing::warn!("Tried to leave voice channel but songbird call does not exist");
             return Err(MusicBotError::InternalError("Could not locate voice channel. Songbird manager does not exist".to_owned()))
         }
     }

@@ -117,7 +117,7 @@ impl MusicBotClient {
                     utility::cmd_wakeup::wakeup_context(),
                 ],
                 pre_command: |ctx| Box::pin(async move {
-                    println!("CMD: {} is executing {} ({})", ctx.author().name, ctx.command().name, ctx.invocation_string());
+                    tracing::info!("CMD: {} is executing {} ({})", ctx.author().name, ctx.command().name, ctx.invocation_string());
                 }),
                 event_handler: |ctx, event, _fw, data| Box::pin(async move {
                     if let FullEvent::VoiceStateUpdate { new, .. } = event {
@@ -148,7 +148,7 @@ impl MusicBotClient {
                             .unwrap_or(0);
 
                         if humans == 0 {
-                            println!("Bot is alone in voice channel. Leaving.");
+                            tracing::info!("Bot is alone in voice channel. Leaving.");
 
                             let _ = data.player.write().await.stop_playback().await;
 
@@ -218,24 +218,24 @@ impl MusicBotClient {
                     let guild_id: GuildId = ready.guilds[0].id;
                     let guild_id_map: i64 = guild_id.get() as i64;
 
-                    println!("Bot ready");
-                    println!("- Logged in as {}", ready.user.name);
+                    tracing::info!("Bot ready");
+                    tracing::info!("Logged in as {}", ready.user.name);
 
-                    println!("- Registering commands in guild");
+                    tracing::info!("Registering commands in guild");
                     poise::builtins::register_in_guild(ctx, &fw.options().commands, ready.guilds[0].id, )
                         .await
                         .map_err(|e| {
-                            println!("Failed to register commands in guild. Error: {:?}", e);
+                            tracing::error!("Failed to register commands in guild: {:?}", e);
                             MusicBotError::InternalError(e.to_string())
                         })?;
 
-                    println!("- Connecting to database");
+                    tracing::info!("Connecting to database");
                     let database: Arc<Database> = Arc::new(
                         SqlitePoolOptions::new()
                             .connect(&database_url)
                             .await
                             .map_err(|e| {
-                                println!("Failed to connect to database. Error: {:?}", e);
+                                tracing::error!("Failed to connect to database: {:?}", e);
                                 MusicBotError::InternalError(e.to_string())
                             })?
                     );
@@ -247,7 +247,7 @@ impl MusicBotClient {
                     ).execute(&*database)
                         .await
                         .map_err(|e| {
-                            println!("Failed to insert guild into database. Error: {:?}", e);
+                            tracing::error!("Failed to insert guild into database: {:?}", e);
                             MusicBotError::InternalError(e.to_string())
                         })?;
 
@@ -293,11 +293,11 @@ impl MusicBotClient {
     }
 
     pub async fn start(&mut self) -> Result<(), MusicBotError> {
-        println!("- Starting bot client");
+        tracing::info!("Starting bot client");
 
         self.serenity_client.start().await
             .map_err(|e| {
-                println!("- Failed to start server. Error: {:?}", e);
+                tracing::error!("Failed to start server: {:?}", e);
                 MusicBotError::InternalError(e.to_string())
             })
     }

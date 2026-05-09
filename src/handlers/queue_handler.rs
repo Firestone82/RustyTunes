@@ -31,11 +31,11 @@ impl EventHandler for QueueHandler {
             return None;
         }
 
-        println!("Track has ended. Requesting next song to play.");
+        tracing::info!("Track ended; advancing queue");
 
         match player.queue.pop() {
             Some(next_track) => {
-                println!("- Playing next track: {}", next_track.metadata.title);
+                tracing::info!("Playing next track: {}", next_track.metadata.title);
 
                 // Send "Now playing message"
                 let _ = PlayerEmbed::NowPlaying(&next_track)
@@ -43,7 +43,7 @@ impl EventHandler for QueueHandler {
                     .send_channel(self.serenity_ctx.http.clone(), &self.guild_channel, Some(30), None)
                     .await
                     .map_err(|error| {
-                        println!("Error sending now playing embed: {:?}", error);
+                        tracing::error!("Error sending now playing embed: {:?}", error);
                         PlaybackError::InternalError("Error sending now playing embed".to_owned())
                     });
 
@@ -70,7 +70,7 @@ impl EventHandler for QueueHandler {
             }
 
             None => {
-                println!("- No more tracks to play. Stopping playback.");
+                tracing::info!("No more tracks to play. Stopping playback.");
                 player.track_handle = None;
                 player.current_track = None;
                 player.is_playing = false;
