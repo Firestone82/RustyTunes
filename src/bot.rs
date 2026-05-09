@@ -126,15 +126,7 @@ impl MusicBotClient {
                     tracing::info!("CMD: {} is executing {} ({})", ctx.author().name, ctx.command().name, ctx.invocation_string());
                 }),
                 post_command: |ctx| Box::pin(async move {
-                    if let poise::Context::Prefix(prefix_ctx) = ctx {
-                        let http = ctx.serenity_context().http.clone();
-                        let channel_id = prefix_ctx.msg.channel_id;
-                        let message_id = prefix_ctx.msg.id;
-                        tokio::spawn(async move {
-                            tokio::time::sleep(tokio::time::Duration::from_secs(30)).await;
-                            let _ = http.delete_message(channel_id, message_id, None).await;
-                        });
-                    }
+                    error_handler::schedule_prefix_delete(ctx);
                 }),
                 event_handler: |ctx, event, _fw, data| Box::pin(async move {
                     if let FullEvent::VoiceStateUpdate { new, .. } = event {
