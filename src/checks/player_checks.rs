@@ -20,6 +20,21 @@ pub async fn check_if_player_is_playing(ctx: Context<'_>) -> Result<bool, MusicB
     }
 }
 
+pub async fn check_if_player_is_paused(ctx: Context<'_>) -> Result<bool, MusicBotError> {
+    let player: RwLockReadGuard<Player> = ctx.data().player.read().await;
+
+    if player.is_paused {
+        Ok(true)
+    } else {
+        PlayerEmbed::NoSongPlaying
+            .to_embed()
+            .send_context(ctx, true, Some(30))
+            .await?;
+
+        Ok(false)
+    }
+}
+
 pub async fn check_if_queue_is_not_empty(ctx: Context<'_>) -> Result<bool, MusicBotError> {
     let player: RwLockReadGuard<Player> = ctx.data().player.read().await;
 

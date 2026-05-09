@@ -24,7 +24,13 @@ pub enum PlaybackError {
     PlaybackNotActive,
 
     #[error("Playback is already active")]
-    PlaybackAlreadyActive
+    PlaybackAlreadyActive,
+
+    #[error("Playback is already paused")]
+    PlaybackAlreadyPaused,
+
+    #[error("Playback is not paused")]
+    PlaybackNotPaused,
 }
 
 #[derive(Debug, Clone)]
@@ -52,6 +58,7 @@ pub struct TrackMetadata {
 
 pub struct Player {
     pub is_playing: bool,
+    pub is_paused: bool,
     pub track_handle: Option<TrackHandle>,
     pub current_track: Option<Track>,
     pub queue: Vec<Track>,
@@ -83,6 +90,7 @@ impl Player {
 
         Player {
             is_playing: false,
+            is_paused: false,
             track_handle: None,
             current_track: None,
             queue: Vec::new(),
@@ -196,7 +204,8 @@ impl Player {
             self.stop_track().await?;
         }
 
-        match self.queue.pop() {
+        let next = if self.queue.is_empty() { None } else { Some(self.queue.remove(0)) };
+        match next {
             Some(next_track) => {
                 tracing::info!("Found: {}", next_track.metadata.title);
 
@@ -278,11 +287,36 @@ impl Player {
         Ok(())
     }
 
+    pub async fn pause(&mut self) -> Result<(), PlaybackError> {
+        if !self.is_playing {
+            return Err(PlaybackError::PlaybackNotActive);
+        }
+        if self.is_paused {
+            return Err(PlaybackError::PlaybackAlreadyPaused);
+        }
+        if let Some(track_handle) = &self.track_handle {
+            track_handle.pause().map_err(|e| PlaybackError::InternalError(e.to_string()))?;
+        }
+        self.is_paused = true;
+        Ok(())
+    }
+
+    pub async fn resume(&mut self) -> Result<(), PlaybackError> {
+        if !self.is_paused {
+            return Err(PlaybackError::PlaybackNotPaused);
+        }
+        if let Some(track_handle) = &self.track_handle {
+            track_handle.play().map_err(|e| PlaybackError::InternalError(e.to_string()))?;
+        }
+        self.is_paused = false;
+        Ok(())
+    }
+
     pub async fn stop_track(&mut self) -> Result<(), PlaybackError> {
         if self.is_playing {
             if let Some(track_handle) = &self.track_handle {
                 tracing::info!("Stopping track");
-                
+
                 if let Err(error) = track_handle.stop() {
                     tracing::error!("Error stopping track: {:?}", error);
                     return Err(PlaybackError::InternalError(format!("Error stopping track: {:?}", error)));
@@ -291,6 +325,7 @@ impl Player {
         }
 
         self.is_playing = false;
+        self.is_paused = false;
         self.track_handle = None;
         self.current_track = None;
 

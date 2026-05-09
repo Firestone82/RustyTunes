@@ -7,6 +7,8 @@ pub enum PlayerEmbed<'a> {
     NoSongPlaying,
     IsStopped,
     Stopped,
+    Paused(&'a Track),
+    Resumed(&'a Track),
     Volume(f32),
     VolumeChanged(f32),
     Skipped(usize),
@@ -43,6 +45,18 @@ impl<'a> PlayerEmbed<'a> {
                     .color(Color::DARK_RED)
                     .title("⏹️  Playback stopped")
                     .description("The playback has been stopped.")
+            },
+            PlayerEmbed::Paused(track) => {
+                CreateEmbed::new()
+                    .color(Color::ORANGE)
+                    .title("⏸️  Paused")
+                    .description(format!("**[{}]({})**", track.metadata.title, track.metadata.track_url))
+            },
+            PlayerEmbed::Resumed(track) => {
+                CreateEmbed::new()
+                    .color(Color::DARK_GREEN)
+                    .title("▶️  Resumed")
+                    .description(format!("**[{}]({})**", track.metadata.title, track.metadata.track_url))
             },
             PlayerEmbed::Volume(volume) => {
                 CreateEmbed::new()

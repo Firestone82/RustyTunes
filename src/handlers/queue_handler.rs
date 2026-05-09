@@ -35,7 +35,8 @@ impl EventHandler for QueueHandler {
 
         tracing::info!("Track ended; advancing queue");
 
-        match player.queue.pop() {
+        let next = if player.queue.is_empty() { None } else { Some(player.queue.remove(0)) };
+        match next {
             Some(next_track) => {
                 tracing::info!("Playing next track: {}", next_track.metadata.title);
 
