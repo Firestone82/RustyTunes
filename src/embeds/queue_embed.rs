@@ -8,6 +8,8 @@ pub enum QueueEmbed<'a> {
     TrackAdded(&'a Track),
     PlaylistAdded(&'a Playlist),
     Skipped(usize),
+    TrackRemoved(&'a Track),
+    InvalidIndex(usize),
 }
 
 impl<'a> QueueEmbed<'a> {
@@ -67,6 +69,18 @@ impl<'a> QueueEmbed<'a> {
                     .color(Color::DARK_BLUE)
                     .title("⏭️  Skipped")
                     .description(format!("Skipped {} track(s).", amount))
+            }
+            QueueEmbed::TrackRemoved(track) => {
+                CreateEmbed::new()
+                    .color(Color::DARK_GREEN)
+                    .title("🗑️  Track removed")
+                    .description(format!("**[{}]({})**", track.metadata.title, track.metadata.track_url))
+            }
+            QueueEmbed::InvalidIndex(index) => {
+                CreateEmbed::new()
+                    .color(Color::DARK_RED)
+                    .title("🚫  Invalid index")
+                    .description(format!("No track at position **{}** in the queue.", index))
             }
         }
     }

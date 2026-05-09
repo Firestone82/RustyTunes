@@ -31,6 +31,9 @@ pub enum PlaybackError {
 
     #[error("Playback is not paused")]
     PlaybackNotPaused,
+
+    #[error("Invalid queue index: {0}")]
+    InvalidQueueIndex(usize),
 }
 
 #[derive(Debug, Clone)]
@@ -252,6 +255,16 @@ impl Player {
                 Ok(None)
             }
         }
+    }
+
+    pub async fn remove_from_queue(&mut self, index: usize) -> Result<Track, PlaybackError> {
+        tracing::info!("Removing track at queue index {}", index);
+
+        if index == 0 || index > self.queue.len() {
+            return Err(PlaybackError::InvalidQueueIndex(index));
+        }
+
+        Ok(self.queue.remove(index - 1))
     }
 
     pub async fn shuffle(&mut self) -> Result<(), PlaybackError> {
