@@ -1,11 +1,11 @@
 use crate::bot::{Context, MusicBotError};
 use crate::embeds::notify_embeds::NotifyEmbed;
-use crate::player::notifier::{parse_text, MessageNotify, Notifier, NotifierError};
+use crate::player::notifier::{encode_targets, parse_text, MessageNotify, Notifier, NotifierError};
 use crate::service::embed_service::SendEmbed;
-use serenity::all::{Mentionable, User};
+use serenity::all::{Mentionable, User, UserId};
 use tokio::sync::RwLockWriteGuard;
 
-/// Remind another user (or several) at a given time.
+/// Remind one or more users at a given time with a single notification.
 #[poise::command(prefix_command, slash_command)]
 pub async fn remind_you(
     ctx: Context<'_>,
@@ -33,34 +33,36 @@ pub async fn remind_you(
         Err(other) => return Err(other.into()),
     };
 
-    let sender_mention = ctx.author().mention().to_string();
-    let prefixed_note: Option<String> = Some(format!(
-        "From {}: {}",
-        sender_mention,
-        note.as_deref().unwrap_or("(no message)")
-    ));
-
     let targets: Vec<&User> = [Some(&user1), user2.as_ref(), user3.as_ref()]
         .into_iter()
         .flatten()
         .collect();
 
-    let mut notifier: RwLockWriteGuard<Notifier> = ctx.data().notifier.write().await;
-    let mut created: Vec<MessageNotify> = Vec::new();
+    let target_ids: Vec<UserId> = targets.iter().map(|u| u.id).collect();
 
-    for target in &targets {
-        let notify = notifier
-            .add_message_for_user(
-                guild_id,
-                ctx.channel_id(),
-                target.id,
-                None,
-                notify_at,
-                prefixed_note.clone(),
-            )
-            .await?;
-        created.push(notify);
-    }
+    // The note shown in the codeblock-rendered "Note:" field can't contain
+    // mentions (Discord renders <@id> verbatim inside ```), so use the plain
+    // username for the "From X:" prefix.
+    let user_note = note.unwrap_or_default();
+    let prefixed = if user_note.is_empty() {
+        format!("From {}:", ctx.author().name)
+    } else {
+        format!("From {}: {}", ctx.author().name, user_note)
+    };
+
+    let stored_note = encode_targets(&target_ids, &prefixed);
+
+    let mut notifier: RwLockWriteGuard<Notifier> = ctx.data().notifier.write().await;
+    let created: MessageNotify = notifier
+        .add_message_for_user(
+            guild_id,
+            ctx.channel_id(),
+            ctx.author().id,
+            None,
+            notify_at,
+            Some(stored_note),
+        )
+        .await?;
     drop(notifier);
 
     let mentions: String = targets
@@ -69,10 +71,15 @@ pub async fn remind_you(
         .collect::<Vec<_>>()
         .join(", ");
 
-    NotifyEmbed::RemindedFor { targets: &mentions, notify: &created[0] }
-        .to_embed()
-        .send_context(ctx, true, None)
-        .await?;
+    let display = created.display_note();
+    NotifyEmbed::RemindedFor {
+        targets: &mentions,
+        notify: &created,
+        note: display.as_deref(),
+    }
+    .to_embed()
+    .send_context(ctx, true, None)
+    .await?;
 
     Ok(())
 }

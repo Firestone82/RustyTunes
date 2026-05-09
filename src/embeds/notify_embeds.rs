@@ -8,7 +8,11 @@ pub enum NotifyEmbed<'a> {
     List(&'a [MessageNotify]),
     Removed(&'a MessageNotify),
     NotFound,
-    RemindedFor { targets: &'a str, notify: &'a MessageNotify },
+    RemindedFor {
+        targets: &'a str,
+        notify: &'a MessageNotify,
+        note: Option<&'a str>,
+    },
 }
 
 impl<'a> NotifyEmbed<'a> {
@@ -42,28 +46,45 @@ impl<'a> NotifyEmbed<'a> {
                         format_time(notify.notify_at)
                     ));
 
-                if let Some(note) = notify.note.as_ref() {
+                if let Some(note) = notify.display_note() {
                     builder = builder.field("Note:", format!("```{}```", note), false);
                 }
 
                 builder
             }
             NotifyEmbed::Notification(notify) => {
-                let mut builder = CreateEmbed::new()
-                    .color(Color::DARK_BLUE)
-                    .title("🔔  Notification")
-                    .description(format!(
+                let targets = notify.targets();
+                let description = if targets.is_empty() {
+                    format!(
                         "Hey {}, \nyou wanted to be notified at `{}`",
                         notify.user_id.mention(),
                         format_time(notify.notify_at)
-                    ))
+                    )
+                } else {
+                    let mentions = targets
+                        .iter()
+                        .map(|u| u.mention().to_string())
+                        .collect::<Vec<_>>()
+                        .join(", ");
+                    format!(
+                        "Hey {}, \n{} wants to remind you at `{}`",
+                        mentions,
+                        notify.user_id.mention(),
+                        format_time(notify.notify_at)
+                    )
+                };
+
+                let mut builder = CreateEmbed::new()
+                    .color(Color::DARK_BLUE)
+                    .title("🔔  Notification")
+                    .description(description)
                     .field("Requested at:", format!("`{}`", format_time(notify.created_at)), true);
 
                 if let Some(link) = create_link(notify) {
                     builder = builder.field("Message:", link, true);
                 }
 
-                if let Some(note) = notify.note.as_ref() {
+                if let Some(note) = notify.display_note() {
                     builder = builder.field("Note:", format!("```{}```", note), false);
                 }
 
@@ -79,7 +100,8 @@ impl<'a> NotifyEmbed<'a> {
 
                 let mut description = String::new();
                 for n in items.iter() {
-                    let note_preview = match n.note.as_deref() {
+                    let display = n.display_note();
+                    let note_preview = match display.as_deref() {
                         Some(s) if !s.is_empty() => {
                             let cut: String = s.chars().take(60).collect();
                             format!(" — {}", cut)
@@ -115,15 +137,21 @@ impl<'a> NotifyEmbed<'a> {
                     .title("🚫  Notification not found")
                     .description("No notification with that id belongs to you in this guild.")
             }
-            NotifyEmbed::RemindedFor { targets, notify } => {
-                CreateEmbed::new()
+            NotifyEmbed::RemindedFor { targets, notify, note } => {
+                let mut builder = CreateEmbed::new()
                     .color(Color::DARK_BLUE)
                     .title("🔔  Reminder set")
                     .description(format!(
                         "Will remind {} at `{}`.",
                         targets,
                         format_time(notify.notify_at)
-                    ))
+                    ));
+
+                if let Some(text) = note.filter(|s| !s.is_empty()) {
+                    builder = builder.field("Note:", format!("```{}```", text), false);
+                }
+
+                builder
             }
         }
     }

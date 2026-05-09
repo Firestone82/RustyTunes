@@ -34,6 +34,49 @@ pub struct MessageNotify {
     pub note: Option<String>,
 }
 
+impl MessageNotify {
+    /// Returns the note as it should be shown to a human, with any internal
+    /// `[T:…]` target prefix stripped.
+    pub fn display_note(&self) -> Option<String> {
+        let raw = self.note.as_deref()?;
+        let (_, clean) = extract_targets(raw);
+        if clean.is_empty() { None } else { Some(clean) }
+    }
+
+    /// Extra users to ping when this notification fires (used by /remindYou).
+    /// Empty for plain /notify entries.
+    pub fn targets(&self) -> Vec<UserId> {
+        match self.note.as_deref() {
+            Some(raw) => extract_targets(raw).0,
+            None => Vec::new(),
+        }
+    }
+}
+
+/// Encode a list of recipient user IDs into the note as `[T:1,2,3]rest`.
+/// Used by /remindYou so a single notify_me row can ping multiple people.
+pub fn encode_targets(targets: &[UserId], note: &str) -> String {
+    if targets.is_empty() {
+        return note.to_string();
+    }
+    let ids: Vec<String> = targets.iter().map(|u| u.get().to_string()).collect();
+    format!("[T:{}]{}", ids.join(","), note)
+}
+
+pub fn extract_targets(note: &str) -> (Vec<UserId>, String) {
+    if let Some(rest) = note.strip_prefix("[T:") {
+        if let Some(end) = rest.find(']') {
+            let ids: Vec<UserId> = rest[..end]
+                .split(',')
+                .filter_map(|s| s.parse::<u64>().ok())
+                .map(UserId::new)
+                .collect();
+            return (ids, rest[end + 1..].to_string());
+        }
+    }
+    (Vec::new(), note.to_string())
+}
+
 pub struct Notifier {
     pub messages: Vec<MessageNotify>,
     database: Arc<Database>,
@@ -195,13 +238,24 @@ impl Notifier {
                 }
             };
 
+            let targets = message.targets();
+            let content = if targets.is_empty() {
+                format!("||{}||", message.user_id.mention())
+            } else {
+                targets
+                    .iter()
+                    .map(|u| u.mention().to_string())
+                    .collect::<Vec<_>>()
+                    .join(" ")
+            };
+
             let send_result = NotifyEmbed::Notification(&message)
                 .to_embed()
                 .send_channel(
                     self.serenity_context.http.clone(),
                     &guild_channel,
                     None,
-                    Some(format!("||{}||", message.user_id.mention())),
+                    Some(content),
                 )
                 .await;
 
