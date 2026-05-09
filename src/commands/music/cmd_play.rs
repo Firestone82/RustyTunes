@@ -107,12 +107,10 @@ pub async fn play(ctx: Context<'_>, track_source: Vec<String>) -> Result<(), Mus
 
                     let mut player: RwLockWriteGuard<Player> = ctx.data().player.write().await;
 
-                    if !player.queue.is_empty() {
-                        QueueEmbed::TrackAdded(&track)
-                            .to_embed()
-                            .send_context(ctx, true, Some(30))
-                            .await?;
-                    }
+                    QueueEmbed::TrackAdded(&track)
+                        .to_embed()
+                        .send_context(ctx, true, Some(30))
+                        .await?;
 
                     player.add_track_to_queue(ctx, track).await?;
                     channel_service::join_user_channel(ctx).await?;
