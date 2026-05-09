@@ -41,8 +41,20 @@ pub struct Notifier {
 
 impl Notifier {
     pub async fn new(serenity_context: serenity::prelude::Context, database: Arc<Database>) -> Self {
+        // `message_id?` forces sqlx to treat the column as Option<i64> at
+        // compile time, regardless of whether the live DB still has the
+        // legacy NOT NULL constraint (which the bot patches at startup).
         let rows = sqlx::query!(
-            "SELECT id, guild_id, channel_id, user_id, message_id, created_at, notify_at, note FROM notify_me"
+            r#"SELECT
+                id,
+                guild_id,
+                channel_id,
+                user_id,
+                message_id AS "message_id?: i64",
+                created_at,
+                notify_at,
+                note
+            FROM notify_me"#
         ).fetch_all(&*database)
             .await
             .expect("Failed to fetch all messages from database");
