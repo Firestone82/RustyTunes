@@ -1,8 +1,7 @@
 use crate::bot::{Context, Database};
 use crate::embeds::notify_embeds::NotifyEmbed;
-use crate::service::embed_service::SendEmbed;
 use regex::Regex;
-use serenity::all::{ChannelId, GuildChannel, GuildId, Mentionable, MessageId, UserId};
+use serenity::all::{ChannelId, CreateMessage, GuildChannel, GuildId, Mentionable, MessageId, MessageReference, UserId};
 use sqlx::types::time::OffsetDateTime;
 use sqlx::Row;
 use std::ops::Add;
@@ -249,15 +248,20 @@ impl Notifier {
                     .join(" ")
             };
 
-            let send_result = NotifyEmbed::Notification(&message)
-                .to_embed()
-                .send_channel(
-                    self.serenity_context.http.clone(),
-                    &guild_channel,
-                    None,
-                    Some(content),
-                )
-                .await;
+            let embed = NotifyEmbed::Notification(&message).to_embed();
+            let mut create_message = CreateMessage::default()
+                .content(content)
+                .embed(embed);
+
+            if let Some(reply_to) = message.message_id {
+                let reference = MessageReference::from((message.channel_id, reply_to));
+                create_message = create_message.reference_message(reference);
+            }
+
+            let send_result = guild_channel
+                .send_message(self.serenity_context.http.clone(), create_message)
+                .await
+                .map_err(|e| crate::bot::MusicBotError::InternalError(e.to_string()));
 
             if let Err(e) = send_result {
                 tracing::error!("Failed to send notification {}: {:?}", message.id, e);
