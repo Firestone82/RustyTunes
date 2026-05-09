@@ -54,17 +54,19 @@ pub async fn leave_channel(ctx: Context<'_>) -> Result<(), MusicBotError> {
     let manager: Arc<Songbird> = songbird::get(ctx.serenity_context()).await
         .ok_or_else(|| MusicBotError::InternalError("Songbird manager not registered".to_owned()))?;
 
-    // Always stop playback regardless of voice state.
+    // Stop playback and clear the queue regardless of voice state.
     let _ = ctx.data().player.write().await.stop_playback().await;
 
-    // If songbird is tracking a Call, leave properly. Otherwise it's already
-    // gone (e.g. the alone-in-channel handler removed it) and there's nothing
-    // to do — treat it as success rather than error.
+    // Detach event listeners on whatever Call is left, then remove it. If
+    // there's no Call (e.g. the alone-in-channel handler already cleaned up)
+    // the remove is a no-op.
     if let Some(handle_lock) = manager.get(guild_id) {
         let mut handle: MutexGuard<Call> = handle_lock.lock().await;
         handle.remove_all_global_events();
-        if let Err(error) = handle.leave().await {
-            tracing::error!("Could not leave voice channel: {:?}", error);
+        drop(handle);
+
+        if let Err(error) = manager.remove(guild_id).await {
+            tracing::error!("Could not remove songbird call: {:?}", error);
             return Err(MusicBotError::InternalError("Could not leave voice channel".to_owned()));
         }
     } else {
