@@ -24,7 +24,7 @@ pub async fn check_author_in_voice_channel(ctx: Context<'_>) -> Result<bool, Mus
         },
 
         None => {
-            println!("User not found in any voice channel");
+            tracing::debug!("User not found in any voice channel");
             Ok(false)
         }
     }

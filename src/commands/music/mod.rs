@@ -1,3 +1,4 @@
+pub mod cmd_history;
 pub mod cmd_join;
 pub mod cmd_leave;
 pub mod cmd_play;

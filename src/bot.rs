@@ -110,17 +110,61 @@ impl MusicBotClient {
                     music::cmd_leave::leave(),
                     music::cmd_shuffle::shuffle(),
                     music::cmd_playing::playing(),
+                    music::cmd_history::history(),
                     utility::cmd_uwu::uwu(),
                     utility::cmd_uwu::uwu_me(),
                     utility::cmd_notify::notify(),
+                    utility::cmd_remind_you::remind_you(),
                     utility::cmd_wakeup::wakeup(),
                     utility::cmd_wakeup::wakeup_context(),
+                    utility::cmd_rename::rename(),
                 ],
                 pre_command: |ctx| Box::pin(async move {
-                    println!("CMD: {} is executing {} ({})", ctx.author().name, ctx.command().name, ctx.invocation_string());
+                    tracing::info!("CMD: {} is executing {} ({})", ctx.author().name, ctx.command().name, ctx.invocation_string());
+                }),
+                event_handler: |ctx, event, _fw, data| Box::pin(async move {
+                    if let FullEvent::VoiceStateUpdate { new, .. } = event {
+                        let guild_id = match new.guild_id {
+                            Some(g) => g,
+                            None => return Ok(()),
+                        };
+
+                        let bot_id = ctx.cache.current_user().id;
+
+                        let bot_channel: Option<ChannelId> = ctx.cache
+                            .guild(guild_id)
+                            .as_ref()
+                            .and_then(|g| g.voice_states.get(&bot_id))
+                            .and_then(|vs| vs.channel_id);
+
+                        let bot_channel = match bot_channel {
+                            Some(c) => c,
+                            None => return Ok(()),
+                        };
+
+                        let humans = ctx.cache
+                            .guild(guild_id)
+                            .as_ref()
+                            .map(|g| g.voice_states.values()
+                                .filter(|vs| vs.channel_id == Some(bot_channel) && vs.user_id != bot_id)
+                                .count())
+                            .unwrap_or(0);
+
+                        if humans == 0 {
+                            tracing::info!("Bot is alone in voice channel. Leaving.");
+
+                            let _ = data.player.write().await.stop_playback().await;
+
+                            if let Some(manager) = songbird::get(ctx).await {
+                                let _ = manager.remove(guild_id).await;
+                            }
+                        }
+                    }
+
+                    Ok(())
                 }),
                 // TODO: Unable to receive targeted member of DisconnectEvent. :( Since revenge is not possible to make in current state.
-                // event_handler: |ctx, event, a, _| Box::pin(async move {
+                // event_handler_old: |ctx, event, a, _| Box::pin(async move {
                     // match event {
                         // TODO: Move this somewhere else
                         // FullEvent::GuildAuditLogEntryCreate { entry, guild_id } => {
@@ -177,27 +221,104 @@ impl MusicBotClient {
                     let guild_id: GuildId = ready.guilds[0].id;
                     let guild_id_map: i64 = guild_id.get() as i64;
 
-                    println!("Bot ready");
-                    println!("- Logged in as {}", ready.user.name);
+                    tracing::info!("Bot ready");
+                    tracing::info!("Logged in as {}", ready.user.name);
 
-                    println!("- Registering commands in guild");
+                    tracing::info!("Registering commands in guild");
                     poise::builtins::register_in_guild(ctx, &fw.options().commands, ready.guilds[0].id, )
                         .await
                         .map_err(|e| {
-                            println!("Failed to register commands in guild. Error: {:?}", e);
+                            tracing::error!("Failed to register commands in guild: {:?}", e);
                             MusicBotError::InternalError(e.to_string())
                         })?;
 
-                    println!("- Connecting to database");
+                    tracing::info!("Connecting to database");
                     let database: Arc<Database> = Arc::new(
                         SqlitePoolOptions::new()
                             .connect(&database_url)
                             .await
                             .map_err(|e| {
-                                println!("Failed to connect to database. Error: {:?}", e);
+                                tracing::error!("Failed to connect to database: {:?}", e);
                                 MusicBotError::InternalError(e.to_string())
                             })?
                     );
+
+                    // Schema patch: relax notify_me.message_id NOT NULL so slash commands
+                    // (which have no source message) can store NULL.
+                    //
+                    // The whole patch runs in one transaction on one connection. Done that
+                    // way for two reasons: (1) SQLite's per-connection schema cache can lag
+                    // on Windows when statements hop between pool connections, which made
+                    // an earlier autocommit version blow up at the final ALTER TABLE
+                    // RENAME; (2) it lets us recover cleanly if a prior run failed half-way
+                    // and left `notify_me_new` behind without `notify_me`.
+                    let new_table_present = table_exists(&database, "notify_me_new").await?;
+                    let old_table_present = table_exists(&database, "notify_me").await?;
+
+                    let message_id_notnull: Option<i64> = if old_table_present {
+                        sqlx::query_scalar(
+                            "SELECT \"notnull\" FROM pragma_table_info('notify_me') WHERE name = 'message_id'"
+                        ).fetch_optional(&*database)
+                            .await
+                            .map_err(|e| MusicBotError::InternalError(format!("Schema probe failed: {e}")))?
+                    } else {
+                        None
+                    };
+
+                    let needs_full_migration = matches!(message_id_notnull, Some(1));
+
+                    if new_table_present || needs_full_migration {
+                        tracing::info!(
+                            "Migrating notify_me.message_id to NULL-able (recovery={})",
+                            new_table_present && !needs_full_migration
+                        );
+
+                        let mut tx = database.begin().await
+                            .map_err(|e| MusicBotError::InternalError(format!("Begin migration tx failed: {e}")))?;
+
+                        // Recovery path: a previous run already produced notify_me_new.
+                        // Just drop whatever notify_me exists and rename.
+                        if new_table_present {
+                            if old_table_present {
+                                sqlx::query("DROP TABLE notify_me").execute(&mut *tx).await
+                                    .map_err(|e| MusicBotError::InternalError(format!("DROP notify_me failed: {e}")))?;
+                            }
+                            sqlx::query("ALTER TABLE notify_me_new RENAME TO notify_me")
+                                .execute(&mut *tx).await
+                                .map_err(|e| MusicBotError::InternalError(format!("RENAME notify_me_new failed: {e}")))?;
+                        } else {
+                            // Full migration.
+                            sqlx::query(
+                                "CREATE TABLE notify_me_new (\
+                                    id INTEGER PRIMARY KEY AUTOINCREMENT,\
+                                    guild_id INTEGER NOT NULL,\
+                                    channel_id INTEGER NOT NULL,\
+                                    user_id INTEGER NOT NULL,\
+                                    message_id INTEGER,\
+                                    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,\
+                                    notify_at DATETIME,\
+                                    note TEXT DEFAULT NULL\
+                                )"
+                            ).execute(&mut *tx).await
+                                .map_err(|e| MusicBotError::InternalError(format!("CREATE notify_me_new failed: {e}")))?;
+
+                            sqlx::query(
+                                "INSERT INTO notify_me_new (id, guild_id, channel_id, user_id, message_id, created_at, notify_at, note) \
+                                    SELECT id, guild_id, channel_id, user_id, message_id, created_at, notify_at, note FROM notify_me"
+                            ).execute(&mut *tx).await
+                                .map_err(|e| MusicBotError::InternalError(format!("Copy into notify_me_new failed: {e}")))?;
+
+                            sqlx::query("DROP TABLE notify_me").execute(&mut *tx).await
+                                .map_err(|e| MusicBotError::InternalError(format!("DROP notify_me failed: {e}")))?;
+
+                            sqlx::query("ALTER TABLE notify_me_new RENAME TO notify_me")
+                                .execute(&mut *tx).await
+                                .map_err(|e| MusicBotError::InternalError(format!("RENAME notify_me_new failed: {e}")))?;
+                        }
+
+                        tx.commit().await
+                            .map_err(|e| MusicBotError::InternalError(format!("Commit migration tx failed: {e}")))?;
+                    }
 
                     // Insert guild into database if it doesn't exist
                     let _ = sqlx::query!(
@@ -206,7 +327,7 @@ impl MusicBotClient {
                     ).execute(&*database)
                         .await
                         .map_err(|e| {
-                            println!("Failed to insert guild into database. Error: {:?}", e);
+                            tracing::error!("Failed to insert guild into database: {:?}", e);
                             MusicBotError::InternalError(e.to_string())
                         })?;
 
@@ -252,12 +373,23 @@ impl MusicBotClient {
     }
 
     pub async fn start(&mut self) -> Result<(), MusicBotError> {
-        println!("- Starting bot client");
+        tracing::info!("Starting bot client");
 
         self.serenity_client.start().await
             .map_err(|e| {
-                println!("- Failed to start server. Error: {:?}", e);
+                tracing::error!("Failed to start server: {:?}", e);
                 MusicBotError::InternalError(e.to_string())
             })
     }
+}
+
+async fn table_exists(database: &Arc<Database>, name: &str) -> Result<bool, MusicBotError> {
+    let row: Option<i64> = sqlx::query_scalar(
+        "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?"
+    )
+        .bind(name)
+        .fetch_optional(&**database)
+        .await
+        .map_err(|e| MusicBotError::InternalError(format!("Catalog probe failed: {e}")))?;
+    Ok(row.is_some())
 }

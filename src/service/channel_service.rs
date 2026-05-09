@@ -1,22 +1,20 @@
 use crate::bot::{Context, MusicBotError};
-use crate::handlers::disconnect_handler::DisconnectHandler;
 use crate::handlers::error_handler::ErrorHandler;
-use crate::handlers::inactivity_handler::InactivityHandler;
 use serenity::all::{ChannelId, GuildId, UserId};
-use songbird::{Call, CoreEvent, Event, Songbird};
+use songbird::{Call, Event, Songbird};
 use std::sync::Arc;
 use tokio::sync::MutexGuard;
 
 pub async fn join_user_channel(ctx: Context<'_>) -> Result<ChannelId, MusicBotError> {
     let guild_id: GuildId = ctx.guild_id().ok_or_else(|| {
-        println!("Could not locate voice channel. Guild ID is none");
+        tracing::error!("Could not locate voice channel: guild ID is none");
         MusicBotError::InternalError("Could not locate voice channel. Guild ID is none".to_owned())
     })?;
 
     let chanel_id: ChannelId = match get_user_voice_channel(ctx, &ctx.author().id) {
         Some(user_channel) => user_channel,
         None => {
-            println!("User not in voice channel");
+            tracing::debug!("User not in voice channel");
             return Err(MusicBotError::UserNotInVoiceChannelError)
         }
     };
@@ -28,19 +26,10 @@ pub async fn join_user_channel(ctx: Context<'_>) -> Result<ChannelId, MusicBotEr
         Ok(handle_lock) => {
             let mut handle: MutexGuard<Call> = handle_lock.lock().await;
 
-            // Event listener to disconnect the bot if the driver disconnects
-            handle.add_global_event(
-                Event::Core(CoreEvent::DriverDisconnect),
-                DisconnectHandler::new(guild_id, manager.clone(), ctx.data().player.clone()),
-            );
-
-            // Event listener to disconnect the bot if there is no activity in the voice channel
-            handle.add_global_event(
-                Event::Core(CoreEvent::ClientDisconnect),
-                InactivityHandler::new(guild_id, manager.clone(), ctx.serenity_context().clone())
-            );
-
-            // Event listener for when there is an error with the track
+            // Inactivity / disconnect handling lives in bot.rs's VoiceStateUpdate
+            // listener — songbird's CoreEvent::DriverDisconnect also fires on
+            // transient drops (e.g. when an admin moves the bot), which is too
+            // aggressive for a "leave the channel" trigger.
             handle.add_global_event(
                 Event::Track(songbird::TrackEvent::Error),
                 ErrorHandler
@@ -48,7 +37,7 @@ pub async fn join_user_channel(ctx: Context<'_>) -> Result<ChannelId, MusicBotEr
         }
 
         Err(error) => {
-            println!("Error joining voice channel: {:?}", error);
+            tracing::error!("Error joining voice channel: {:?}", error);
             return Err(MusicBotError::UnableToJoinVoiceChannelError)
         }
     }
@@ -58,29 +47,30 @@ pub async fn join_user_channel(ctx: Context<'_>) -> Result<ChannelId, MusicBotEr
 
 pub async fn leave_channel(ctx: Context<'_>) -> Result<(), MusicBotError> {
     let guild_id: GuildId = ctx.guild_id().ok_or_else(|| {
-        println!("Could not locate voice channel. Guild ID is none");
+        tracing::error!("Could not locate voice channel: guild ID is none");
         MusicBotError::InternalError("Could not locate voice channel. Guild ID is none".to_owned())
     })?;
 
     let manager: Arc<Songbird> = songbird::get(ctx.serenity_context()).await
-        .ok_or_else(|| MusicBotError::InternalError("Could not locate voice channel. Songbird manager does not exist".to_owned()))?;
+        .ok_or_else(|| MusicBotError::InternalError("Songbird manager not registered".to_owned()))?;
 
-    match manager.get(guild_id) {
-        Some(handle_lock) => {
-            let mut handle: MutexGuard<Call> = handle_lock.lock().await;
+    // Stop playback and clear the queue regardless of voice state.
+    let _ = ctx.data().player.write().await.stop_playback().await;
 
-            handle.remove_all_global_events();
-            handle.leave().await
-                .map_err(|error| {
-                    println!("Could not leave voice channel. Error: {:?}", error);
-                    MusicBotError::InternalError("Could not leave voice channel".to_owned())
-                }).expect("Could not leave voice channel");
+    // Detach event listeners on whatever Call is left, then remove it. If
+    // there's no Call (e.g. the alone-in-channel handler already cleaned up)
+    // the remove is a no-op.
+    if let Some(handle_lock) = manager.get(guild_id) {
+        let mut handle: MutexGuard<Call> = handle_lock.lock().await;
+        handle.remove_all_global_events();
+        drop(handle);
+
+        if let Err(error) = manager.remove(guild_id).await {
+            tracing::error!("Could not remove songbird call: {:?}", error);
+            return Err(MusicBotError::InternalError("Could not leave voice channel".to_owned()));
         }
-
-        None => {
-            println!("Could not locate voice channel. Songbird manager does not exist");
-            return Err(MusicBotError::InternalError("Could not locate voice channel. Songbird manager does not exist".to_owned()))
-        }
+    } else {
+        tracing::debug!("/leave called but no active songbird call; treating as no-op");
     }
 
     Ok(())
