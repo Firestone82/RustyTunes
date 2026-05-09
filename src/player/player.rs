@@ -232,7 +232,7 @@ impl Player {
         println!("Shuffling queue");
 
         if self.queue.len() > 1 {
-            let mut rng = rand::thread_rng();
+            let mut rng = rand::rng();
             self.queue.shuffle(&mut rng);
         }
         
