@@ -21,19 +21,6 @@ fn nav_buttons(page: usize, total_pages: usize) -> Vec<CreateActionRow> {
     ])]
 }
 
-fn disabled_nav_buttons() -> Vec<CreateActionRow> {
-    vec![CreateActionRow::Buttons(vec![
-        CreateButton::new("queue_prev")
-            .label("◀")
-            .style(ButtonStyle::Secondary)
-            .disabled(true),
-        CreateButton::new("queue_next")
-            .label("▶")
-            .style(ButtonStyle::Secondary)
-            .disabled(true),
-    ])]
-}
-
 #[poise::command(
     prefix_command, slash_command,
 )]
@@ -117,9 +104,7 @@ pub async fn queue(ctx: Context<'_>, page: Option<usize>) -> Result<(), MusicBot
                 ).await;
             }
             None => {
-                let _ = message.edit(&http, EditMessage::new()
-                    .components(disabled_nav_buttons())
-                ).await;
+                let _ = message.delete(&http).await;
                 break;
             }
         }
