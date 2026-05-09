@@ -72,7 +72,7 @@ impl<'a> PlayerEmbed<'a> {
                     .description("Choose a track to add to the queue:");
 
                 for (index, track) in tracks.iter().enumerate() {
-                    embed = embed.field(format!(":number_{}:  {}", index, track.metadata.title), track.metadata.track_url.clone(), false);
+                    embed = embed.field(format!("{}.  {}", index + 1, track.metadata.title), track.metadata.track_url.clone(), false);
                 }
 
                 embed

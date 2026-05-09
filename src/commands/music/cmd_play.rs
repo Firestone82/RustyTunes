@@ -72,8 +72,10 @@ pub async fn play(ctx: Context<'_>, track_source: Vec<String>) -> Result<(), Mus
                 })
                 .collect();
 
+            let row_count = buttons.len().div_ceil(5);
+            let per_row = buttons.len().div_ceil(row_count.max(1));
             let rows: Vec<CreateActionRow> = buttons
-                .chunks(5)
+                .chunks(per_row.max(1))
                 .map(|chunk| CreateActionRow::Buttons(chunk.to_vec()))
                 .collect();
 

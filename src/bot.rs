@@ -119,8 +119,49 @@ impl MusicBotClient {
                 pre_command: |ctx| Box::pin(async move {
                     println!("CMD: {} is executing {} ({})", ctx.author().name, ctx.command().name, ctx.invocation_string());
                 }),
+                event_handler: |ctx, event, _fw, data| Box::pin(async move {
+                    if let FullEvent::VoiceStateUpdate { new, .. } = event {
+                        let guild_id = match new.guild_id {
+                            Some(g) => g,
+                            None => return Ok(()),
+                        };
+
+                        let bot_id = ctx.cache.current_user().id;
+
+                        let bot_channel: Option<ChannelId> = ctx.cache
+                            .guild(guild_id)
+                            .as_ref()
+                            .and_then(|g| g.voice_states.get(&bot_id))
+                            .and_then(|vs| vs.channel_id);
+
+                        let bot_channel = match bot_channel {
+                            Some(c) => c,
+                            None => return Ok(()),
+                        };
+
+                        let humans = ctx.cache
+                            .guild(guild_id)
+                            .as_ref()
+                            .map(|g| g.voice_states.values()
+                                .filter(|vs| vs.channel_id == Some(bot_channel) && vs.user_id != bot_id)
+                                .count())
+                            .unwrap_or(0);
+
+                        if humans == 0 {
+                            println!("Bot is alone in voice channel. Leaving.");
+
+                            let _ = data.player.write().await.stop_playback().await;
+
+                            if let Some(manager) = songbird::get(ctx).await {
+                                let _ = manager.remove(guild_id).await;
+                            }
+                        }
+                    }
+
+                    Ok(())
+                }),
                 // TODO: Unable to receive targeted member of DisconnectEvent. :( Since revenge is not possible to make in current state.
-                // event_handler: |ctx, event, a, _| Box::pin(async move {
+                // event_handler_old: |ctx, event, a, _| Box::pin(async move {
                     // match event {
                         // TODO: Move this somewhere else
                         // FullEvent::GuildAuditLogEntryCreate { entry, guild_id } => {
