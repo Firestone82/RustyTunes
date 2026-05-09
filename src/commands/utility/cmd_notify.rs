@@ -4,9 +4,20 @@ use crate::player::notifier::{parse_text, MessageNotify, Notifier, NotifierError
 use crate::service::embed_service::SendEmbed;
 use tokio::sync::{RwLockReadGuard, RwLockWriteGuard};
 
-/// Schedule a notification: `/notify 10s remember to drink water`.
+/// Manage timed notifications: add, list, remove.
+#[poise::command(
+    prefix_command,
+    slash_command,
+    subcommands("add", "list", "remove"),
+    subcommand_required,
+)]
+pub async fn notify(_ctx: Context<'_>) -> Result<(), MusicBotError> {
+    Ok(())
+}
+
+/// Schedule a notification: `/notify add 10s drink water`.
 #[poise::command(prefix_command, slash_command)]
-pub async fn notify(
+pub async fn add(
     ctx: Context<'_>,
     time: String,
     #[rest] note: Option<String>,
@@ -34,8 +45,8 @@ pub async fn notify(
 }
 
 /// List your pending notifications in this guild.
-#[poise::command(prefix_command, slash_command, rename = "notify_list")]
-pub async fn notify_list(ctx: Context<'_>) -> Result<(), MusicBotError> {
+#[poise::command(prefix_command, slash_command)]
+pub async fn list(ctx: Context<'_>) -> Result<(), MusicBotError> {
     let guild_id = ctx.guild_id().ok_or_else(|| {
         MusicBotError::InternalError("Notify is only available in guilds".to_string())
     })?;
@@ -52,8 +63,8 @@ pub async fn notify_list(ctx: Context<'_>) -> Result<(), MusicBotError> {
 }
 
 /// Remove one of your notifications by id.
-#[poise::command(prefix_command, slash_command, rename = "notify_remove")]
-pub async fn notify_remove(ctx: Context<'_>, id: i64) -> Result<(), MusicBotError> {
+#[poise::command(prefix_command, slash_command)]
+pub async fn remove(ctx: Context<'_>, id: i64) -> Result<(), MusicBotError> {
     let guild_id = ctx.guild_id().ok_or_else(|| {
         MusicBotError::InternalError("Notify is only available in guilds".to_string())
     })?;
