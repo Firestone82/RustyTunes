@@ -1,5 +1,6 @@
 use crate::player::player::Track;
 use serenity::all::{Color, CreateEmbed};
+use std::collections::VecDeque;
 
 pub enum PlayerEmbed<'a> {
     NowPlaying(&'a Track),
@@ -11,7 +12,9 @@ pub enum PlayerEmbed<'a> {
     Skipped(usize),
     Shuffled,
     Search(&'a [Track]),
-    SearchExpired
+    SearchExpired,
+    History(&'a VecDeque<Track>),
+    HistoryEmpty,
 }
 
 impl<'a> PlayerEmbed<'a> {
@@ -82,6 +85,27 @@ impl<'a> PlayerEmbed<'a> {
                     .color(Color::DARK_RED)
                     .title("🚫  Search expired")
                     .description("The search has expired. Please try again.")
+            }
+            PlayerEmbed::History(history) => {
+                let mut embed = CreateEmbed::new()
+                    .color(Color::DARK_BLUE)
+                    .title("📜  Recently played")
+                    .description("Pick a number to replay a track:");
+
+                for (i, track) in history.iter().rev().enumerate() {
+                    embed = embed.field(
+                        format!("{}. {}", i + 1, track.metadata.title),
+                        track.metadata.track_url.clone(),
+                        false,
+                    );
+                }
+                embed
+            }
+            PlayerEmbed::HistoryEmpty => {
+                CreateEmbed::new()
+                    .color(Color::DARK_RED)
+                    .title("📜  No history")
+                    .description("No tracks have been played yet.")
             }
         }
     }

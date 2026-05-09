@@ -7,6 +7,8 @@ use serenity::all::GuildId;
 use songbird::input::YoutubeDl;
 use songbird::tracks::TrackHandle;
 use songbird::{Call, Event, TrackEvent};
+use std::collections::VecDeque;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use tokio::sync::{Mutex, MutexGuard};
 
@@ -53,7 +55,9 @@ pub struct Player {
     pub track_handle: Option<TrackHandle>,
     pub current_track: Option<Track>,
     pub queue: Vec<Track>,
+    pub history: VecDeque<Track>,
     pub volume: f32,
+    pub inactivity_cancel: Arc<AtomicBool>,
     guild_id: GuildId,
     database: Arc<Database>,
 }
@@ -82,28 +86,39 @@ impl Player {
             track_handle: None,
             current_track: None,
             queue: Vec::new(),
+            history: VecDeque::new(),
             volume,
+            inactivity_cancel: Arc::new(AtomicBool::new(false)),
             guild_id,
             database
+        }
+    }
+
+    pub fn push_to_history(&mut self, track: Track) {
+        self.history.push_back(track);
+        if self.history.len() > 10 {
+            self.history.pop_front();
         }
     }
 
     pub async fn add_playlist_to_queue(&mut self, ctx: Context<'_>, playlist: Playlist) -> Result<(), PlaybackError> {
         tracing::info!("Adding playlist to queue, tracks: {}", playlist.tracks.len());
 
+        self.inactivity_cancel.store(true, Ordering::SeqCst);
         self.queue.extend(playlist.tracks);
         tracing::debug!("Queue length: {}", self.queue.len());
-        
+
         if !self.is_playing {
             self.start_playback(ctx).await?;
         }
-        
+
         Ok(())
     }
-    
+
     pub async fn add_track_to_queue(&mut self, ctx: Context<'_>, track: Track) -> Result<(), PlaybackError> {
         tracing::info!("Adding track to queue: {}", track.metadata.track_url);
 
+        self.inactivity_cancel.store(true, Ordering::SeqCst);
         self.queue.push(track);
         tracing::debug!("Queue length: {}", self.queue.len());
 
@@ -177,6 +192,10 @@ impl Player {
             })?
             .get_or_insert(guild_id);
 
+        if let Some(track) = self.current_track.clone() {
+            self.push_to_history(track);
+        }
+
         if self.is_playing {
             self.stop_track().await?;
         }
@@ -209,7 +228,8 @@ impl Player {
                         manager.clone(),
                         ctx.data().request_client.clone(),
                         ctx.data().player.clone(),
-                        ctx.guild_channel().await.unwrap()
+                        ctx.guild_channel().await.unwrap(),
+                        guild_id,
                     )
                 );
 

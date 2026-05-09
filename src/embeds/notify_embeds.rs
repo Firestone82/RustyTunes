@@ -8,6 +8,7 @@ pub enum NotifyEmbed<'a> {
     List(&'a [MessageNotify]),
     Removed(&'a MessageNotify),
     NotFound,
+    RemindedFor { targets: &'a str, notify: &'a MessageNotify },
 }
 
 impl<'a> NotifyEmbed<'a> {
@@ -113,6 +114,16 @@ impl<'a> NotifyEmbed<'a> {
                     .color(Color::DARK_RED)
                     .title("🚫  Notification not found")
                     .description("No notification with that id belongs to you in this guild.")
+            }
+            NotifyEmbed::RemindedFor { targets, notify } => {
+                CreateEmbed::new()
+                    .color(Color::DARK_BLUE)
+                    .title("🔔  Reminder set")
+                    .description(format!(
+                        "Will remind {} at `{}`.",
+                        targets,
+                        format_time(notify.notify_at)
+                    ))
             }
         }
     }

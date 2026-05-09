@@ -24,7 +24,7 @@ async fn main() -> Result<(), MusicBotError> {
     let (file_writer, _guard) = tracing_appender::non_blocking(file_appender);
 
     let env_filter = EnvFilter::try_from_default_env()
-        .unwrap_or_else(|_| EnvFilter::new("info,rust_tunes=debug,RustTunes=debug"));
+        .unwrap_or_else(|_| EnvFilter::new("warn,rust_tunes=debug,RustTunes=debug"));
 
     tracing_subscriber::registry()
         .with(env_filter)

@@ -79,16 +79,33 @@ impl Notifier {
             NotifierError::InternalError("Notify is only available in guilds".to_string())
         })?;
 
-        // Prefix invocations have a source message we can link back to;
-        // slash invocations don't, so we store NULL.
         let source_message_id: Option<MessageId> = match ctx {
             Context::Prefix(prefix) => Some(prefix.msg.id),
             _ => None,
         };
 
+        self.add_message_for_user(
+            guild_id,
+            ctx.channel_id(),
+            ctx.author().id,
+            source_message_id,
+            notify_at,
+            note,
+        ).await
+    }
+
+    pub async fn add_message_for_user(
+        &mut self,
+        guild_id: GuildId,
+        channel_id: ChannelId,
+        user_id: UserId,
+        source_message_id: Option<MessageId>,
+        notify_at: OffsetDateTime,
+        note: Option<String>,
+    ) -> Result<MessageNotify, NotifierError> {
         let guild_id_db: i64 = guild_id.get() as i64;
-        let channel_id_db: i64 = ctx.channel_id().get() as i64;
-        let user_id_db: i64 = ctx.author().id.get() as i64;
+        let channel_id_db: i64 = channel_id.get() as i64;
+        let user_id_db: i64 = user_id.get() as i64;
         let message_id_db: Option<i64> = source_message_id.map(|m| m.get() as i64);
         let created_at = get_current_time();
 
@@ -110,8 +127,8 @@ impl Notifier {
         let notify = MessageNotify {
             id,
             guild_id,
-            channel_id: ctx.channel_id(),
-            user_id: ctx.author().id,
+            channel_id,
+            user_id,
             message_id: source_message_id,
             created_at,
             notify_at,

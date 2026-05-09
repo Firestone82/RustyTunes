@@ -4,13 +4,14 @@ use crate::service::embed_service::SendEmbed;
 use async_trait::async_trait;
 use lombok::AllArgsConstructor;
 use poise::serenity_prelude;
-use serenity::all::GuildChannel;
+use serenity::all::{GuildChannel, GuildId};
 use songbird::{
     input::YoutubeDl,
     tracks::TrackHandle,
     {Call, Event, EventContext, EventHandler}
 };
 use std::sync::Arc;
+use std::sync::atomic::Ordering;
 use tokio::sync::{Mutex, MutexGuard, RwLock, RwLockWriteGuard};
 
 #[derive(AllArgsConstructor, Clone)]
@@ -20,6 +21,7 @@ pub struct QueueHandler {
     req_client: reqwest::Client,
     player: Arc<RwLock<Player>>,
     guild_channel: GuildChannel,
+    guild_id: GuildId,
 }
 
 #[async_trait]
@@ -37,6 +39,11 @@ impl EventHandler for QueueHandler {
             Some(next_track) => {
                 tracing::info!("Playing next track: {}", next_track.metadata.title);
 
+                // Save finished track to history
+                if let Some(finished) = player.current_track.clone() {
+                    player.push_to_history(finished);
+                }
+
                 // Send "Now playing message"
                 let _ = PlayerEmbed::NowPlaying(&next_track)
                     .to_embed()
@@ -51,10 +58,10 @@ impl EventHandler for QueueHandler {
                 let mut guard: MutexGuard<Call> = self.manager
                     .lock()
                     .await;
-                
+
                 let track_data: YoutubeDl = YoutubeDl::new(self.req_client.clone(), next_track.metadata.track_url.clone());
                 let track_handle: TrackHandle = guard.play(track_data.into());
-                
+
                 // Set volume
                 let _ = track_handle.set_volume(player.volume);
 
@@ -71,9 +78,51 @@ impl EventHandler for QueueHandler {
 
             None => {
                 tracing::info!("No more tracks to play. Stopping playback.");
+
+                // Save the last track to history
+                if let Some(finished) = player.current_track.clone() {
+                    player.push_to_history(finished);
+                }
+
                 player.track_handle = None;
                 player.current_track = None;
                 player.is_playing = false;
+
+                // Begin 5-minute inactivity countdown
+                player.inactivity_cancel.store(false, Ordering::SeqCst);
+                let cancel = Arc::clone(&player.inactivity_cancel);
+                let serenity_ctx = self.serenity_ctx.clone();
+                let player_arc = self.player.clone();
+                let guild_id = self.guild_id;
+
+                drop(player);
+
+                tokio::spawn(async move {
+                    tokio::time::sleep(tokio::time::Duration::from_secs(5 * 60)).await;
+
+                    if cancel.load(Ordering::SeqCst) {
+                        tracing::debug!("Inactivity timer cancelled — new track was queued");
+                        return;
+                    }
+
+                    let player = player_arc.read().await;
+                    if player.is_playing {
+                        return;
+                    }
+                    drop(player);
+
+                    tracing::info!("Leaving voice channel after 5 minutes of inactivity");
+
+                    let mut player = player_arc.write().await;
+                    let _ = player.stop_playback().await;
+                    drop(player);
+
+                    if let Some(manager) = songbird::get(&serenity_ctx).await {
+                        let _ = manager.remove(guild_id).await;
+                    }
+                });
+
+                return None;
             }
         }
 
