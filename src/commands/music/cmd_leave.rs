@@ -11,6 +11,7 @@ use serenity::all::{Color, CreateEmbed};
 )]
 pub async fn leave(ctx: Context<'_>) -> Result<(), MusicBotError> {
     channel_service::leave_channel(ctx).await?;
+    crate::player::player::clear_activity(ctx.serenity_context());
 
     CreateEmbed::new()
         .color(Color::DARK_BLUE)

@@ -2,8 +2,9 @@ use crate::bot::{Context, Database, MusicBotError};
 use crate::embeds::player_embed::PlayerEmbed;
 use crate::handlers::queue_handler::QueueHandler;
 use crate::service::embed_service::SendEmbed;
+use poise::serenity_prelude as serenity_prelude;
 use rand::seq::SliceRandom;
-use serenity::all::GuildId;
+use serenity::all::{ActivityData, GuildId};
 use songbird::input::{File, Input, YoutubeDl};
 use songbird::tracks::TrackHandle;
 use songbird::{Call, Event, TrackEvent};
@@ -290,6 +291,8 @@ impl Player {
                     )
                 );
 
+                set_now_playing(ctx.serenity_context(), &next_track);
+
                 self.push_to_history(next_track.clone());
                 self.current_track = Some(next_track);
                 self.track_handle = Some(track_handle);
@@ -300,6 +303,7 @@ impl Player {
 
             None => {
                 tracing::info!("No more tracks to play. Stopping playback");
+                clear_activity(ctx.serenity_context());
                 self.stop_playback().await?;
                 Ok(None)
             }
@@ -407,4 +411,15 @@ impl Player {
 
         Ok(())
     }
+}
+
+/// Set the bot's Discord activity to "Playing <title>". The shard's local
+/// presence is updated immediately and Discord propagates it to other users.
+pub fn set_now_playing(ctx: &serenity_prelude::Context, track: &Track) {
+    let label = format!("{} · {}", track.metadata.title, track.source.label());
+    ctx.set_activity(Some(ActivityData::playing(label)));
+}
+
+pub fn clear_activity(ctx: &serenity_prelude::Context) {
+    ctx.set_activity(None);
 }

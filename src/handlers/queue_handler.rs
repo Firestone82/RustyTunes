@@ -1,5 +1,5 @@
 use crate::embeds::player_embed::PlayerEmbed;
-use crate::player::player::{PlaybackError, Player};
+use crate::player::player::{self, PlaybackError, Player};
 use crate::service::embed_service::SendEmbed;
 use async_trait::async_trait;
 use lombok::AllArgsConstructor;
@@ -65,6 +65,8 @@ impl EventHandler for QueueHandler {
                     self.clone()
                 );
 
+                player::set_now_playing(&self.serenity_ctx, &next_track);
+
                 player.push_to_history(next_track.clone());
                 player.track_handle = Some(track_handle);
                 player.current_track = Some(next_track);
@@ -73,6 +75,8 @@ impl EventHandler for QueueHandler {
 
             None => {
                 tracing::info!("No more tracks to play. Stopping playback.");
+
+                player::clear_activity(&self.serenity_ctx);
 
                 player.track_handle = None;
                 player.current_track = None;

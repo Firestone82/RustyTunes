@@ -107,7 +107,7 @@ impl MusicBotClient {
             .options(poise::FrameworkOptions {
                 on_error: |err| Box::pin(error_handler::handle(err)),
                 commands: vec![
-                    commands::cmd_help::help(),
+                    commands::help::help(),
                     music::cmd_play::play(),
                     music::cmd_play::play_top(),
                     music::cmd_pause::pause(),
@@ -118,7 +118,6 @@ impl MusicBotClient {
                     music::cmd_join::join(),
                     music::cmd_queue::queue(),
                     music::cmd_clear::clear(),
-                    music::cmd_remove::remove(),
                     music::cmd_leave::leave(),
                     music::cmd_shuffle::shuffle(),
                     music::cmd_playing::playing(),
@@ -127,6 +126,7 @@ impl MusicBotClient {
                     utility::cmd_uwu::uwu(),
                     utility::cmd_uwu::uwu_me(),
                     utility::cmd_notify::notify(),
+                    utility::cmd_notify::remind(),
                     utility::cmd_wakeup::wakeup(),
                     utility::cmd_wakeup::wakeup_context(),
                     utility::cmd_rename::rename(),
@@ -169,6 +169,7 @@ impl MusicBotClient {
                             tracing::info!("Bot is alone in voice channel. Leaving.");
 
                             let _ = data.player.write().await.stop_playback().await;
+                            crate::player::player::clear_activity(ctx);
 
                             if let Some(manager) = songbird::get(ctx).await {
                                 let _ = manager.remove(guild_id).await;

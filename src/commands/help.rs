@@ -1,9 +1,8 @@
 use crate::bot::{Context, MusicBotError};
 
-/**
-* Help command
-*/
+/// Show command help.
 #[poise::command(
+    rename = "help",
     prefix_command, slash_command,
     track_edits,
     aliases("h"),
