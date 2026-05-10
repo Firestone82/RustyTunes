@@ -14,15 +14,30 @@ use tokio::sync::RwLockWriteGuard;
 
 const PICKER_LIMIT: usize = 25;
 
-/// Manage the local audio library (download, upload, list, play, remove).
+/// Manage the local audio library (download, upload, list, play, rename, remove).
 #[poise::command(
     prefix_command, slash_command,
-    subcommands("download", "upload", "list", "remove", "play"),
+    subcommands("download", "upload", "list", "remove", "play", "rename_track"),
     check = "check_author_in_same_voice_channel",
 )]
 pub async fn local(ctx: Context<'_>) -> Result<(), MusicBotError> {
     // Default action when called without a subcommand: list saved tracks.
     list_inner(ctx).await
+}
+
+/// Autocomplete from the current local library — used by `play` and `rename`.
+async fn autocomplete_local_track<'a>(
+    _ctx: Context<'_>,
+    partial: &'a str,
+) -> Vec<String> {
+    let needle = partial.trim().to_ascii_lowercase();
+    let files = local_service::list_local_files().await.unwrap_or_default();
+    files
+        .into_iter()
+        .map(|p| local_service::track_title(&p))
+        .filter(|title| needle.is_empty() || title.to_ascii_lowercase().contains(&needle))
+        .take(25)
+        .collect()
 }
 
 /// Download an audio file from a URL into the local library.
@@ -132,6 +147,7 @@ pub async fn list(ctx: Context<'_>) -> Result<(), MusicBotError> {
 pub async fn play(
     ctx: Context<'_>,
     #[description = "Substring of the track name to play"]
+    #[autocomplete = "autocomplete_local_track"]
     #[rest]
     name: Option<String>,
 ) -> Result<(), MusicBotError> {
@@ -234,6 +250,115 @@ pub async fn remove(
         .send_context(ctx, true, Some(30))
         .await?;
     Ok(())
+}
+
+/// Rename a downloaded track (extension preserved if omitted).
+#[poise::command(rename = "rename", prefix_command, slash_command)]
+pub async fn rename_track(
+    ctx: Context<'_>,
+    #[description = "Existing track name"]
+    #[autocomplete = "autocomplete_local_track"]
+    old: String,
+    #[description = "New name (extension optional)"]
+    #[rest]
+    new: String,
+) -> Result<(), MusicBotError> {
+    let old_query = old.trim();
+    let new_name = new.trim();
+
+    if old_query.is_empty() {
+        return reply_failure(ctx, "Provide the current track name.").await;
+    }
+    if new_name.is_empty() {
+        return reply_failure(ctx, "Provide a new name.").await;
+    }
+
+    let target: PathBuf = match resolve_unique(ctx, old_query).await? {
+        Some(p) => p,
+        None => return Ok(()),
+    };
+
+    let current_ext = target
+        .extension()
+        .and_then(|e| e.to_str())
+        .unwrap_or("mp3");
+
+    let cleaned = local_service::sanitize_filename(new_name);
+    let new_filename = if local_service::has_audio_extension(&cleaned) {
+        cleaned
+    } else {
+        format!("{cleaned}.{current_ext}")
+    };
+
+    let parent = target
+        .parent()
+        .map(|p| p.to_path_buf())
+        .unwrap_or_else(|| local_service::downloads_dir());
+
+    let new_path = local_service::unique_path(&parent, &new_filename).await;
+
+    if let Err(e) = tokio::fs::rename(&target, &new_path).await {
+        PlayerEmbed::DownloadFailed(format!("Rename failed: {e}"))
+            .to_embed()
+            .send_context(ctx, true, Some(30))
+            .await?;
+        return Ok(());
+    }
+
+    let old_display = target
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or("?")
+        .to_string();
+    let new_display = new_path
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or("?")
+        .to_string();
+
+    PlayerEmbed::LocalRenamed { old: &old_display, new: &new_display }
+        .to_embed()
+        .send_context(ctx, true, Some(30))
+        .await?;
+    Ok(())
+}
+
+/// Resolve a query to a single library file. Prefers an exact (case-insensitive)
+/// title match — autocomplete-picked names will hit this path. Falls back to
+/// substring search; if substring is ambiguous, shows the candidates and
+/// returns `None`.
+async fn resolve_unique(
+    ctx: Context<'_>,
+    query: &str,
+) -> Result<Option<PathBuf>, MusicBotError> {
+    let matches: Vec<PathBuf> = local_service::search_local(query).await
+        .map_err(|e| MusicBotError::InternalError(format!("Could not read downloads: {e}")))?;
+
+    if matches.is_empty() {
+        PlayerEmbed::LocalNoMatch(query)
+            .to_embed()
+            .send_context(ctx, true, Some(15))
+            .await?;
+        return Ok(None);
+    }
+
+    let needle_lower = query.trim().to_ascii_lowercase();
+    if let Some(exact) = matches.iter().find(|p| {
+        local_service::track_title(p).to_ascii_lowercase() == needle_lower
+    }) {
+        return Ok(Some(exact.clone()));
+    }
+
+    if matches.len() == 1 {
+        return Ok(Some(matches.into_iter().next().unwrap()));
+    }
+
+    let display: Vec<PathBuf> = matches.into_iter().take(PICKER_LIMIT).collect();
+    PlayerEmbed::LocalAmbiguous(&display)
+        .to_embed()
+        .send_context(ctx, true, Some(30))
+        .await?;
+    Ok(None)
 }
 
 async fn list_inner(ctx: Context<'_>) -> Result<(), MusicBotError> {

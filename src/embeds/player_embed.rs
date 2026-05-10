@@ -39,6 +39,8 @@ pub enum PlayerEmbed<'a> {
     LocalEmpty,
     LocalNoMatch(&'a str),
     LocalRemoved(&'a str),
+    LocalRenamed { old: &'a str, new: &'a str },
+    LocalAmbiguous(&'a [PathBuf]),
     LocalPickToPlay(&'a [PathBuf]),
     LocalPickToRemove(&'a [PathBuf]),
 }
@@ -228,6 +230,19 @@ impl<'a> PlayerEmbed<'a> {
                     .color(Color::DARK_GREEN)
                     .title("🗑️  Removed")
                     .description(format!("Deleted **{}** from local library.", name))
+            }
+            PlayerEmbed::LocalRenamed { old, new } => {
+                CreateEmbed::new()
+                    .color(Color::DARK_GREEN)
+                    .title("✏️  Renamed")
+                    .description(format!("**{}** → **{}**", old, new))
+            }
+            PlayerEmbed::LocalAmbiguous(files) => {
+                local_listing_embed(
+                    "🔎  Multiple matches",
+                    "Be more specific — these all matched:",
+                    files,
+                )
             }
             PlayerEmbed::LocalPickToPlay(files) => {
                 local_listing_embed(
