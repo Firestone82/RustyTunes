@@ -303,7 +303,7 @@ impl Player {
 
             None => {
                 tracing::info!("No more tracks to play. Stopping playback");
-                clear_activity(ctx.serenity_context());
+                set_idle(ctx.serenity_context());
                 self.stop_playback().await?;
                 Ok(None)
             }
@@ -420,6 +420,7 @@ pub fn set_now_playing(ctx: &serenity_prelude::Context, track: &Track) {
     ctx.set_activity(Some(ActivityData::playing(label)));
 }
 
-pub fn clear_activity(ctx: &serenity_prelude::Context) {
-    ctx.set_activity(None);
+/// Friendly default status shown whenever the bot isn't playing anything.
+pub fn set_idle(ctx: &serenity_prelude::Context) {
+    ctx.set_activity(Some(ActivityData::listening("!help · waiting for !play")));
 }

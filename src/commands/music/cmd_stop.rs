@@ -18,7 +18,7 @@ pub async fn stop(ctx: Context<'_>) -> Result<(), MusicBotError> {
     let mut player: RwLockWriteGuard<Player> = ctx.data().player.write().await;
 
     player.stop_playback().await?;
-    crate::player::player::clear_activity(ctx.serenity_context());
+    crate::player::player::set_idle(ctx.serenity_context());
 
     PlayerEmbed::Stopped
         .to_embed()

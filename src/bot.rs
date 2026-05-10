@@ -170,7 +170,7 @@ impl MusicBotClient {
                             tracing::info!("Bot is alone in voice channel. Leaving.");
 
                             let _ = data.player.write().await.stop_playback().await;
-                            crate::player::player::clear_activity(ctx);
+                            crate::player::player::set_idle(ctx);
 
                             if let Some(manager) = songbird::get(ctx).await {
                                 let _ = manager.remove(guild_id).await;
@@ -240,6 +240,8 @@ impl MusicBotClient {
 
                     tracing::info!("Bot ready");
                     tracing::info!("Logged in as {}", ready.user.name);
+
+                    crate::player::player::set_idle(ctx);
 
                     tracing::info!("Registering commands in guild");
                     poise::builtins::register_in_guild(ctx, &fw.options().commands, ready.guilds[0].id, )

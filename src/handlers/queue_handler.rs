@@ -76,7 +76,7 @@ impl EventHandler for QueueHandler {
             None => {
                 tracing::info!("No more tracks to play. Stopping playback.");
 
-                player::clear_activity(&self.serenity_ctx);
+                player::set_idle(&self.serenity_ctx);
 
                 player.track_handle = None;
                 player.current_track = None;
