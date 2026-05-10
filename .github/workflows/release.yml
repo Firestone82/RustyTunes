@@ -1,37 +1,173 @@
-name: Release Project
+name: Release
 
 on:
-  release:
-    types: [created]
+  push:
+    branches: [ "master" ]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Override release tag (defaults to v<Cargo.toml version>)"
+        required: false
+        type: string
 
 env:
   CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
 
 jobs:
-  release:
-    name: release ${{ matrix.target }}
+  prepare:
+    name: Prepare release
     runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.tag.outputs.tag }}
+      version: ${{ steps.tag.outputs.version }}
+      should_release: ${{ steps.tag.outputs.should_release }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Resolve release tag
+        id: tag
+        run: |
+          if [ -n "${{ github.event.inputs.tag }}" ]; then
+            TAG="${{ github.event.inputs.tag }}"
+          else
+            VERSION=$(grep -m1 '^version' Cargo.toml | sed -E 's/.*"([^"]+)".*/\1/')
+            TAG="v${VERSION}"
+          fi
+          VERSION="${TAG#v}"
+          echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+
+          if git rev-parse "refs/tags/${TAG}" >/dev/null 2>&1; then
+            echo "Tag ${TAG} already exists — skipping release."
+            echo "should_release=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "should_release=true" >> "$GITHUB_OUTPUT"
+          fi
+
+  build:
+    name: Build ${{ matrix.name }}
+    needs: prepare
+    if: needs.prepare.outputs.should_release == 'true'
     strategy:
       fail-fast: false
       matrix:
-        target: [x86_64-pc-windows-gnu, x86_64-unknown-linux-musl]
+        include:
+          - name: linux-x86_64
+            os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            archive: tar.gz
+            bin: RustTunes
+          - name: linux-aarch64
+            os: ubuntu-24.04-arm
+            target: aarch64-unknown-linux-gnu
+            archive: tar.gz
+            bin: RustTunes
+          - name: windows-x86_64
+            os: windows-latest
+            target: x86_64-pc-windows-msvc
+            archive: zip
+            bin: RustTunes.exe
+    runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@master
+      - uses: actions/checkout@v4
 
-      - name: Create environment file
+      - name: Install Linux system dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libopus-dev cmake pkg-config
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.target }}
+
+      - name: Create environment file (Unix)
+        if: runner.os != 'Windows'
         run: cp .env.example .env
 
-      - name: Prepare database
+      - name: Create environment file (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: Copy-Item .env.example .env
+
+      - name: Prepare sqlx offline data
+        shell: bash
         run: |
-          cargo install sqlx-cli
+          cargo install sqlx-cli --no-default-features --features sqlite,rustls --locked
           sqlx database create
           sqlx migrate run
           cargo sqlx prepare
 
-      - name: Compile and release
-        uses: rust-build/rust-build.action@v1.4.5
+      - name: Build release binary
+        run: cargo build --release --target ${{ matrix.target }}
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SQLX_OFFLINE: "true"
+
+      - name: Package artifact (Unix)
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          STAGE="RustTunes-${{ needs.prepare.outputs.version }}-${{ matrix.name }}"
+          mkdir -p "dist/${STAGE}"
+          cp "target/${{ matrix.target }}/release/${{ matrix.bin }}" "dist/${STAGE}/"
+          cp README.md .env.example "dist/${STAGE}/"
+          cp -r migrations "dist/${STAGE}/"
+          tar -czf "dist/${STAGE}.tar.gz" -C dist "${STAGE}"
+          echo "ASSET=dist/${STAGE}.tar.gz" >> "$GITHUB_ENV"
+
+      - name: Package artifact (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $stage = "RustTunes-${{ needs.prepare.outputs.version }}-${{ matrix.name }}"
+          New-Item -ItemType Directory -Force -Path "dist/$stage" | Out-Null
+          Copy-Item "target/${{ matrix.target }}/release/${{ matrix.bin }}" "dist/$stage/"
+          Copy-Item README.md, .env.example "dist/$stage/"
+          Copy-Item -Recurse migrations "dist/$stage/"
+          Compress-Archive -Path "dist/$stage/*" -DestinationPath "dist/$stage.zip"
+          "ASSET=dist/$stage.zip" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
         with:
-          RUSTTARGET: ${{ matrix.target }}
-          EXTRA_FILES: "README.md .env.example migrations"
+          name: RustTunes-${{ matrix.name }}
+          path: ${{ env.ASSET }}
+          if-no-files-found: error
+
+  release:
+    name: Publish GitHub release
+    needs: [prepare, build]
+    if: needs.prepare.outputs.should_release == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download all build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Flatten artifacts
+        run: |
+          mkdir -p release-assets
+          find artifacts -type f \( -name '*.tar.gz' -o -name '*.zip' \) -exec cp {} release-assets/ \;
+          ls -la release-assets
+
+      - name: Create GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ needs.prepare.outputs.tag }}
+          name: ${{ needs.prepare.outputs.tag }}
+          generate_release_notes: true
+          files: release-assets/*
