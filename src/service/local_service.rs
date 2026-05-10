@@ -115,3 +115,28 @@ pub fn track_title(path: &Path) -> String {
         .map(|s| s.to_string())
         .unwrap_or_else(|| "Unknown".to_string())
 }
+
+/// Substring match (case-insensitive) against the file stem. Returns matches
+/// in alphabetical order. Used by `local play` / `local remove` so users can
+/// pick a track by name without typing the full filename.
+pub async fn search_local(query: &str) -> std::io::Result<Vec<PathBuf>> {
+    let needle = query.trim().to_ascii_lowercase();
+    if needle.is_empty() {
+        return list_local_files().await;
+    }
+
+    let all = list_local_files().await?;
+    let mut matches: Vec<PathBuf> = all
+        .into_iter()
+        .filter(|p| {
+            track_title(p).to_ascii_lowercase().contains(&needle)
+        })
+        .collect();
+
+    matches.sort();
+    Ok(matches)
+}
+
+pub async fn delete_local(path: &Path) -> std::io::Result<()> {
+    tokio::fs::remove_file(path).await
+}

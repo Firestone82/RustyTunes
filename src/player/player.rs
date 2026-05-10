@@ -56,16 +56,36 @@ pub struct Track {
 
 #[derive(Debug, Clone)]
 pub enum TrackSource {
-    /// Streamed via yt-dlp from a remote URL (YouTube, Spotify-resolved, etc.)
-    Remote,
+    /// Streamed via yt-dlp from a YouTube URL.
+    YouTube,
+    /// Resolved from Spotify, played via yt-dlp's `ytsearch1:` prefix.
+    Spotify,
     /// A previously downloaded file on the local filesystem.
     Local(PathBuf),
+}
+
+impl TrackSource {
+    pub fn label(&self) -> &'static str {
+        match self {
+            TrackSource::YouTube => "YouTube",
+            TrackSource::Spotify => "Spotify",
+            TrackSource::Local(_) => "Local file",
+        }
+    }
+
+    pub fn emoji(&self) -> &'static str {
+        match self {
+            TrackSource::YouTube => "🎬",
+            TrackSource::Spotify => "🟢",
+            TrackSource::Local(_) => "📁",
+        }
+    }
 }
 
 impl Track {
     pub fn build_input(&self, req_client: &reqwest::Client) -> Input {
         match &self.source {
-            TrackSource::Remote => {
+            TrackSource::YouTube | TrackSource::Spotify => {
                 YoutubeDl::new(req_client.clone(), self.metadata.track_url.clone()).into()
             }
             TrackSource::Local(path) => File::new(path.clone()).into(),

@@ -1,7 +1,17 @@
-use crate::player::player::Track;
+use crate::player::player::{Track, TrackSource};
 use serenity::all::{Color, CreateEmbed, CreateEmbedFooter};
 use std::collections::VecDeque;
 use std::path::PathBuf;
+
+/// Description for embed bodies. Local tracks shouldn't render as a link
+/// (the `file://` URL isn't useful and Discord may strip it), so plain bold
+/// title is used.
+fn track_description(track: &Track) -> String {
+    match &track.source {
+        TrackSource::Local(_) => format!("**{}**", track.metadata.title),
+        _ => format!("**[{}]({})**", track.metadata.title, track.metadata.track_url),
+    }
+}
 
 pub enum PlayerEmbed<'a> {
     NowPlaying(&'a Track),
@@ -27,6 +37,10 @@ pub enum PlayerEmbed<'a> {
     DownloadFailed(String),
     LocalFiles(&'a [PathBuf]),
     LocalEmpty,
+    LocalNoMatch(&'a str),
+    LocalRemoved(&'a str),
+    LocalPickToPlay(&'a [PathBuf]),
+    LocalPickToRemove(&'a [PathBuf]),
 }
 
 impl<'a> PlayerEmbed<'a> {
@@ -35,8 +49,8 @@ impl<'a> PlayerEmbed<'a> {
             PlayerEmbed::NowPlaying(track) => {
                 let mut embed = CreateEmbed::new()
                     .color(Color::DARK_BLUE)
-                    .title("🎵  Now playing")
-                    .description(format!("**[{}]({})**", track.metadata.title, track.metadata.track_url));
+                    .title(format!("🎵  Now playing  ·  {} {}", track.source.emoji(), track.source.label()))
+                    .description(track_description(track));
                 if !track.added_by.is_empty() {
                     embed = embed.footer(CreateEmbedFooter::new(format!("Added by {}", track.added_by)));
                 }
@@ -64,13 +78,13 @@ impl<'a> PlayerEmbed<'a> {
                 CreateEmbed::new()
                     .color(Color::ORANGE)
                     .title("⏸️  Paused")
-                    .description(format!("**[{}]({})**", track.metadata.title, track.metadata.track_url))
+                    .description(track_description(track))
             },
             PlayerEmbed::Resumed(track) => {
                 CreateEmbed::new()
                     .color(Color::DARK_GREEN)
                     .title("▶️  Resumed")
-                    .description(format!("**[{}]({})**", track.metadata.title, track.metadata.track_url))
+                    .description(track_description(track))
             },
             PlayerEmbed::Volume(volume) => {
                 CreateEmbed::new()
@@ -178,25 +192,59 @@ impl<'a> PlayerEmbed<'a> {
                     .description(reason.clone())
             }
             PlayerEmbed::LocalFiles(files) => {
-                let mut embed = CreateEmbed::new()
-                    .color(Color::DARK_BLUE)
-                    .title("📁  Local library")
-                    .description("Pick a number to play a saved track:");
-
-                for (i, path) in files.iter().enumerate() {
-                    let name = path.file_name()
-                        .and_then(|n| n.to_str())
-                        .unwrap_or("?");
-                    embed = embed.field(format!("{}. {}", i + 1, name), "\u{200b}", false);
-                }
-                embed
+                local_listing_embed(
+                    "📁  Local library",
+                    "Saved tracks (use `!local play <name>`):",
+                    files,
+                )
             }
             PlayerEmbed::LocalEmpty => {
                 CreateEmbed::new()
                     .color(Color::DARK_GOLD)
                     .title("📁  Local library empty")
-                    .description("No downloaded tracks yet. Use `!download <url>` to add one.")
+                    .description("No downloaded tracks yet. Use `!local download <url>` to add one.")
+            }
+            PlayerEmbed::LocalNoMatch(query) => {
+                CreateEmbed::new()
+                    .color(Color::DARK_GOLD)
+                    .title("🔎  No local match")
+                    .description(format!("No saved track matches **{}**.", query))
+            }
+            PlayerEmbed::LocalRemoved(name) => {
+                CreateEmbed::new()
+                    .color(Color::DARK_GREEN)
+                    .title("🗑️  Removed")
+                    .description(format!("Deleted **{}** from local library.", name))
+            }
+            PlayerEmbed::LocalPickToPlay(files) => {
+                local_listing_embed(
+                    "📁  Pick a track to play",
+                    "Multiple matches — choose one:",
+                    files,
+                )
+            }
+            PlayerEmbed::LocalPickToRemove(files) => {
+                local_listing_embed(
+                    "🗑️  Pick a track to remove",
+                    "Multiple matches — choose one to delete:",
+                    files,
+                )
             }
         }
     }
+}
+
+fn local_listing_embed(title: &str, description: &str, files: &[PathBuf]) -> CreateEmbed {
+    let mut embed = CreateEmbed::new()
+        .color(Color::DARK_BLUE)
+        .title(title.to_string())
+        .description(description.to_string());
+
+    for (i, path) in files.iter().enumerate() {
+        let name = path.file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or("?");
+        embed = embed.field(format!("{}. {}", i + 1, name), "\u{200b}", false);
+    }
+    embed
 }

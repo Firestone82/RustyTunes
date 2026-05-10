@@ -105,7 +105,7 @@ impl YoutubeClient {
                         id: video_id,
                         metadata,
                         added_by: String::new(),
-                        source: crate::player::player::TrackSource::Remote,
+                        source: crate::player::player::TrackSource::YouTube,
                     }
                 ))
             })
@@ -187,7 +187,7 @@ impl YoutubeClient {
                             id: video_id,
                             metadata,
                             added_by: String::new(),
-                            source: crate::player::player::TrackSource::Remote,
+                            source: crate::player::player::TrackSource::YouTube,
                         }
                     ))
                 })
@@ -265,7 +265,7 @@ impl YoutubeClient {
                     track_url: format!("{SINGLE_URI}{id}"),
                 },
                 added_by: String::new(),
-                source: crate::player::player::TrackSource::Remote,
+                source: crate::player::player::TrackSource::YouTube,
             });
         }
 

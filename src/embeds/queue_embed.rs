@@ -1,4 +1,4 @@
-use crate::player::player::{Playlist, Track};
+use crate::player::player::{Playlist, Track, TrackSource};
 use crate::service::utils_service;
 use serenity::all::{Color, CreateEmbed, CreateEmbedAuthor, CreateEmbedFooter};
 
@@ -39,10 +39,14 @@ impl<'a> QueueEmbed<'a> {
                 let queue_slice: Vec<&Track> = queue.iter().skip(start).take(10).collect::<Vec<&Track>>();
 
                 for (index, track) in queue_slice.iter().enumerate() {
+                    let location = match &track.source {
+                        TrackSource::Local(_) => format!("{} Local file", track.source.emoji()),
+                        _ => track.metadata.track_url.clone(),
+                    };
                     let value = if track.added_by.is_empty() {
-                        track.metadata.track_url.clone()
+                        location
                     } else {
-                        format!("{}\nAdded by: {}", track.metadata.track_url, track.added_by)
+                        format!("{}\nAdded by: {}", location, track.added_by)
                     };
                     embed = embed.field(
                         format!("{}  {}", utils_service::number_to_emoji(index + start + 1), track.metadata.title),
@@ -54,11 +58,17 @@ impl<'a> QueueEmbed<'a> {
                 embed
             }
             QueueEmbed::TrackAdded(track) => {
-                CreateEmbed::new()
+                let mut embed = CreateEmbed::new()
                     .color(Color::DARK_GREEN)
-                    .author(CreateEmbedAuthor::new("🎵  Track added to queue"))
-                    .title(format!("**{}**", track.metadata.title))
-                    .url(track.metadata.track_url.clone())
+                    .author(CreateEmbedAuthor::new(format!(
+                        "🎵  Track added to queue  ·  {} {}",
+                        track.source.emoji(), track.source.label()
+                    )))
+                    .title(format!("**{}**", track.metadata.title));
+                if !matches!(track.source, TrackSource::Local(_)) {
+                    embed = embed.url(track.metadata.track_url.clone());
+                }
+                embed
             }
             QueueEmbed::PlaylistAdded(playlist) => {
                 let embed: CreateEmbed = CreateEmbed::new()
@@ -77,10 +87,14 @@ impl<'a> QueueEmbed<'a> {
                     .description(format!("Skipped {} track(s).", amount))
             }
             QueueEmbed::TrackRemoved(track) => {
+                let body = match &track.source {
+                    TrackSource::Local(_) => format!("**{}**", track.metadata.title),
+                    _ => format!("**[{}]({})**", track.metadata.title, track.metadata.track_url),
+                };
                 CreateEmbed::new()
                     .color(Color::DARK_GREEN)
                     .title("🗑️  Track removed")
-                    .description(format!("**[{}]({})**", track.metadata.title, track.metadata.track_url))
+                    .description(body)
             }
             QueueEmbed::InvalidIndex(index) => {
                 CreateEmbed::new()

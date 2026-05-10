@@ -1,95 +1,16 @@
+//! Helpers for fetching audio into the local library. Exposed for the
+//! `local download` subcommand in `cmd_local`.
+
 use crate::bot::{Context, MusicBotError};
-use crate::checks::channel_checks::check_author_in_same_voice_channel;
-use crate::embeds::player_embed::PlayerEmbed;
-use crate::embeds::queue_embed::QueueEmbed;
-use crate::player::player::{Player, Track, TrackMetadata, TrackSource};
-use crate::service::channel_service;
-use crate::service::embed_service::SendEmbed;
+use crate::player::player::{Track, TrackMetadata, TrackSource};
 use crate::service::local_service;
 use serenity::all::Attachment;
 use std::path::PathBuf;
-use tokio::sync::RwLockWriteGuard;
-
-/// Download an audio file (URL or attachment) and play it.
-#[poise::command(
-    prefix_command, slash_command,
-    check = "check_author_in_same_voice_channel",
-)]
-pub async fn download(
-    ctx: Context<'_>,
-    #[description = "Audio file to upload"] file: Option<Attachment>,
-    #[description = "URL of the audio file to download"]
-    #[rest]
-    url: Option<String>,
-) -> Result<(), MusicBotError> {
-    let source = match resolve_source(ctx, file, url) {
-        Some(s) => s,
-        None => {
-            PlayerEmbed::DownloadFailed(
-                "Provide a URL or attach an audio file to your message.".to_string(),
-            )
-                .to_embed()
-                .send_context(ctx, true, Some(30))
-                .await?;
-            return Ok(());
-        }
-    };
-
-    PlayerEmbed::Downloading(source.display_label())
-        .to_embed()
-        .send_context(ctx, true, Some(15))
-        .await?;
-
-    let path = match save_to_library(ctx, &source).await {
-        Ok(path) => path,
-        Err(error) => {
-            PlayerEmbed::DownloadFailed(error.to_string())
-                .to_embed()
-                .send_context(ctx, true, Some(30))
-                .await?;
-            return Ok(());
-        }
-    };
-
-    let display_name = path
-        .file_name()
-        .and_then(|n| n.to_str())
-        .unwrap_or("download")
-        .to_string();
-
-    PlayerEmbed::Downloaded(&display_name)
-        .to_embed()
-        .send_context(ctx, true, Some(30))
-        .await?;
-
-    let track = build_local_track(path, ctx.author().name.clone());
-    let mut player: RwLockWriteGuard<Player> = ctx.data().player.write().await;
-
-    if player.is_playing {
-        QueueEmbed::TrackAdded(&track)
-            .to_embed()
-            .send_context(ctx, true, Some(30))
-            .await?;
-    }
-
-    if let Err(error) = player.add_track_to_queue(ctx, track, false).await {
-        drop(player);
-        PlayerEmbed::PlaybackErrorEmbed(error.to_string())
-            .to_embed()
-            .send_context(ctx, true, Some(30))
-            .await?;
-        return Ok(());
-    }
-    drop(player);
-
-    channel_service::join_user_channel(ctx).await?;
-    Ok(())
-}
 
 /// What we're pulling into the library. Either an attached Discord file
 /// (which already carries a content type and filename) or a raw URL we have
 /// to inspect after the fact.
-enum DownloadSource {
+pub enum DownloadSource {
     Attachment {
         url: String,
         filename: String,
@@ -99,7 +20,7 @@ enum DownloadSource {
 }
 
 impl DownloadSource {
-    fn display_label(&self) -> &str {
+    pub fn display_label(&self) -> &str {
         match self {
             DownloadSource::Attachment { filename, .. } => filename,
             DownloadSource::Url(url) => url,
@@ -114,7 +35,7 @@ impl DownloadSource {
     }
 }
 
-fn resolve_source(
+pub fn resolve_source(
     ctx: Context<'_>,
     file: Option<Attachment>,
     url: Option<String>,
@@ -144,9 +65,14 @@ fn resolve_source(
         .map(DownloadSource::Url)
 }
 
-async fn save_to_library(
+/// Download `source` into the downloads directory and return the saved path.
+/// If `name_override` is given, the file is saved under that name (with the
+/// extension preserved or inferred); otherwise we use the attachment filename
+/// or derive one from the response/URL.
+pub async fn save_to_library(
     ctx: Context<'_>,
     source: &DownloadSource,
+    name_override: Option<&str>,
 ) -> Result<PathBuf, MusicBotError> {
     let url = source.url();
 
@@ -168,7 +94,7 @@ async fn save_to_library(
         )));
     }
 
-    let filename = match source {
+    let auto_name = match source {
         DownloadSource::Attachment { filename, content_type, .. } => {
             if !is_audio(filename, content_type.as_deref()) {
                 return Err(MusicBotError::InternalError(format!(
@@ -177,7 +103,7 @@ async fn save_to_library(
             }
             let mut name = local_service::sanitize_filename(filename);
             // Discord allows audio files without recognized extensions; add
-            // one so `!local` can find the file later.
+            // one so `local list` can find the file later.
             if !local_service::has_audio_extension(&name) {
                 let ext = audio_ext_from_content_type(content_type.as_deref())
                     .unwrap_or("mp3");
@@ -186,6 +112,11 @@ async fn save_to_library(
             name
         }
         DownloadSource::Url(_) => filename_from_response(url, &response),
+    };
+
+    let filename = match name_override {
+        Some(custom) => apply_name_override(custom, &auto_name),
+        None => auto_name,
     };
 
     let target = local_service::unique_path(&dir, &filename).await;
@@ -197,6 +128,25 @@ async fn save_to_library(
         .map_err(|e| MusicBotError::InternalError(format!("Failed to write file: {e}")))?;
 
     Ok(target)
+}
+
+/// Apply a user-supplied save name. The user's name takes precedence; we only
+/// borrow the auto-detected extension if they didn't supply one of their own.
+fn apply_name_override(custom: &str, auto_name: &str) -> String {
+    let cleaned = local_service::sanitize_filename(custom);
+    if local_service::has_audio_extension(&cleaned) {
+        return cleaned;
+    }
+    let ext = extension_of(auto_name).unwrap_or("mp3");
+    format!("{cleaned}.{ext}")
+}
+
+fn extension_of(name: &str) -> Option<&str> {
+    let idx = name.rfind('.')?;
+    if idx == 0 || idx == name.len() - 1 {
+        return None;
+    }
+    Some(&name[idx + 1..])
 }
 
 fn is_audio(filename: &str, content_type: Option<&str>) -> bool {
