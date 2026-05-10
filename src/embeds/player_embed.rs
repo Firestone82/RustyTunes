@@ -28,6 +28,7 @@ pub enum PlayerEmbed<'a> {
     SearchExpired,
     SearchCancelled,
     NoResults(String),
+    QuotaExceeded,
     PlaybackErrorEmbed(String),
     InactivityLeave,
     History(&'a VecDeque<Track>),
@@ -154,6 +155,12 @@ impl<'a> PlayerEmbed<'a> {
                     .color(Color::DARK_GOLD)
                     .title("🔎  No results")
                     .description(format!("No tracks found for: **{}**", query))
+            }
+            PlayerEmbed::QuotaExceeded => {
+                CreateEmbed::new()
+                    .color(Color::DARK_GOLD)
+                    .title("🚧  YouTube API quota exceeded")
+                    .description("The bot has hit YouTube's daily search quota. Please try again later or ask the owner to provide a fresh API key.")
             }
             PlayerEmbed::PlaybackErrorEmbed(message) => {
                 CreateEmbed::new()

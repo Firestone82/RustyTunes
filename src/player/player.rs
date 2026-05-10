@@ -16,7 +16,9 @@ use tokio::sync::{Mutex, MutexGuard};
 
 #[derive(Debug, thiserror::Error)]
 pub enum PlaybackError {
-    #[error("Whoops, an internal error occurred: {0}")]
+    // Bare display string — `MusicBotError::InternalError` already adds the
+    // user-facing "Whoops…" prefix when this is converted at the boundary.
+    #[error("{0}")]
     InternalError(String),
 
     #[error("No tracks in queue")]
@@ -166,11 +168,7 @@ impl Player {
         }
         tracing::debug!("Queue length: {}", self.queue.len());
 
-        if !self.is_playing {
-            self.start_playback(ctx).await?;
-        }
-
-        Ok(())
+        self.kick_off_playback(ctx, top).await
     }
 
     pub async fn add_track_to_queue(&mut self, ctx: Context<'_>, track: Track, top: bool) -> Result<(), PlaybackError> {
@@ -184,10 +182,25 @@ impl Player {
         }
         tracing::debug!("Queue length: {}", self.queue.len());
 
-        if !self.is_playing {
+        self.kick_off_playback(ctx, top).await
+    }
+
+    /// Decide what to do after appending to the queue:
+    /// - paused + top:    skip the currently-paused track and play the new one immediately
+    /// - paused + !top:   resume the currently-paused track
+    /// - idle:            start playback from the head of the queue
+    /// - already playing: nothing to do
+    async fn kick_off_playback(&mut self, ctx: Context<'_>, top: bool) -> Result<(), PlaybackError> {
+        if self.is_paused {
+            if top {
+                self.is_paused = false;
+                self.next_track(ctx).await?;
+            } else {
+                self.resume().await?;
+            }
+        } else if !self.is_playing {
             self.start_playback(ctx).await?;
         }
-
         Ok(())
     }
 

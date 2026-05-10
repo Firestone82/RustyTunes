@@ -23,9 +23,11 @@ pub enum YouTubeSearchResult {
 
 #[derive(thiserror::Error, Debug)]
 pub enum SearchError {
-    #[error("Whoops, an internal error occurred: {0}")]
+    // Display strings here are bare so they don't double-up with
+    // `MusicBotError::InternalError`'s "Whoops…" prefix.
+    #[error("{0}")]
     InternalError(String),
-    
+
     #[error("API thrown error: {0}")]
     ApiError(String),
 
@@ -34,10 +36,24 @@ pub enum SearchError {
 
     #[error("Playlist not found: {0}")]
     PlaylistNotFound(String),
+
+    #[error("YouTube API quota exceeded — please try again later or contact the bot owner.")]
+    QuotaExceeded,
 }
 
 const SINGLE_URI: &str = "https://www.youtube.com/watch?v=";
 const PLAYLIST_URI: &str = "https://www.youtube.com/playlist?list=";
+
+/// Convert a YouTube Data API error into the right `SearchError` variant.
+/// The 403 quota-exceeded payload is buried inside the response body string,
+/// so we sniff for it and surface a friendly variant.
+fn map_api_error<E: std::fmt::Display>(error: E) -> SearchError {
+    let message = error.to_string();
+    if message.contains("quotaExceeded") || message.contains("youtube.quota") {
+        return SearchError::QuotaExceeded;
+    }
+    SearchError::ApiError(message)
+}
 
 impl Default for YoutubeClient {
     fn default() -> Self {
@@ -80,7 +96,7 @@ impl YoutubeClient {
 
         let (_, response) = request.doit()
             .await
-            .map_err(|e| SearchError::ApiError(e.to_string()))?;
+            .map_err(map_api_error)?;
 
         let items: Vec<SearchResult> = response.items
             .ok_or_else(|| SearchError::VideoNotFound(format!("No video found for url: {}", url)))?;
@@ -138,7 +154,7 @@ impl YoutubeClient {
         
         let (_, response) = playlist_request.doit()
             .await
-            .map_err(|e| SearchError::ApiError(e.to_string()))?;
+            .map_err(map_api_error)?;
 
         if let Some(playlist) = response.items {
             if playlist.is_empty() {
@@ -162,7 +178,7 @@ impl YoutubeClient {
 
             let (_, response) = tracks_request.doit()
                 .await
-                .map_err(|e| SearchError::ApiError(e.to_string()))?;
+                .map_err(map_api_error)?;
 
             let items: Vec<PlaylistItem> = response.items
                 .ok_or_else(|| SearchError::VideoNotFound(format!("No video found for url: {}", url)))?;

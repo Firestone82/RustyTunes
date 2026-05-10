@@ -11,7 +11,9 @@ use time::{Date, PrimitiveDateTime, Time, UtcOffset};
 
 #[derive(Debug, thiserror::Error)]
 pub enum NotifierError {
-    #[error("Whoops, an internal error occurred: {0}")]
+    // Bare display string — `MusicBotError::InternalError` already adds the
+    // user-facing "Whoops…" prefix when this is converted at the boundary.
+    #[error("{0}")]
     InternalError(String),
 
     #[error("Invalid time format")]
