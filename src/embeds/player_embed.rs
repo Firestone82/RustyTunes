@@ -5,10 +5,12 @@ use std::path::PathBuf;
 
 /// Description for embed bodies. Local tracks shouldn't render as a link
 /// (the `file://` URL isn't useful and Discord may strip it), so plain bold
-/// title is used.
+/// title is used. Spotify tracks resolved without a permalink (no API id)
+/// also fall back to bold-only so we don't emit broken `[title]()` markdown.
 fn track_description(track: &Track) -> String {
     match &track.source {
         TrackSource::Local(_) => format!("**{}**", track.metadata.title),
+        _ if track.metadata.track_url.is_empty() => format!("**{}**", track.metadata.title),
         _ => format!("**[{}]({})**", track.metadata.title, track.metadata.track_url),
     }
 }
@@ -28,6 +30,7 @@ pub enum PlayerEmbed<'a> {
     SearchExpired,
     SearchCancelled,
     NoResults(String),
+    QuotaExceeded,
     PlaybackErrorEmbed(String),
     InactivityLeave,
     History(&'a VecDeque<Track>),
@@ -49,10 +52,7 @@ impl<'a> PlayerEmbed<'a> {
     pub fn to_embed(&self) -> CreateEmbed {
         match self {
             PlayerEmbed::NowPlaying(track) => {
-                let song = match &track.source {
-                    TrackSource::Local(_) => format!("**{}**", track.metadata.title),
-                    _ => format!("**[{}]({})**", track.metadata.title, track.metadata.track_url),
-                };
+                let song = track_description(track);
                 let author = if track.metadata.channel.is_empty() {
                     "—".to_string()
                 } else {
@@ -155,6 +155,12 @@ impl<'a> PlayerEmbed<'a> {
                     .title("🔎  No results")
                     .description(format!("No tracks found for: **{}**", query))
             }
+            PlayerEmbed::QuotaExceeded => {
+                CreateEmbed::new()
+                    .color(Color::DARK_GOLD)
+                    .title("🚧  YouTube API quota exceeded")
+                    .description("The bot has hit YouTube's daily search quota. Please try again later or ask the owner to provide a fresh API key.")
+            }
             PlayerEmbed::PlaybackErrorEmbed(message) => {
                 CreateEmbed::new()
                     .color(Color::DARK_RED)
@@ -174,9 +180,16 @@ impl<'a> PlayerEmbed<'a> {
                     .description("Pick a number to replay a track:");
 
                 for (i, track) in history.iter().rev().enumerate() {
+                    let location = match &track.source {
+                        TrackSource::Local(_) => format!("{} Local file", track.source.emoji()),
+                        _ if track.metadata.track_url.is_empty() => {
+                            format!("{} {}", track.source.emoji(), track.source.label())
+                        }
+                        _ => track.metadata.track_url.clone(),
+                    };
                     embed = embed.field(
                         format!("{}. {}", i + 1, track.metadata.title),
-                        track.metadata.track_url.clone(),
+                        location,
                         false,
                     );
                 }

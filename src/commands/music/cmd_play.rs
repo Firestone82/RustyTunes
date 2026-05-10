@@ -215,6 +215,13 @@ async fn do_play(ctx: Context<'_>, track_source: String, top: bool) -> Result<()
                 .await?;
         }
 
+        Err(SearchError::QuotaExceeded) => {
+            PlayerEmbed::QuotaExceeded
+                .to_embed()
+                .send_context(ctx, true, Some(60))
+                .await?;
+        }
+
         Err(error) => {
             return Err(MusicBotError::from(error));
         }

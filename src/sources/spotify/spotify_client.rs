@@ -4,6 +4,7 @@ use base64::Engine;
 use dotenv::var;
 use regex::Regex;
 use serde::Deserialize;
+use serde_json::Value as JsonValue;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::sync::Mutex;
@@ -62,7 +63,10 @@ struct SpArtist {
 #[derive(Deserialize)]
 struct SpTrack {
     id: Option<String>,
-    name: String,
+    // Some podcast episodes or restricted items may omit these fields.
+    #[serde(default)]
+    name: Option<String>,
+    #[serde(default)]
     artists: Vec<SpArtist>,
 }
 
@@ -75,21 +79,22 @@ struct SpPlaylist {
     tracks: SpPlaylistTracks,
 }
 
+// `items` are kept as raw JSON so a single malformed entry (podcast episodes
+// with unexpected shapes, locally-uploaded files, region-restricted tracks)
+// can be skipped individually instead of aborting the whole page parse.
+// Both fields default so an empty `{}` response is handled gracefully.
 #[derive(Deserialize)]
 struct SpPlaylistTracks {
-    items: Vec<SpPlaylistItem>,
+    #[serde(default)]
+    items: Vec<JsonValue>,
     #[serde(default)]
     next: Option<String>,
 }
 
 #[derive(Deserialize)]
-struct SpPlaylistItem {
-    track: Option<SpTrack>,
-}
-
-#[derive(Deserialize)]
 struct SpPagedTracks {
-    items: Vec<SpPlaylistItem>,
+    #[serde(default)]
+    items: Vec<JsonValue>,
     #[serde(default)]
     next: Option<String>,
 }
@@ -213,35 +218,45 @@ impl SpotifyClient {
         let response = self.http
             .get(format!("{SPOTIFY_API}/playlists/{id}"))
             .bearer_auth(token)
-            .query(&[("fields", "id,name,description,tracks(items(track(id,name,artists(name))),next)")])
+            // No `fields` filter: serde ignores unknown fields, and keeping the
+            // filter out ensures the `next` URL Spotify generates has no
+            // embedded field constraints that break when fetched standalone.
+            .query(&[("limit", "100")])
             .send()
             .await?;
 
         if response.status() == reqwest::StatusCode::NOT_FOUND {
             return Err(SpotifyError::PlaylistNotFound(id.to_string()));
         }
-        if !response.status().is_success() {
-            let status = response.status();
-            let body = response.text().await.unwrap_or_default();
+        let status = response.status();
+        let body = response.text().await.unwrap_or_default();
+        if !status.is_success() {
             return Err(SpotifyError::ApiError(format!("playlist fetch failed: {status} {body}")));
         }
 
-        Ok(response.json().await?)
+        serde_json::from_str(&body).map_err(|e| {
+            tracing::error!("Failed to decode playlist response: {e}");
+            SpotifyError::ApiError(format!("decode playlist failed: {e}"))
+        })
     }
 
     async fn fetch_playlist_page(&self, next_url: &str) -> Result<SpPagedTracks, SpotifyError> {
+        tracing::debug!("Fetching playlist page: {next_url}");
         let token = self.access_token().await?;
         let response = self.http
             .get(next_url)
             .bearer_auth(token)
             .send()
             .await?;
-        if !response.status().is_success() {
-            let status = response.status();
-            let body = response.text().await.unwrap_or_default();
+        let status = response.status();
+        let body = response.text().await.unwrap_or_default();
+        if !status.is_success() {
             return Err(SpotifyError::ApiError(format!("playlist page failed: {status} {body}")));
         }
-        Ok(response.json().await?)
+        serde_json::from_str(&body).map_err(|e| {
+            tracing::error!("Failed to decode playlist page: {e}; body snippet: {}", body.chars().take(400).collect::<String>());
+            SpotifyError::ApiError(format!("decode playlist page failed: {e}"))
+        })
     }
 
     pub async fn search(&self, url: &str) -> Result<SpotifySearchResult, SpotifyError> {
@@ -256,26 +271,16 @@ impl SpotifyClient {
             SpotifyKind::Playlist => {
                 let playlist = self.fetch_playlist(&id).await?;
 
-                let mut sp_tracks: Vec<SpTrack> = playlist.tracks.items
-                    .into_iter()
-                    .filter_map(|item| item.track)
-                    .filter(|t| t.id.is_some())
-                    .collect();
+                let mut sp_tracks: Vec<SpTrack> = extract_tracks(playlist.tracks.items);
 
+                // Walk the `next` link until the API stops handing them out so
+                // we pull the entire playlist instead of just the first 100.
                 let mut next = playlist.tracks.next;
                 while let Some(url) = next {
-                    if sp_tracks.len() >= 100 {
-                        break;
-                    }
                     let page = self.fetch_playlist_page(&url).await?;
-                    sp_tracks.extend(
-                        page.items.into_iter()
-                            .filter_map(|item| item.track)
-                            .filter(|t| t.id.is_some())
-                    );
+                    sp_tracks.extend(extract_tracks(page.items));
                     next = page.next;
                 }
-                sp_tracks.truncate(100);
 
                 let tracks: Vec<Track> = sp_tracks.iter().map(build_track).collect();
 
@@ -297,15 +302,38 @@ impl SpotifyClient {
     }
 }
 
+// Pull `track` out of each playlist item and best-effort convert to SpTrack.
+// Anything that fails (episodes with unexpected shapes, malformed entries) is
+// logged at debug and skipped so one bad row doesn't kill the whole playlist.
+fn extract_tracks(items: Vec<JsonValue>) -> Vec<SpTrack> {
+    items.into_iter()
+        .filter_map(|mut item| {
+            let track = item.get_mut("track")?.take();
+            if track.is_null() {
+                return None;
+            }
+            match serde_json::from_value::<SpTrack>(track) {
+                Ok(t) => Some(t),
+                Err(e) => {
+                    tracing::debug!("Skipping unparseable Spotify item: {e}");
+                    None
+                }
+            }
+        })
+        .filter(|t| t.id.is_some() && t.name.as_deref().map_or(false, |n| !n.is_empty()))
+        .collect()
+}
+
 fn track_query(track: &SpTrack) -> String {
+    let name = track.name.as_deref().unwrap_or("");
     let artists = track.artists.iter()
         .map(|a| a.name.as_str())
         .collect::<Vec<_>>()
         .join(", ");
     if artists.is_empty() {
-        track.name.clone()
+        name.to_string()
     } else {
-        format!("{} - {}", artists, track.name)
+        format!("{} - {}", artists, name)
     }
 }
 
@@ -313,17 +341,29 @@ fn track_query(track: &SpTrack) -> String {
 // `ytsearch1:` prefix. Avoids the YouTube Data API (and its 100-unit
 // per-search quota cost) entirely — a Spotify playlist with many tracks
 // would otherwise blow through the daily 10k quota almost immediately.
+//
+// `track_url` carries the Spotify permalink so embeds render a real link
+// (or omit it gracefully when the API didn't return an id). `play_url`
+// holds the `ytsearch1:` query that yt-dlp actually consumes.
 fn build_track(sp: &SpTrack) -> Track {
     let query = track_query(sp);
-    let id = sp.id.clone().unwrap_or_else(|| query.clone());
     let channel = sp.artists.iter().map(|a| a.name.clone()).collect::<Vec<_>>().join(", ");
+    let title = sp.name.clone().unwrap_or_else(|| query.clone());
+    let (id, track_url) = match &sp.id {
+        Some(spotify_id) => (
+            spotify_id.clone(),
+            format!("https://open.spotify.com/track/{spotify_id}"),
+        ),
+        None => (query.clone(), String::new()),
+    };
     Track {
         id: id.clone(),
         metadata: TrackMetadata {
             id,
-            title: sp.name.clone(),
+            title,
             channel,
-            track_url: format!("ytsearch1:{query}"),
+            track_url,
+            play_url: Some(format!("ytsearch1:{query}")),
         },
         added_by: String::new(),
         source: crate::player::player::TrackSource::Spotify,

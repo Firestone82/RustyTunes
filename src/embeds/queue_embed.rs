@@ -2,6 +2,19 @@ use crate::player::player::{Playlist, Track, TrackSource};
 use crate::service::utils_service;
 use serenity::all::{Color, CreateEmbed, CreateEmbedAuthor, CreateEmbedFooter};
 
+/// "Location" line shown under each track in queue embeds. Local files don't
+/// have a useful URL; Spotify tracks without a permalink fall back to a label
+/// instead of an empty cell.
+fn track_location(track: &Track) -> String {
+    match &track.source {
+        TrackSource::Local(_) => format!("{} Local file", track.source.emoji()),
+        _ if track.metadata.track_url.is_empty() => {
+            format!("{} {}", track.source.emoji(), track.source.label())
+        }
+        _ => track.metadata.track_url.clone(),
+    }
+}
+
 pub enum QueueEmbed<'a> {
     IsEmpty,
     Current { queue: &'a [Track], page: usize },
@@ -39,10 +52,7 @@ impl<'a> QueueEmbed<'a> {
                 let queue_slice: Vec<&Track> = queue.iter().skip(start).take(10).collect::<Vec<&Track>>();
 
                 for (index, track) in queue_slice.iter().enumerate() {
-                    let location = match &track.source {
-                        TrackSource::Local(_) => format!("{} Local file", track.source.emoji()),
-                        _ => track.metadata.track_url.clone(),
-                    };
+                    let location = track_location(track);
                     let value = if track.added_by.is_empty() {
                         location
                     } else {
@@ -65,7 +75,9 @@ impl<'a> QueueEmbed<'a> {
                         track.source.emoji(), track.source.label()
                     )))
                     .title(format!("**{}**", track.metadata.title));
-                if !matches!(track.source, TrackSource::Local(_)) {
+                if !matches!(track.source, TrackSource::Local(_))
+                    && !track.metadata.track_url.is_empty()
+                {
                     embed = embed.url(track.metadata.track_url.clone());
                 }
                 embed
@@ -89,6 +101,7 @@ impl<'a> QueueEmbed<'a> {
             QueueEmbed::TrackRemoved(track) => {
                 let body = match &track.source {
                     TrackSource::Local(_) => format!("**{}**", track.metadata.title),
+                    _ if track.metadata.track_url.is_empty() => format!("**{}**", track.metadata.title),
                     _ => format!("**[{}]({})**", track.metadata.title, track.metadata.track_url),
                 };
                 CreateEmbed::new()

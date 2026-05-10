@@ -16,7 +16,9 @@ use tokio::sync::{Mutex, MutexGuard};
 
 #[derive(Debug, thiserror::Error)]
 pub enum PlaybackError {
-    #[error("Whoops, an internal error occurred: {0}")]
+    // Bare display string — `MusicBotError::InternalError` already adds the
+    // user-facing "Whoops…" prefix when this is converted at the boundary.
+    #[error("{0}")]
     InternalError(String),
 
     #[error("No tracks in queue")]
@@ -87,7 +89,13 @@ impl Track {
     pub fn build_input(&self, req_client: &reqwest::Client) -> Input {
         match &self.source {
             TrackSource::YouTube | TrackSource::Spotify => {
-                YoutubeDl::new(req_client.clone(), self.metadata.track_url.clone()).into()
+                // `play_url` lets sources (like Spotify) ship a yt-dlp-friendly
+                // input string while keeping `track_url` set to the user-facing
+                // permalink that we render in embeds.
+                let input_url = self.metadata.play_url
+                    .clone()
+                    .unwrap_or_else(|| self.metadata.track_url.clone());
+                YoutubeDl::new(req_client.clone(), input_url).into()
             }
             TrackSource::Local(path) => File::new(path.clone()).into(),
         }
@@ -100,6 +108,9 @@ pub struct TrackMetadata {
     pub title: String,
     pub channel: String,
     pub track_url: String,
+    /// Optional override used by `build_input`. For Spotify this is the
+    /// `ytsearch1:` query, while `track_url` stays the Spotify permalink.
+    pub play_url: Option<String>,
 }
 
 pub struct Player {
@@ -166,11 +177,7 @@ impl Player {
         }
         tracing::debug!("Queue length: {}", self.queue.len());
 
-        if !self.is_playing {
-            self.start_playback(ctx).await?;
-        }
-
-        Ok(())
+        self.kick_off_playback(ctx, top).await
     }
 
     pub async fn add_track_to_queue(&mut self, ctx: Context<'_>, track: Track, top: bool) -> Result<(), PlaybackError> {
@@ -184,10 +191,25 @@ impl Player {
         }
         tracing::debug!("Queue length: {}", self.queue.len());
 
-        if !self.is_playing {
+        self.kick_off_playback(ctx, top).await
+    }
+
+    /// Decide what to do after appending to the queue:
+    /// - paused + top:    skip the currently-paused track and play the new one immediately
+    /// - paused + !top:   resume the currently-paused track
+    /// - idle:            start playback from the head of the queue
+    /// - already playing: nothing to do
+    async fn kick_off_playback(&mut self, ctx: Context<'_>, top: bool) -> Result<(), PlaybackError> {
+        if self.is_paused {
+            if top {
+                self.is_paused = false;
+                self.next_track(ctx).await?;
+            } else {
+                self.resume().await?;
+            }
+        } else if !self.is_playing {
             self.start_playback(ctx).await?;
         }
-
         Ok(())
     }
 
@@ -413,10 +435,10 @@ impl Player {
     }
 }
 
-/// Set the bot's Discord activity to "Playing <title>". The shard's local
-/// presence is updated immediately and Discord propagates it to other users.
+/// Set the bot's Discord activity. We bake the "Playing " word into the label
+/// itself because some Discord clients hide the activity-type prefix on bots.
 pub fn set_now_playing(ctx: &serenity_prelude::Context, track: &Track) {
-    let label = format!("{} · {}", track.metadata.title, track.source.label());
+    let label = format!("Playing {} · {}", track.metadata.title, track.source.label());
     ctx.set_activity(Some(ActivityData::playing(label)));
 }
 

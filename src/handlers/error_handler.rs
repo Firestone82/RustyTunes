@@ -32,10 +32,12 @@ pub async fn handle(error: poise::FrameworkError<'_, MusicBotData, MusicBotError
             panic!("Failed to start bot: {:?}", error)
         },
 
-        // Command failed to execute
+        // Command failed to execute. `error` is already a MusicBotError whose
+        // Display impl carries the user-facing prefix — wrapping it again would
+        // produce nested "Whoops, an internal error occurred:" prefixes.
         poise::FrameworkError::Command { error, ctx, .. } => {
             tracing::error!("Error in command `{}`: {:?}", ctx.command().name, error);
-            let embed = BotEmbed::Error(MusicBotError::InternalError(error.to_string())).to_embed();
+            let embed = BotEmbed::Error(error).to_embed();
             let _ = ctx.send(poise::CreateReply::default().embed(embed).reply(true)).await;
             schedule_prefix_delete(ctx);
         }
