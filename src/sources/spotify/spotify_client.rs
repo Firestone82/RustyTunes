@@ -82,8 +82,10 @@ struct SpPlaylist {
 // `items` are kept as raw JSON so a single malformed entry (podcast episodes
 // with unexpected shapes, locally-uploaded files, region-restricted tracks)
 // can be skipped individually instead of aborting the whole page parse.
+// Both fields default so an empty `{}` response is handled gracefully.
 #[derive(Deserialize)]
 struct SpPlaylistTracks {
+    #[serde(default)]
     items: Vec<JsonValue>,
     #[serde(default)]
     next: Option<String>,
@@ -91,6 +93,7 @@ struct SpPlaylistTracks {
 
 #[derive(Deserialize)]
 struct SpPagedTracks {
+    #[serde(default)]
     items: Vec<JsonValue>,
     #[serde(default)]
     next: Option<String>,
@@ -215,12 +218,10 @@ impl SpotifyClient {
         let response = self.http
             .get(format!("{SPOTIFY_API}/playlists/{id}"))
             .bearer_auth(token)
-            // Explicitly request the maximum 100 items per page so the `next`
-            // link is always present for playlists with more than 100 tracks.
-            .query(&[
-                ("fields", "id,name,description,tracks(items(track(id,name,artists(name))),next)"),
-                ("limit", "100"),
-            ])
+            // No `fields` filter: serde ignores unknown fields, and keeping the
+            // filter out ensures the `next` URL Spotify generates has no
+            // embedded field constraints that break when fetched standalone.
+            .query(&[("limit", "100")])
             .send()
             .await?;
 
@@ -240,6 +241,7 @@ impl SpotifyClient {
     }
 
     async fn fetch_playlist_page(&self, next_url: &str) -> Result<SpPagedTracks, SpotifyError> {
+        tracing::debug!("Fetching playlist page: {next_url}");
         let token = self.access_token().await?;
         let response = self.http
             .get(next_url)
