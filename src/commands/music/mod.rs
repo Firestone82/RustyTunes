@@ -8,6 +8,7 @@ pub mod cmd_pause;
 pub mod cmd_play;
 pub mod cmd_playing;
 pub mod cmd_queue;
+pub mod cmd_remove;
 pub mod cmd_resume;
 pub mod cmd_shuffle;
 pub mod cmd_skip;
