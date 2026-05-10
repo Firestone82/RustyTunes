@@ -180,9 +180,16 @@ impl<'a> PlayerEmbed<'a> {
                     .description("Pick a number to replay a track:");
 
                 for (i, track) in history.iter().rev().enumerate() {
+                    let location = match &track.source {
+                        TrackSource::Local(_) => format!("{} Local file", track.source.emoji()),
+                        _ if track.metadata.track_url.is_empty() => {
+                            format!("{} {}", track.source.emoji(), track.source.label())
+                        }
+                        _ => track.metadata.track_url.clone(),
+                    };
                     embed = embed.field(
                         format!("{}. {}", i + 1, track.metadata.title),
-                        track.metadata.track_url.clone(),
+                        location,
                         false,
                     );
                 }

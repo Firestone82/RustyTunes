@@ -213,7 +213,12 @@ impl SpotifyClient {
         let response = self.http
             .get(format!("{SPOTIFY_API}/playlists/{id}"))
             .bearer_auth(token)
-            .query(&[("fields", "id,name,description,tracks(items(track(id,name,artists(name))),next)")])
+            // Explicitly request the maximum 100 items per page so the `next`
+            // link is always present for playlists with more than 100 tracks.
+            .query(&[
+                ("fields", "id,name,description,tracks(items(track(id,name,artists(name))),next)"),
+                ("limit", "100"),
+            ])
             .send()
             .await?;
 
