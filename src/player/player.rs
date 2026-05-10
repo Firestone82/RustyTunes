@@ -89,7 +89,13 @@ impl Track {
     pub fn build_input(&self, req_client: &reqwest::Client) -> Input {
         match &self.source {
             TrackSource::YouTube | TrackSource::Spotify => {
-                YoutubeDl::new(req_client.clone(), self.metadata.track_url.clone()).into()
+                // `play_url` lets sources (like Spotify) ship a yt-dlp-friendly
+                // input string while keeping `track_url` set to the user-facing
+                // permalink that we render in embeds.
+                let input_url = self.metadata.play_url
+                    .clone()
+                    .unwrap_or_else(|| self.metadata.track_url.clone());
+                YoutubeDl::new(req_client.clone(), input_url).into()
             }
             TrackSource::Local(path) => File::new(path.clone()).into(),
         }
@@ -102,6 +108,9 @@ pub struct TrackMetadata {
     pub title: String,
     pub channel: String,
     pub track_url: String,
+    /// Optional override used by `build_input`. For Spotify this is the
+    /// `ytsearch1:` query, while `track_url` stays the Spotify permalink.
+    pub play_url: Option<String>,
 }
 
 pub struct Player {

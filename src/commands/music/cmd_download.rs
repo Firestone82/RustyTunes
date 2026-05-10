@@ -204,6 +204,7 @@ pub fn build_local_track(path: PathBuf, added_by: String) -> Track {
             title,
             channel: "Local file".to_string(),
             track_url: display_url,
+            play_url: None,
         },
         added_by,
         source: TrackSource::Local(path),

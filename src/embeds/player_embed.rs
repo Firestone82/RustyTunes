@@ -5,10 +5,12 @@ use std::path::PathBuf;
 
 /// Description for embed bodies. Local tracks shouldn't render as a link
 /// (the `file://` URL isn't useful and Discord may strip it), so plain bold
-/// title is used.
+/// title is used. Spotify tracks resolved without a permalink (no API id)
+/// also fall back to bold-only so we don't emit broken `[title]()` markdown.
 fn track_description(track: &Track) -> String {
     match &track.source {
         TrackSource::Local(_) => format!("**{}**", track.metadata.title),
+        _ if track.metadata.track_url.is_empty() => format!("**{}**", track.metadata.title),
         _ => format!("**[{}]({})**", track.metadata.title, track.metadata.track_url),
     }
 }
@@ -50,10 +52,7 @@ impl<'a> PlayerEmbed<'a> {
     pub fn to_embed(&self) -> CreateEmbed {
         match self {
             PlayerEmbed::NowPlaying(track) => {
-                let song = match &track.source {
-                    TrackSource::Local(_) => format!("**{}**", track.metadata.title),
-                    _ => format!("**[{}]({})**", track.metadata.title, track.metadata.track_url),
-                };
+                let song = track_description(track);
                 let author = if track.metadata.channel.is_empty() {
                     "—".to_string()
                 } else {

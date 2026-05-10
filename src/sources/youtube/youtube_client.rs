@@ -114,6 +114,7 @@ impl YoutubeClient {
                     title: decode_html_entities(title).to_string(),
                     channel: decode_html_entities(channel).to_string(),
                     track_url: format!("{SINGLE_URI}{}", video_id),
+                    play_url: None,
                 };
 
                 Some(Ok(
@@ -196,6 +197,7 @@ impl YoutubeClient {
                         title: decode_html_entities(title).to_string(),
                         channel: decode_html_entities(channel).to_string(),
                         track_url: format!("{SINGLE_URI}{}", video_id),
+                        play_url: None,
                     };
 
                     Some(Ok(
@@ -279,6 +281,7 @@ impl YoutubeClient {
                     title,
                     channel,
                     track_url: format!("{SINGLE_URI}{id}"),
+                    play_url: None,
                 },
                 added_by: String::new(),
                 source: crate::player::player::TrackSource::YouTube,

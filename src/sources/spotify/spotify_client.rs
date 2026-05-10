@@ -313,17 +313,28 @@ fn track_query(track: &SpTrack) -> String {
 // `ytsearch1:` prefix. Avoids the YouTube Data API (and its 100-unit
 // per-search quota cost) entirely — a Spotify playlist with many tracks
 // would otherwise blow through the daily 10k quota almost immediately.
+//
+// `track_url` carries the Spotify permalink so embeds render a real link
+// (or omit it gracefully when the API didn't return an id). `play_url`
+// holds the `ytsearch1:` query that yt-dlp actually consumes.
 fn build_track(sp: &SpTrack) -> Track {
     let query = track_query(sp);
-    let id = sp.id.clone().unwrap_or_else(|| query.clone());
     let channel = sp.artists.iter().map(|a| a.name.clone()).collect::<Vec<_>>().join(", ");
+    let (id, track_url) = match &sp.id {
+        Some(spotify_id) => (
+            spotify_id.clone(),
+            format!("https://open.spotify.com/track/{spotify_id}"),
+        ),
+        None => (query.clone(), String::new()),
+    };
     Track {
         id: id.clone(),
         metadata: TrackMetadata {
             id,
             title: sp.name.clone(),
             channel,
-            track_url: format!("ytsearch1:{query}"),
+            track_url,
+            play_url: Some(format!("ytsearch1:{query}")),
         },
         added_by: String::new(),
         source: crate::player::player::TrackSource::Spotify,
