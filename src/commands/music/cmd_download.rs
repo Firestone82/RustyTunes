@@ -4,7 +4,6 @@
 use crate::bot::{Context, MusicBotError};
 use crate::player::player::{Track, TrackMetadata, TrackSource};
 use crate::service::local_service;
-use serenity::all::Attachment;
 use std::path::PathBuf;
 
 /// What we're pulling into the library. Either an attached Discord file
@@ -33,36 +32,6 @@ impl DownloadSource {
             DownloadSource::Url(url) => url,
         }
     }
-}
-
-pub fn resolve_source(
-    ctx: Context<'_>,
-    file: Option<Attachment>,
-    url: Option<String>,
-) -> Option<DownloadSource> {
-    if let Some(att) = file {
-        return Some(DownloadSource::Attachment {
-            url: att.url,
-            filename: att.filename,
-            content_type: att.content_type,
-        });
-    }
-
-    // Prefix-command users may simply attach a file without using the slash
-    // option, so fall back to the message's first attachment.
-    if let poise::Context::Prefix(prefix) = ctx {
-        if let Some(att) = prefix.msg.attachments.first() {
-            return Some(DownloadSource::Attachment {
-                url: att.url.clone(),
-                filename: att.filename.clone(),
-                content_type: att.content_type.clone(),
-            });
-        }
-    }
-
-    url.map(|u| u.trim().to_string())
-        .filter(|u| !u.is_empty())
-        .map(DownloadSource::Url)
 }
 
 /// Download `source` into the downloads directory and return the saved path.

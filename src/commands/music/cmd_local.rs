@@ -1,6 +1,6 @@
 use crate::bot::{Context, MusicBotError};
 use crate::checks::channel_checks::check_author_in_same_voice_channel;
-use crate::commands::music::cmd_download::{build_local_track, resolve_source, save_to_library};
+use crate::commands::music::cmd_download::{build_local_track, save_to_library, DownloadSource};
 use crate::embeds::player_embed::PlayerEmbed;
 use crate::embeds::queue_embed::QueueEmbed;
 use crate::player::player::{Player, Track};
@@ -14,10 +14,10 @@ use tokio::sync::RwLockWriteGuard;
 
 const PICKER_LIMIT: usize = 25;
 
-/// Manage the local audio library (download, list, play, remove).
+/// Manage the local audio library (download, upload, list, play, remove).
 #[poise::command(
     prefix_command, slash_command,
-    subcommands("download", "list", "remove", "play"),
+    subcommands("download", "upload", "list", "remove", "play"),
     check = "check_author_in_same_voice_channel",
 )]
 pub async fn local(ctx: Context<'_>) -> Result<(), MusicBotError> {
@@ -25,31 +25,59 @@ pub async fn local(ctx: Context<'_>) -> Result<(), MusicBotError> {
     list_inner(ctx).await
 }
 
-/// Download an audio file (URL or attachment) into the local library.
+/// Download an audio file from a URL into the local library.
 #[poise::command(prefix_command, slash_command)]
 pub async fn download(
     ctx: Context<'_>,
-    #[description = "Audio file to upload"]
-    file: Option<Attachment>,
     #[description = "URL of the audio file to download"]
-    url: Option<String>,
+    url: String,
     #[description = "Save the file under this name"]
     #[rest]
     name: Option<String>,
 ) -> Result<(), MusicBotError> {
-    let source = match resolve_source(ctx, file, url) {
-        Some(s) => s,
-        None => {
-            PlayerEmbed::DownloadFailed(
-                "Provide a URL or attach an audio file to your message.".to_string(),
-            )
-                .to_embed()
-                .send_context(ctx, true, Some(30))
-                .await?;
-            return Ok(());
-        }
+    let url = url.trim().to_string();
+    if url.is_empty() {
+        return reply_failure(ctx, "Provide a URL.").await;
+    }
+    save_and_play(ctx, DownloadSource::Url(url), name).await
+}
+
+/// Upload an attached audio file into the local library.
+#[poise::command(prefix_command, slash_command)]
+pub async fn upload(
+    ctx: Context<'_>,
+    #[description = "Audio file to upload"]
+    file: Option<Attachment>,
+    #[description = "Save the file under this name"]
+    #[rest]
+    name: Option<String>,
+) -> Result<(), MusicBotError> {
+    // Slash users pass the attachment as an option; prefix users typically
+    // just attach the file to the message itself.
+    let attachment: Attachment = match file {
+        Some(att) => att,
+        None => match ctx {
+            poise::Context::Prefix(prefix) => match prefix.msg.attachments.first() {
+                Some(att) => att.clone(),
+                None => return reply_failure(ctx, "Attach an audio file to your message.").await,
+            },
+            _ => return reply_failure(ctx, "Attach an audio file.").await,
+        },
     };
 
+    let source = DownloadSource::Attachment {
+        url: attachment.url,
+        filename: attachment.filename,
+        content_type: attachment.content_type,
+    };
+    save_and_play(ctx, source, name).await
+}
+
+async fn save_and_play(
+    ctx: Context<'_>,
+    source: DownloadSource,
+    name: Option<String>,
+) -> Result<(), MusicBotError> {
     PlayerEmbed::Downloading(source.display_label())
         .to_embed()
         .send_context(ctx, true, Some(15))
@@ -83,6 +111,14 @@ pub async fn download(
         .await?;
 
     enqueue_path(ctx, path).await
+}
+
+async fn reply_failure(ctx: Context<'_>, msg: &str) -> Result<(), MusicBotError> {
+    PlayerEmbed::DownloadFailed(msg.to_string())
+        .to_embed()
+        .send_context(ctx, true, Some(30))
+        .await?;
+    Ok(())
 }
 
 /// List previously downloaded tracks.
