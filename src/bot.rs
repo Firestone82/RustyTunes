@@ -123,6 +123,8 @@ impl MusicBotClient {
                     music::cmd_shuffle::shuffle(),
                     music::cmd_playing::playing(),
                     music::cmd_history::history(),
+                    music::cmd_download::download(),
+                    music::cmd_local::local(),
                     utility::cmd_uwu::uwu(),
                     utility::cmd_uwu::uwu_me(),
                     utility::cmd_notify::notify(),

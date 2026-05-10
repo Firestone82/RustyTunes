@@ -1,6 +1,7 @@
 use crate::player::player::Track;
 use serenity::all::{Color, CreateEmbed, CreateEmbedFooter};
 use std::collections::VecDeque;
+use std::path::PathBuf;
 
 pub enum PlayerEmbed<'a> {
     NowPlaying(&'a Track),
@@ -21,6 +22,11 @@ pub enum PlayerEmbed<'a> {
     InactivityLeave,
     History(&'a VecDeque<Track>),
     HistoryEmpty,
+    Downloading(&'a str),
+    Downloaded(&'a str),
+    DownloadFailed(String),
+    LocalFiles(&'a [PathBuf]),
+    LocalEmpty,
 }
 
 impl<'a> PlayerEmbed<'a> {
@@ -152,6 +158,44 @@ impl<'a> PlayerEmbed<'a> {
                     .color(Color::DARK_RED)
                     .title("📜  No history")
                     .description("No tracks have been played yet.")
+            }
+            PlayerEmbed::Downloading(url) => {
+                CreateEmbed::new()
+                    .color(Color::DARK_BLUE)
+                    .title("⬇️  Downloading")
+                    .description(format!("Fetching `{}`…", url))
+            }
+            PlayerEmbed::Downloaded(name) => {
+                CreateEmbed::new()
+                    .color(Color::DARK_GREEN)
+                    .title("✅  Downloaded")
+                    .description(format!("Saved **{}** to local library.", name))
+            }
+            PlayerEmbed::DownloadFailed(reason) => {
+                CreateEmbed::new()
+                    .color(Color::DARK_RED)
+                    .title("🚫  Download failed")
+                    .description(reason.clone())
+            }
+            PlayerEmbed::LocalFiles(files) => {
+                let mut embed = CreateEmbed::new()
+                    .color(Color::DARK_BLUE)
+                    .title("📁  Local library")
+                    .description("Pick a number to play a saved track:");
+
+                for (i, path) in files.iter().enumerate() {
+                    let name = path.file_name()
+                        .and_then(|n| n.to_str())
+                        .unwrap_or("?");
+                    embed = embed.field(format!("{}. {}", i + 1, name), "\u{200b}", false);
+                }
+                embed
+            }
+            PlayerEmbed::LocalEmpty => {
+                CreateEmbed::new()
+                    .color(Color::DARK_GOLD)
+                    .title("📁  Local library empty")
+                    .description("No downloaded tracks yet. Use `!download <url>` to add one.")
             }
         }
     }

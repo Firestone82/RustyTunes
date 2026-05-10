@@ -4,3 +4,4 @@ database.sqlite*
 .env
 .idea
 /logs
+/downloads

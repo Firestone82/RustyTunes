@@ -6,7 +6,6 @@ use lombok::AllArgsConstructor;
 use poise::serenity_prelude;
 use serenity::all::{GuildChannel, GuildId};
 use songbird::{
-    input::YoutubeDl,
     tracks::TrackHandle,
     {Call, Event, EventContext, EventHandler}
 };
@@ -55,8 +54,7 @@ impl EventHandler for QueueHandler {
                     .lock()
                     .await;
 
-                let track_data: YoutubeDl = YoutubeDl::new(self.req_client.clone(), next_track.metadata.track_url.clone());
-                let track_handle: TrackHandle = guard.play(track_data.into());
+                let track_handle: TrackHandle = guard.play(next_track.build_input(&self.req_client).into());
 
                 // Set volume
                 let _ = track_handle.set_volume(player.volume);

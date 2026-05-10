@@ -4,10 +4,11 @@ use crate::handlers::queue_handler::QueueHandler;
 use crate::service::embed_service::SendEmbed;
 use rand::seq::SliceRandom;
 use serenity::all::GuildId;
-use songbird::input::YoutubeDl;
+use songbird::input::{File, Input, YoutubeDl};
 use songbird::tracks::TrackHandle;
 use songbird::{Call, Event, TrackEvent};
 use std::collections::VecDeque;
+use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use tokio::sync::{Mutex, MutexGuard};
@@ -50,6 +51,26 @@ pub struct Track {
     pub id: String,
     pub metadata: TrackMetadata,
     pub added_by: String,
+    pub source: TrackSource,
+}
+
+#[derive(Debug, Clone)]
+pub enum TrackSource {
+    /// Streamed via yt-dlp from a remote URL (YouTube, Spotify-resolved, etc.)
+    Remote,
+    /// A previously downloaded file on the local filesystem.
+    Local(PathBuf),
+}
+
+impl Track {
+    pub fn build_input(&self, req_client: &reqwest::Client) -> Input {
+        match &self.source {
+            TrackSource::Remote => {
+                YoutubeDl::new(req_client.clone(), self.metadata.track_url.clone()).into()
+            }
+            TrackSource::Local(path) => File::new(path.clone()).into(),
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -231,8 +252,7 @@ impl Player {
                     .lock()
                     .await;
 
-                let track_data: YoutubeDl = YoutubeDl::new(ctx.data().request_client.clone(), next_track.metadata.track_url.clone());
-                let track_handle: TrackHandle = guard.play(track_data.into());
+                let track_handle: TrackHandle = guard.play(next_track.build_input(&ctx.data().request_client).into());
                 
                 // Set volume
                 let _ = track_handle.set_volume(self.volume);
