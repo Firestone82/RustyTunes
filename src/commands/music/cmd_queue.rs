@@ -1,8 +1,9 @@
 use crate::bot::{Context, MusicBotError};
+use crate::embeds::player_embed::PlayerEmbed;
 use crate::embeds::queue_embed::QueueEmbed;
 use crate::player::player::Player;
 use crate::service::embed_service::SendEmbed;
-use serenity::all::{ButtonStyle, CreateActionRow, CreateButton, EditMessage};
+use serenity::all::{ButtonStyle, CreateActionRow, CreateButton, CreateEmbed, EditMessage};
 use std::time::Duration;
 use tokio::sync::RwLockReadGuard;
 
@@ -21,6 +22,23 @@ fn nav_buttons(page: usize, total_pages: usize) -> Vec<CreateActionRow> {
     ])]
 }
 
+/// Build the embed list rendered for `!queue`: a Now Playing embed (when a
+/// track is active) followed by the standard queue listing. Returns an empty
+/// vec when there is nothing to show — callers fall back to `IsEmpty`.
+fn build_embeds(player: &Player, page: usize) -> Vec<CreateEmbed> {
+    let mut embeds: Vec<CreateEmbed> = Vec::new();
+
+    if let Some(track) = player.current_track.as_ref() {
+        embeds.push(PlayerEmbed::NowPlaying(track).to_embed());
+    }
+
+    if !player.queue.is_empty() {
+        embeds.push(QueueEmbed::Current { queue: &player.queue, page }.to_embed());
+    }
+
+    embeds
+}
+
 /// List upcoming tracks in the queue.
 #[poise::command(
     prefix_command, slash_command,
@@ -28,8 +46,6 @@ fn nav_buttons(page: usize, total_pages: usize) -> Vec<CreateActionRow> {
 pub async fn queue(ctx: Context<'_>, page: Option<usize>) -> Result<(), MusicBotError> {
     let player: RwLockReadGuard<Player> = ctx.data().player.read().await;
 
-    // Treat the embed as empty only when there's no current track AND no queue.
-    // A paused/playing track on its own should still render in the queue embed.
     if player.queue.is_empty() && player.current_track.is_none() {
         drop(player);
         QueueEmbed::IsEmpty
@@ -42,32 +58,23 @@ pub async fn queue(ctx: Context<'_>, page: Option<usize>) -> Result<(), MusicBot
     let total_pages = ((player.queue.len() + ITEMS_PER_PAGE - 1) / ITEMS_PER_PAGE).max(1);
     let mut page = page.unwrap_or(1).max(1).min(total_pages);
 
-    // No pagination needed for a single page
-    if total_pages <= 1 {
-        QueueEmbed::Current {
-            now_playing: player.current_track.as_ref(),
-            queue: &player.queue,
-            page,
-        }
-            .to_embed()
-            .send_context(ctx, true, Some(60))
-            .await?;
+    let embeds = build_embeds(&player, page);
+    let needs_pagination = total_pages > 1 && !player.queue.is_empty();
+    drop(player);
+
+    // Single message with both embeds — Now Playing then queue list.
+    let mut reply = poise::CreateReply::default().reply(true);
+    for embed in embeds {
+        reply = reply.embed(embed);
+    }
+
+    if !needs_pagination {
+        ctx.send(reply).await
+            .map_err(|e| MusicBotError::InternalError(e.to_string()))?;
         return Ok(());
     }
 
-    let embed = QueueEmbed::Current {
-        now_playing: player.current_track.as_ref(),
-        queue: &player.queue,
-        page,
-    }.to_embed();
-    drop(player);
-
-    let reply_handle = ctx.send(
-        poise::CreateReply::default()
-            .embed(embed)
-            .components(nav_buttons(page, total_pages))
-            .reply(true)
-    ).await
+    let reply_handle = ctx.send(reply.components(nav_buttons(page, total_pages))).await
         .map_err(|e| MusicBotError::InternalError(e.to_string()))?;
 
     let mut message = reply_handle.into_message().await
@@ -91,7 +98,7 @@ pub async fn queue(ctx: Context<'_>, page: Option<usize>) -> Result<(), MusicBot
                 if player.queue.is_empty() && player.current_track.is_none() {
                     drop(player);
                     let _ = message.edit(&http, EditMessage::new()
-                        .embed(QueueEmbed::IsEmpty.to_embed())
+                        .embeds(vec![QueueEmbed::IsEmpty.to_embed()])
                         .components(vec![])
                     ).await;
                     break;
@@ -106,17 +113,17 @@ pub async fn queue(ctx: Context<'_>, page: Option<usize>) -> Result<(), MusicBot
                 }
                 page = page.min(total_pages);
 
-                let embed = QueueEmbed::Current {
-                    now_playing: player.current_track.as_ref(),
-                    queue: &player.queue,
-                    page,
-                }.to_embed();
+                let embeds = build_embeds(&player, page);
+                let still_paginates = total_pages > 1 && !player.queue.is_empty();
                 drop(player);
 
-                let _ = message.edit(&http, EditMessage::new()
-                    .embed(embed)
-                    .components(nav_buttons(page, total_pages))
-                ).await;
+                let mut edit = EditMessage::new().embeds(embeds);
+                edit = if still_paginates {
+                    edit.components(nav_buttons(page, total_pages))
+                } else {
+                    edit.components(vec![])
+                };
+                let _ = message.edit(&http, edit).await;
             }
             None => {
                 let _ = message.delete(&http).await;

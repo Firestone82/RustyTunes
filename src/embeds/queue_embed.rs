@@ -17,7 +17,7 @@ fn track_location(track: &Track) -> String {
 
 pub enum QueueEmbed<'a> {
     IsEmpty,
-    Current { now_playing: Option<&'a Track>, queue: &'a [Track], page: usize },
+    Current { queue: &'a [Track], page: usize },
     TrackAdded(&'a Track),
     PlaylistAdded(&'a Playlist),
     Skipped(usize),
@@ -35,32 +35,12 @@ impl<'a> QueueEmbed<'a> {
                     .title("🚫  Empty queue")
                     .description("The queue is empty.")
             },
-            QueueEmbed::Current { now_playing, queue, page } => {
+            QueueEmbed::Current { queue, page } => {
                 let mut embed: CreateEmbed = CreateEmbed::new()
                     .color(Color::DARK_BLUE)
                     .title("📜  Queue")
+                    .description("Upcoming tracks:")
                     .footer(CreateEmbedFooter::new(format!("Queue length: {}", queue.len())));
-
-                if let Some(track) = now_playing {
-                    let location = track_location(track);
-                    let value = if track.added_by.is_empty() {
-                        location
-                    } else {
-                        format!("{}\nAdded by: {}", location, track.added_by)
-                    };
-                    embed = embed.field(
-                        format!("🎵  Now playing — {}", track.metadata.title),
-                        value,
-                        false,
-                    );
-                }
-
-                if queue.is_empty() {
-                    embed = embed.description("Nothing queued up.");
-                    return embed;
-                }
-
-                embed = embed.description("Upcoming tracks:");
 
                 let page: usize = *page.max(&1);
                 let mut start: usize = (page - 1) * 10;
