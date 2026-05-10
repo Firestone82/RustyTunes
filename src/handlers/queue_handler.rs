@@ -1,12 +1,11 @@
 use crate::embeds::player_embed::PlayerEmbed;
-use crate::player::player::{PlaybackError, Player};
+use crate::player::player::{self, PlaybackError, Player};
 use crate::service::embed_service::SendEmbed;
 use async_trait::async_trait;
 use lombok::AllArgsConstructor;
 use poise::serenity_prelude;
 use serenity::all::{GuildChannel, GuildId};
 use songbird::{
-    input::YoutubeDl,
     tracks::TrackHandle,
     {Call, Event, EventContext, EventHandler}
 };
@@ -55,8 +54,7 @@ impl EventHandler for QueueHandler {
                     .lock()
                     .await;
 
-                let track_data: YoutubeDl = YoutubeDl::new(self.req_client.clone(), next_track.metadata.track_url.clone());
-                let track_handle: TrackHandle = guard.play(track_data.into());
+                let track_handle: TrackHandle = guard.play(next_track.build_input(&self.req_client).into());
 
                 // Set volume
                 let _ = track_handle.set_volume(player.volume);
@@ -67,6 +65,8 @@ impl EventHandler for QueueHandler {
                     self.clone()
                 );
 
+                player::set_now_playing(&self.serenity_ctx, &next_track);
+
                 player.push_to_history(next_track.clone());
                 player.track_handle = Some(track_handle);
                 player.current_track = Some(next_track);
@@ -75,6 +75,8 @@ impl EventHandler for QueueHandler {
 
             None => {
                 tracing::info!("No more tracks to play. Stopping playback.");
+
+                player::set_idle(&self.serenity_ctx);
 
                 player.track_handle = None;
                 player.current_track = None;

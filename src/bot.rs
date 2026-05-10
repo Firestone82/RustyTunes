@@ -107,7 +107,7 @@ impl MusicBotClient {
             .options(poise::FrameworkOptions {
                 on_error: |err| Box::pin(error_handler::handle(err)),
                 commands: vec![
-                    commands::cmd_help::help(),
+                    commands::help::help(),
                     music::cmd_play::play(),
                     music::cmd_play::play_top(),
                     music::cmd_pause::pause(),
@@ -123,9 +123,11 @@ impl MusicBotClient {
                     music::cmd_shuffle::shuffle(),
                     music::cmd_playing::playing(),
                     music::cmd_history::history(),
+                    music::cmd_local::local(),
                     utility::cmd_uwu::uwu(),
                     utility::cmd_uwu::uwu_me(),
                     utility::cmd_notify::notify(),
+                    utility::cmd_notify::remind(),
                     utility::cmd_wakeup::wakeup(),
                     utility::cmd_wakeup::wakeup_context(),
                     utility::cmd_rename::rename(),
@@ -168,6 +170,7 @@ impl MusicBotClient {
                             tracing::info!("Bot is alone in voice channel. Leaving.");
 
                             let _ = data.player.write().await.stop_playback().await;
+                            crate::player::player::set_idle(ctx);
 
                             if let Some(manager) = songbird::get(ctx).await {
                                 let _ = manager.remove(guild_id).await;
@@ -237,6 +240,8 @@ impl MusicBotClient {
 
                     tracing::info!("Bot ready");
                     tracing::info!("Logged in as {}", ready.user.name);
+
+                    crate::player::player::set_idle(ctx);
 
                     tracing::info!("Registering commands in guild");
                     poise::builtins::register_in_guild(ctx, &fw.options().commands, ready.guilds[0].id, )

@@ -326,5 +326,6 @@ fn build_track(sp: &SpTrack) -> Track {
             track_url: format!("ytsearch1:{query}"),
         },
         added_by: String::new(),
+        source: crate::player::player::TrackSource::Spotify,
     }
 }

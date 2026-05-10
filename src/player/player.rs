@@ -2,12 +2,14 @@ use crate::bot::{Context, Database, MusicBotError};
 use crate::embeds::player_embed::PlayerEmbed;
 use crate::handlers::queue_handler::QueueHandler;
 use crate::service::embed_service::SendEmbed;
+use poise::serenity_prelude as serenity_prelude;
 use rand::seq::SliceRandom;
-use serenity::all::GuildId;
-use songbird::input::YoutubeDl;
+use serenity::all::{ActivityData, GuildId};
+use songbird::input::{File, Input, YoutubeDl};
 use songbird::tracks::TrackHandle;
 use songbird::{Call, Event, TrackEvent};
 use std::collections::VecDeque;
+use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use tokio::sync::{Mutex, MutexGuard};
@@ -50,6 +52,46 @@ pub struct Track {
     pub id: String,
     pub metadata: TrackMetadata,
     pub added_by: String,
+    pub source: TrackSource,
+}
+
+#[derive(Debug, Clone)]
+pub enum TrackSource {
+    /// Streamed via yt-dlp from a YouTube URL.
+    YouTube,
+    /// Resolved from Spotify, played via yt-dlp's `ytsearch1:` prefix.
+    Spotify,
+    /// A previously downloaded file on the local filesystem.
+    Local(PathBuf),
+}
+
+impl TrackSource {
+    pub fn label(&self) -> &'static str {
+        match self {
+            TrackSource::YouTube => "YouTube",
+            TrackSource::Spotify => "Spotify",
+            TrackSource::Local(_) => "Local file",
+        }
+    }
+
+    pub fn emoji(&self) -> &'static str {
+        match self {
+            TrackSource::YouTube => "🎬",
+            TrackSource::Spotify => "🟢",
+            TrackSource::Local(_) => "📁",
+        }
+    }
+}
+
+impl Track {
+    pub fn build_input(&self, req_client: &reqwest::Client) -> Input {
+        match &self.source {
+            TrackSource::YouTube | TrackSource::Spotify => {
+                YoutubeDl::new(req_client.clone(), self.metadata.track_url.clone()).into()
+            }
+            TrackSource::Local(path) => File::new(path.clone()).into(),
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -231,8 +273,7 @@ impl Player {
                     .lock()
                     .await;
 
-                let track_data: YoutubeDl = YoutubeDl::new(ctx.data().request_client.clone(), next_track.metadata.track_url.clone());
-                let track_handle: TrackHandle = guard.play(track_data.into());
+                let track_handle: TrackHandle = guard.play(next_track.build_input(&ctx.data().request_client).into());
                 
                 // Set volume
                 let _ = track_handle.set_volume(self.volume);
@@ -250,6 +291,8 @@ impl Player {
                     )
                 );
 
+                set_now_playing(ctx.serenity_context(), &next_track);
+
                 self.push_to_history(next_track.clone());
                 self.current_track = Some(next_track);
                 self.track_handle = Some(track_handle);
@@ -260,6 +303,7 @@ impl Player {
 
             None => {
                 tracing::info!("No more tracks to play. Stopping playback");
+                set_idle(ctx.serenity_context());
                 self.stop_playback().await?;
                 Ok(None)
             }
@@ -367,4 +411,16 @@ impl Player {
 
         Ok(())
     }
+}
+
+/// Set the bot's Discord activity to "Playing <title>". The shard's local
+/// presence is updated immediately and Discord propagates it to other users.
+pub fn set_now_playing(ctx: &serenity_prelude::Context, track: &Track) {
+    let label = format!("{} · {}", track.metadata.title, track.source.label());
+    ctx.set_activity(Some(ActivityData::playing(label)));
+}
+
+/// Friendly default status shown whenever the bot isn't playing anything.
+pub fn set_idle(ctx: &serenity_prelude::Context) {
+    ctx.set_activity(Some(ActivityData::listening("!help · waiting for !play")));
 }

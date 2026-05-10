@@ -6,6 +6,7 @@ use crate::player::player::{PlaybackError, Player};
 use crate::service::embed_service::SendEmbed;
 use tokio::sync::RwLockWriteGuard;
 
+/// Remove a track from the queue by 1-based index.
 #[poise::command(
     prefix_command, slash_command,
     check = "check_author_in_same_voice_channel",

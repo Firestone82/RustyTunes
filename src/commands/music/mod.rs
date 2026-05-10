@@ -1,7 +1,9 @@
 pub mod cmd_clear;
+pub mod cmd_download;
 pub mod cmd_history;
 pub mod cmd_join;
 pub mod cmd_leave;
+pub mod cmd_local;
 pub mod cmd_pause;
 pub mod cmd_play;
 pub mod cmd_playing;

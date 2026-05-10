@@ -21,6 +21,7 @@ fn nav_buttons(page: usize, total_pages: usize) -> Vec<CreateActionRow> {
     ])]
 }
 
+/// List upcoming tracks in the queue.
 #[poise::command(
     prefix_command, slash_command,
 )]
