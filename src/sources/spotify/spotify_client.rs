@@ -62,7 +62,10 @@ struct SpArtist {
 #[derive(Deserialize)]
 struct SpTrack {
     id: Option<String>,
-    name: String,
+    // Some podcast episodes or restricted items may omit these fields.
+    #[serde(default)]
+    name: Option<String>,
+    #[serde(default)]
     artists: Vec<SpArtist>,
 }
 
@@ -84,6 +87,9 @@ struct SpPlaylistTracks {
 
 #[derive(Deserialize)]
 struct SpPlaylistItem {
+    // `track` may be absent (not just null) for local files / podcast episodes
+    // in paginated responses, so we need `default` in addition to `Option`.
+    #[serde(default)]
     track: Option<SpTrack>,
 }
 
@@ -264,7 +270,7 @@ impl SpotifyClient {
                 let mut sp_tracks: Vec<SpTrack> = playlist.tracks.items
                     .into_iter()
                     .filter_map(|item| item.track)
-                    .filter(|t| t.id.is_some())
+                    .filter(|t| t.id.is_some() && t.name.as_deref().map_or(false, |n| !n.is_empty()))
                     .collect();
 
                 // Walk the `next` link until the API stops handing them out so
@@ -275,7 +281,7 @@ impl SpotifyClient {
                     sp_tracks.extend(
                         page.items.into_iter()
                             .filter_map(|item| item.track)
-                            .filter(|t| t.id.is_some())
+                            .filter(|t| t.id.is_some() && t.name.as_deref().map_or(false, |n| !n.is_empty()))
                     );
                     next = page.next;
                 }
@@ -301,14 +307,15 @@ impl SpotifyClient {
 }
 
 fn track_query(track: &SpTrack) -> String {
+    let name = track.name.as_deref().unwrap_or("");
     let artists = track.artists.iter()
         .map(|a| a.name.as_str())
         .collect::<Vec<_>>()
         .join(", ");
     if artists.is_empty() {
-        track.name.clone()
+        name.to_string()
     } else {
-        format!("{} - {}", artists, track.name)
+        format!("{} - {}", artists, name)
     }
 }
 
@@ -323,6 +330,7 @@ fn track_query(track: &SpTrack) -> String {
 fn build_track(sp: &SpTrack) -> Track {
     let query = track_query(sp);
     let channel = sp.artists.iter().map(|a| a.name.clone()).collect::<Vec<_>>().join(", ");
+    let title = sp.name.clone().unwrap_or_else(|| query.clone());
     let (id, track_url) = match &sp.id {
         Some(spotify_id) => (
             spotify_id.clone(),
@@ -334,7 +342,7 @@ fn build_track(sp: &SpTrack) -> Track {
         id: id.clone(),
         metadata: TrackMetadata {
             id,
-            title: sp.name.clone(),
+            title,
             channel,
             track_url,
             play_url: Some(format!("ytsearch1:{query}")),
