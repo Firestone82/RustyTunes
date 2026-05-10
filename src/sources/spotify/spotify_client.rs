@@ -262,11 +262,10 @@ impl SpotifyClient {
                     .filter(|t| t.id.is_some())
                     .collect();
 
+                // Walk the `next` link until the API stops handing them out so
+                // we pull the entire playlist instead of just the first 100.
                 let mut next = playlist.tracks.next;
                 while let Some(url) = next {
-                    if sp_tracks.len() >= 100 {
-                        break;
-                    }
                     let page = self.fetch_playlist_page(&url).await?;
                     sp_tracks.extend(
                         page.items.into_iter()
@@ -275,7 +274,6 @@ impl SpotifyClient {
                     );
                     next = page.next;
                 }
-                sp_tracks.truncate(100);
 
                 let tracks: Vec<Track> = sp_tracks.iter().map(build_track).collect();
 
