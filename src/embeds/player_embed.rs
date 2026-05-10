@@ -47,10 +47,23 @@ impl<'a> PlayerEmbed<'a> {
     pub fn to_embed(&self) -> CreateEmbed {
         match self {
             PlayerEmbed::NowPlaying(track) => {
+                let song = match &track.source {
+                    TrackSource::Local(_) => format!("**{}**", track.metadata.title),
+                    _ => format!("**[{}]({})**", track.metadata.title, track.metadata.track_url),
+                };
+                let author = if track.metadata.channel.is_empty() {
+                    "—".to_string()
+                } else {
+                    track.metadata.channel.clone()
+                };
+                let source = format!("{} {}", track.source.emoji(), track.source.label());
+
                 let mut embed = CreateEmbed::new()
                     .color(Color::DARK_BLUE)
-                    .title(format!("🎵  Now playing  ·  {} {}", track.source.emoji(), track.source.label()))
-                    .description(track_description(track));
+                    .title("🎵  Now playing:")
+                    .field("Song", song, false)
+                    .field("Author", author, true)
+                    .field("Source", source, true);
                 if !track.added_by.is_empty() {
                     embed = embed.footer(CreateEmbedFooter::new(format!("Added by {}", track.added_by)));
                 }
