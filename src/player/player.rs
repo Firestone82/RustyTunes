@@ -435,10 +435,10 @@ impl Player {
     }
 }
 
-/// Set the bot's Discord activity to "Playing <title>". The shard's local
-/// presence is updated immediately and Discord propagates it to other users.
+/// Set the bot's Discord activity. We bake the "Playing " word into the label
+/// itself because some Discord clients hide the activity-type prefix on bots.
 pub fn set_now_playing(ctx: &serenity_prelude::Context, track: &Track) {
-    let label = format!("{} · {}", track.metadata.title, track.source.label());
+    let label = format!("Playing {} · {}", track.metadata.title, track.source.label());
     ctx.set_activity(Some(ActivityData::playing(label)));
 }
 
