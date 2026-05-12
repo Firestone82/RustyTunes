@@ -66,3 +66,4 @@ This project is a simple Discord bot developed in Rust, designed to play music i
   - Wakeup command (Moves client between rooms to make sound!)
   - Notify command (Notify user to specific message after some time.)
   - Uwu command (Uwuify text provided)
+  - Reputation system for users based on other users feedback
