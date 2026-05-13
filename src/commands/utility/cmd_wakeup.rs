@@ -5,9 +5,7 @@ use crate::service::channel_service;
 use crate::service::embed_service::SendEmbed;
 use serenity::all::{Channel, ChannelId, GuildId, Member, Mention, Mentionable, PartialGuild, User};
 
-/**
-* Wake up a user in the same voice channel
-*/
+/// Wake up a user in the same voice channel.
 #[poise::command(
     slash_command,
     check = "check_author_in_same_voice_channel"
@@ -17,9 +15,7 @@ pub async fn wakeup(ctx: Context<'_>, target: Member, count: Option<usize>) -> R
     Ok(())
 }
 
-/**
-* Wake up a user in the same voice channel
-*/
+/// Wake up a user in the same voice channel.
 #[poise::command(
     context_menu_command = "WakeUp!",
     check = "check_author_in_same_voice_channel"

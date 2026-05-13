@@ -6,9 +6,7 @@ use crate::player::player::Player;
 use crate::service::embed_service::SendEmbed;
 use tokio::sync::RwLockWriteGuard;
 
-/**
-* Skip the current track. With an empty queue this stops playback instead of erroring.
-*/
+/// Skip the current track. With an empty queue this stops playback instead of erroring.
 #[poise::command(
     prefix_command, slash_command,
     check = "check_author_in_same_voice_channel",

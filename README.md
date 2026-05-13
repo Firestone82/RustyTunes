@@ -6,23 +6,26 @@
 - Took approximately 40 hours
 
 ## Project Theme
-This project is a simple Discord bot developed in Rust, designed to play music in Discord voice channels. It uses libraries like `serenity` for handling the Discord API and `songbird` for managing audio playback and `youtube-api` for track download. The bot allows users to add, play, pause, and skip songs in a queue directly within a Discord server.
+This project is a Discord bot developed in Rust, designed to play music in Discord voice channels. It uses libraries like `serenity` and `poise` for handling the Discord API, `songbird` for managing audio playback, `yt-dlp` for YouTube track streaming, and integrates with the Spotify Web API for Spotify URLs. The bot supports a full music queue, a local audio library, timed reminders, and several utility commands.
 
 ## Project Requirements
 - Rust: The primary programming language for bot logic
-- Serenity: Discord API wrapper for Rust
+- Serenity + Poise: Discord API wrapper and command framework for Rust
 - Songbird: Voice and audio playback library for Discord
-- Youtube-dl: For downloading and streaming audio from YouTube
+- yt-dlp: For downloading and streaming audio from YouTube
+- SQLite (via sqlx): Persistent storage for guild settings and reminders
+- Spotify Web API: For resolving Spotify track / playlist URLs
 
-## Instalation
+## Installation
 ### Prerequisites
 - Installed rust from [rust-lang.org](https://www.rust-lang.org/tools/install)
-- Installed youtube-dl from [ytdl-org.github.io](https://ytdl-org.github.io/youtube-dl/)
-  - `ffmpeg` is required for youtube-dl to work properly
-  - `youtube-dl` should be in the system PATH
-- YouTube DL token from [YouTube Data API](https://developers.google.com/youtube/registering_an_application)
+- Installed yt-dlp from [github.com/yt-dlp/yt-dlp](https://github.com/yt-dlp/yt-dlp)
+  - `ffmpeg` is required for yt-dlp to work properly
+  - `yt-dlp` should be in the system PATH
+- YouTube Data API token from [Google Cloud Console](https://developers.google.com/youtube/registering_an_application)
 - Discord bot token from [Discord Developer Portal](https://discord.com/developers/applications)
-- Installed CMAKE. Required for an [audiopus_sys](https://github.com/Lakelezz/audiopus_sys) library
+- (Optional) Spotify Client ID & Secret from [Spotify Developer Dashboard](https://developer.spotify.com/dashboard) — required for Spotify URL support
+- Installed CMAKE. Required for the [audiopus_sys](https://github.com/Lakelezz/audiopus_sys) library
 
 ### Installation
 1. Clone this repository
@@ -33,8 +36,9 @@ This project is a simple Discord bot developed in Rust, designed to play music i
 2. Create a `.env` file in the root directory
     ```bash
     cp .env.example .env
-    
-    # Edit the .env file with your discord bot token and youtube dl API key.
+
+    # Edit the .env file with your Discord bot token, YouTube API key,
+    # and (optionally) Spotify client id and secret.
     ```
 3. Setup database
     ```bash
@@ -44,10 +48,10 @@ This project is a simple Discord bot developed in Rust, designed to play music i
      ```
 4. Install dependencies
     ```bash
-   # Youtube DL
+   # yt-dlp
    sudo curl -L https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp -o /usr/local/bin/yt-dlp
    sudo chmod a+rx /usr/local/bin/yt-dlp
-   
+
    # CMAKE
    sudo apt-get install cmake
     ```
@@ -57,13 +61,62 @@ This project is a simple Discord bot developed in Rust, designed to play music i
     cargo run
     ```
 
+## Usage
+All commands are available as both **prefix commands** (default prefix `!`) and **slash commands** (`/`). Use `!help` or `/help` in Discord to list every command, or `!help <command>` for details on a specific one.
+
 ## Features
-- Play music from YouTube and other audio sources in voice channels
-- Queue management: add, remove, or reorder songs
-- Basic music controls: play, pause, resume, and skip tracks
-- Volume control
-- Custom addons
-  - Wakeup command (Moves client between rooms to make sound!)
-  - Notify command (Notify user to specific message after some time.)
-  - Uwu command (Uwuify text provided)
-  - Reputation system for users based on other users feedback
+
+### Audio Sources
+- Play tracks and playlists from **YouTube** (direct URL or text search)
+- Play tracks and playlists from **Spotify** (URL — resolved to YouTube for playback)
+- Play files from a **local audio library** stored on the bot host
+- Stream user-uploaded **Discord attachments** (audio files)
+- Stream audio from **arbitrary direct URLs**
+
+### Playback Controls
+- `play <query|url>` — play a track or playlist from YouTube or Spotify (appends to queue)
+- `playtop <query|url>` — same as `play` but inserts at the front of the queue
+- `pause` / `resume` — pause and resume the current track
+- `skip [amount]` — skip the current track (or multiple at once)
+- `stop` — stop playback and clear the active track
+- `playing` — show the currently playing track
+- `volume [1-100]` — set the playback volume; append `!` (e.g. `volume 200!`) to opt into the extended 1–500 overdrive range
+- `join` / `leave` — manually summon or dismiss the bot from your voice channel
+
+### Queue Management
+- `queue` — paginated queue listing (10 tracks per page) with navigation buttons
+- `clear` — remove every track from the queue
+- `remove <index>` — remove a specific track from the queue by its 1-based index
+- `shuffle` — shuffle the current queue
+- `history` — show the last 10 played tracks with buttons to instantly replay any of them
+
+### Local Audio Library
+The `local` command groups subcommands for managing audio files saved on the bot host:
+- `local download <url> [name]` — download an audio file from a URL into the library
+- `local upload [name]` — save an uploaded Discord attachment into the library
+- `local list` — list all saved local tracks
+- `local play [name]` — play a saved track by name (with autocomplete and an interactive picker)
+- `local rename <track> <new name>` — rename a saved track
+- `local remove <track>` — delete a saved track from the library
+
+### Reminders / Notifications
+The `notify` command (alias `remind`) lets users schedule timed reminders persisted to the database:
+- `notify me <when> <message>` — schedule a reminder for yourself
+- `notify you <user> <when> <message>` — schedule a reminder for another user
+- `notify list` — list your pending reminders
+- `notify remove <id>` — cancel a pending reminder
+
+### Utility Commands
+- `wakeup <user> [count]` — drags a user briefly between voice channels to grab their attention (also available as a right-click **WakeUp!** user context menu action)
+- `rename <user> [new name]` — set another member's nickname (respects role hierarchy)
+- `uwu <text>` — uwuify the given text
+- `uwu_me <text>` — uwuify text and post it impersonating the author via webhook
+- `help [command]` — built-in help listing and per-command detail
+
+### Quality-of-Life Behaviour
+- **Auto-leave**: bot automatically leaves the voice channel when it's left alone
+- **Auto-cleanup**: when the bot is kicked, dragged out, or otherwise loses its voice connection, playback state and the queue are cleaned up automatically
+- **Per-guild volume persistence**: the last-set volume is remembered between sessions in SQLite
+- **Slash + prefix parity**: every command works both ways
+- **Graceful shutdown**: handles SIGINT/SIGTERM (and Ctrl+C on Windows) to disconnect cleanly
+- **Structured logging**: powered by `tracing` with environment-controlled filtering

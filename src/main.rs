@@ -48,7 +48,6 @@ async fn main() -> Result<(), MusicBotError> {
         .start()
         .await?;
 
-    // TODO: Properly handle shutdown logic
-
+    tracing::info!("Bot shut down cleanly.");
     Ok(())
 }

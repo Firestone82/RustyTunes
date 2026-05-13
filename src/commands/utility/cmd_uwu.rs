@@ -4,10 +4,8 @@ use serenity::all::{Color, CreateEmbed};
 use serenity::all::{Mention, Mentionable};
 use uwu_rs::uwuify;
 
-/**
-* Convert provided text to UwU format
-* -> This command requested by adaxiik
-*/
+/// Convert provided text to UwU format.
+// Requested by adaxiik.
 #[poise::command(
     prefix_command, slash_command,
 )]
@@ -21,10 +19,8 @@ pub async fn uwu(ctx: Context<'_>, text: Vec<String>) -> Result<(), MusicBotErro
     Ok(())
 }
 
-/**
-* Convert provided text to UwU format and send it as author
-* -> This command requested by adaxiik
-*/
+/// Convert provided text to UwU format and send it as the author.
+// Requested by adaxiik.
 #[poise::command(
     prefix_command, slash_command,
 )]
