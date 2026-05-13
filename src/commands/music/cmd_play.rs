@@ -7,9 +7,9 @@ use crate::service::channel_service;
 use crate::service::embed_service::SendEmbed;
 use crate::sources::spotify::spotify_client::{SpotifyClient, SpotifyError, SpotifySearchResult};
 use crate::sources::youtube::youtube_client::{SearchError, YouTubeSearchResult, YoutubeClient};
-use serenity::all::{ButtonStyle, CreateActionRow, CreateButton, Message};
+use serenity::all::{ButtonStyle, CreateActionRow, CreateButton, CreateInteractionResponse, CreateInteractionResponseMessage, Message};
 use std::convert::Into;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 use tokio::sync::RwLockWriteGuard;
 
 const YOUTUBE_VIDEO_URL: &str = "https://www.youtube.com/watch?v=";
@@ -132,59 +132,80 @@ async fn do_play(ctx: Context<'_>, track_source: String, top: bool) -> Result<()
             let message: Message = reply_handle.into_message().await
                 .map_err(|error| MusicBotError::InternalError(error.to_string()))?;
 
-            let interaction = message
-                .await_component_interaction(ctx.serenity_context().shard.clone())
-                .author_id(ctx.author().id)
-                .timeout(Duration::from_secs(60 * 2));
-
-            match interaction.await {
-                Some(interaction) => {
-                    interaction.defer(ctx.http()).await?;
+            let deadline = Instant::now() + Duration::from_secs(60 * 2);
+            loop {
+                let remaining = deadline.saturating_duration_since(Instant::now());
+                if remaining.is_zero() {
                     message.delete(ctx.http()).await?;
-
-                    if interaction.data.custom_id == "track_cancel" {
-                        PlayerEmbed::SearchCancelled
-                            .to_embed()
-                            .send_context(ctx, true, Some(30))
-                            .await?;
-                        return Ok(());
-                    }
-
-                    let track_index: usize = interaction.data.custom_id
-                        .strip_prefix("track_")
-                        .and_then(|s| s.parse().ok())
-                        .unwrap();
-                    let mut track: Track = tracks.swap_remove(track_index);
-                    track.added_by = ctx.author().name.clone();
-
-                    let mut player: RwLockWriteGuard<Player> = ctx.data().player.write().await;
-
-                    if player.is_playing {
-                        QueueEmbed::TrackAdded(&track)
-                            .to_embed()
-                            .send_context(ctx, true, Some(30))
-                            .await?;
-                    }
-
-                    if let Err(error) = player.add_track_to_queue(ctx, track, top).await {
-                        drop(player);
-                        report_playback_error(ctx, error).await?;
-                        return Ok(());
-                    }
-                    drop(player);
-                    channel_service::join_user_channel(ctx).await?;
-                },
-                None => {
-                    message.delete(ctx.http()).await?;
-
                     PlayerEmbed::SearchExpired
                         .to_embed()
                         .send_context(ctx, true, Some(30))
                         .await?;
-
                     return Ok(());
                 }
-            };
+
+                let interaction = message
+                    .await_component_interaction(ctx.serenity_context().shard.clone())
+                    .timeout(remaining)
+                    .await;
+
+                match interaction {
+                    Some(interaction) => {
+                        if interaction.user.id != ctx.author().id {
+                            interaction.create_response(ctx.http(), CreateInteractionResponse::Message(
+                                CreateInteractionResponseMessage::new()
+                                    .content("Only the person who ran this command can select a track.")
+                                    .ephemeral(true)
+                            )).await.ok();
+                            continue;
+                        }
+
+                        interaction.defer(ctx.http()).await?;
+                        message.delete(ctx.http()).await?;
+
+                        if interaction.data.custom_id == "track_cancel" {
+                            PlayerEmbed::SearchCancelled
+                                .to_embed()
+                                .send_context(ctx, true, Some(30))
+                                .await?;
+                            return Ok(());
+                        }
+
+                        let track_index: usize = interaction.data.custom_id
+                            .strip_prefix("track_")
+                            .and_then(|s| s.parse().ok())
+                            .unwrap();
+                        let mut track: Track = tracks.swap_remove(track_index);
+                        track.added_by = ctx.author().name.clone();
+
+                        let mut player: RwLockWriteGuard<Player> = ctx.data().player.write().await;
+
+                        if player.is_playing {
+                            QueueEmbed::TrackAdded(&track)
+                                .to_embed()
+                                .send_context(ctx, true, Some(30))
+                                .await?;
+                        }
+
+                        if let Err(error) = player.add_track_to_queue(ctx, track, top).await {
+                            drop(player);
+                            report_playback_error(ctx, error).await?;
+                            return Ok(());
+                        }
+                        drop(player);
+                        channel_service::join_user_channel(ctx).await?;
+                        break;
+                    }
+                    None => {
+                        message.delete(ctx.http()).await?;
+                        PlayerEmbed::SearchExpired
+                            .to_embed()
+                            .send_context(ctx, true, Some(30))
+                            .await?;
+                        return Ok(());
+                    }
+                }
+            }
         }
 
         Ok(YouTubeSearchResult::Playlist(mut playlist)) => {

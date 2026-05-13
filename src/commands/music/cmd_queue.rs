@@ -3,7 +3,7 @@ use crate::embeds::player_embed::PlayerEmbed;
 use crate::embeds::queue_embed::QueueEmbed;
 use crate::player::player::Player;
 use crate::service::embed_service::SendEmbed;
-use serenity::all::{ButtonStyle, CreateActionRow, CreateButton, CreateEmbed, EditMessage};
+use serenity::all::{ButtonStyle, CreateActionRow, CreateButton, CreateEmbed, CreateInteractionResponse, CreateInteractionResponseMessage, EditMessage};
 use std::time::Duration;
 use tokio::sync::RwLockReadGuard;
 
@@ -85,12 +85,20 @@ pub async fn queue(ctx: Context<'_>, page: Option<usize>) -> Result<(), MusicBot
     loop {
         let interaction = message
             .await_component_interaction(ctx.serenity_context().shard.clone())
-            .author_id(ctx.author().id)
             .timeout(Duration::from_secs(60))
             .await;
 
         match interaction {
             Some(interaction) => {
+                if interaction.user.id != ctx.author().id {
+                    interaction.create_response(&http, CreateInteractionResponse::Message(
+                        CreateInteractionResponseMessage::new()
+                            .content("Only the person who ran this command can navigate the queue.")
+                            .ephemeral(true)
+                    )).await.ok();
+                    continue;
+                }
+
                 interaction.defer(&http).await
                     .map_err(|e| MusicBotError::InternalError(e.to_string()))?;
 
