@@ -1,5 +1,5 @@
 use crate::commands;
-use crate::commands::{music, utility};
+use crate::commands::{music, reputation, utility};
 use crate::embeds::bot_embeds::BotEmbed;
 use crate::handlers::error_handler;
 use crate::player::notifier::{Notifier, NotifierError};
@@ -133,9 +133,9 @@ impl MusicBotClient {
                     utility::cmd_wakeup::wakeup(),
                     utility::cmd_wakeup::wakeup_context(),
                     utility::cmd_rename::rename(),
-                    utility::cmd_rep::add_rep(),
-                    utility::cmd_rep::remove_rep(),
-                    utility::cmd_rep::list_rep(),
+                    reputation::cmd_plus::add_rep(),
+                    reputation::cmd_minus::remove_rep(),
+                    reputation::cmd_list::list_rep(),
                     utility::cmd_rename::rename_context(),
                 ],
                 pre_command: |ctx| Box::pin(async move {
@@ -375,7 +375,7 @@ impl MusicBotClient {
         self.serenity_client.start().await.map_err(|e| {
             tracing::error!("Failed to start server: {:?}", e);
             MusicBotError::InternalError(e.to_string())
-        })
+        })?;
         let shard_manager = self.serenity_client.shard_manager.clone();
         tokio::spawn(async move {
             wait_for_signal().await;
@@ -395,7 +395,7 @@ impl MusicBotClient {
 async fn wait_for_signal() {
     use tokio::signal::unix::{signal, SignalKind};
     let mut sigterm = signal(SignalKind::terminate()).expect("Failed to listen for SIGTERM");
-    let mut sigint  = signal(SignalKind::interrupt()).expect("Failed to listen for SIGINT");
+    let mut sigint = signal(SignalKind::interrupt()).expect("Failed to listen for SIGINT");
     tokio::select! {
         _ = sigterm.recv() => tracing::info!("Received SIGTERM"),
         _ = sigint.recv()  => tracing::info!("Received SIGINT"),

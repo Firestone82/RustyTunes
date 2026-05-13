@@ -1,4 +1,4 @@
-use crate::commands::utility::cmd_rep::Rep;
+use crate::commands::reputation::Rep;
 use serenity::all::{CreateEmbed, CreateEmbedFooter};
 
 pub enum ReputationEmbed<'a> {
