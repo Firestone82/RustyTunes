@@ -112,14 +112,12 @@ impl Track {
                     if cache_service::file_exists(&norm).await {
                         return File::new(norm).into();
                     }
-                    match cache_service::normalize_file(&raw, &norm).await {
-                        Ok(()) => return File::new(norm).into(),
-                        Err(e) => tracing::warn!(
-                            "Normalization failed for '{}': {} — falling back to raw cache",
-                            self.metadata.title,
-                            e
-                        ),
-                    }
+                    // First-time normalize: ffmpeg can take many seconds, and
+                    // `resolve_input` is awaited while the player write lock is
+                    // held. Build the normalized cache in the background so
+                    // skip/stop/volume aren't blocked; this play uses the raw
+                    // cache, the next play picks up the normalized file.
+                    cache_service::spawn_normalize(raw.clone(), norm);
                 }
             }
             return File::new(raw).into();

@@ -97,16 +97,26 @@ pub async fn cache_track(track: &Track) -> std::io::Result<PathBuf> {
 
     // yt-dlp + extract-audio always tacks `.opus` onto the stem; use a `.part`
     // stem so a concurrent run never picks up a half-written file.
-    let stem = cache_path.with_extension("");
+    //
+    // Path component note: `with_extension` *replaces* the trailing extension,
+    // so we build both `part_stem` and `part_path` by appending raw bytes —
+    // otherwise `<stem>.part.with_extension("opus")` would collapse back to
+    // `<stem>.opus` and the rename below would point at a file yt-dlp never
+    // wrote.
     let part_stem = {
-        let mut s = stem.clone().into_os_string();
+        let mut s = cache_path.with_extension("").into_os_string();
         s.push(".part");
         PathBuf::from(s)
     };
-    let part_path = part_stem.with_extension(CACHE_EXT);
+    let part_path = {
+        let mut s = part_stem.clone().into_os_string();
+        s.push(".");
+        s.push(CACHE_EXT);
+        PathBuf::from(s)
+    };
 
     let output_template = {
-        let mut s = part_stem.clone().into_os_string();
+        let mut s = part_stem.into_os_string();
         s.push(".%(ext)s");
         s
     };
@@ -198,6 +208,18 @@ pub fn spawn_cache(track: Track) {
                 track.metadata.title,
                 e
             ),
+        }
+    });
+}
+
+/// Fire-and-forget normalization. Used so `resolve_input` doesn't block the
+/// player write lock on an ffmpeg transcode — the current play uses the raw
+/// cache and the normalized file becomes available for the next play.
+pub fn spawn_normalize(source: PathBuf, target: PathBuf) {
+    tokio::spawn(async move {
+        match normalize_file(&source, &target).await {
+            Ok(()) => tracing::info!("Normalized {} -> {}", source.display(), target.display()),
+            Err(e) => tracing::warn!("Failed to normalize {}: {}", source.display(), e),
         }
     });
 }
