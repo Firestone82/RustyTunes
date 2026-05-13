@@ -1,11 +1,11 @@
 CREATE TABLE IF NOT EXISTS reputation_logs
 (
-    id          INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
-    giver_id    TEXT                              NOT NULL,
-    receiver_id TEXT                              NOT NULL,
-    rep_value   INTEGER                           NOT NULL,
-    reason      TEXT                              NOT NULL,
-    created_at  DATETIME DEFAULT CURRENT_TIMESTAMP
+    id          INTEGER PRIMARY KEY AUTOINCREMENT  NOT NULL,
+    giver_id    TEXT                               NOT NULL,
+    receiver_id TEXT                               NOT NULL,
+    rep_value   INTEGER                            NOT NULL,
+    reason      TEXT                               NOT NULL,
+    created_at  DATETIME DEFAULT CURRENT_TIMESTAMP NOT NULL
 );
 
 CREATE INDEX idx_receiver ON reputation_logs (receiver_id);
