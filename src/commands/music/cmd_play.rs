@@ -16,9 +16,7 @@ use tokio::sync::RwLockWriteGuard;
 const YOUTUBE_VIDEO_URL: &str = "https://www.youtube.com/watch?v=";
 const YOUTUBE_PLAYLIST_URL: &str = "https://www.youtube.com/playlist?list=";
 
-/**
-* Play a track or playlist from YouTube or Spotify
-*/
+/// Play a track or playlist from YouTube or Spotify.
 #[poise::command(
     prefix_command, slash_command,
     check = "check_author_in_same_voice_channel",
@@ -27,9 +25,7 @@ pub async fn play(ctx: Context<'_>, track_source: Vec<String>) -> Result<(), Mus
     do_play(ctx, track_source.join(" "), false).await
 }
 
-/**
-* Play a track or playlist immediately by inserting it at the front of the queue
-*/
+/// Play a track or playlist immediately by inserting it at the front of the queue.
 #[poise::command(
     prefix_command, slash_command,
     rename = "playtop",
