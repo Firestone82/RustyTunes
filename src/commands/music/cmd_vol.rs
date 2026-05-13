@@ -10,9 +10,7 @@ use tokio::sync::{RwLockReadGuard, RwLockWriteGuard};
 const DEFAULT_MAX_VOLUME: f32 = 100.0;
 const EXTENDED_MAX_VOLUME: f32 = 500.0;
 
-/**
-* Change the volume (1-100, or 1-500 with a trailing `!`).
-*/
+/// Change the volume (1-100, or 1-500 with a trailing `!`).
 #[poise::command(
     prefix_command, slash_command,
     check = "check_author_in_same_voice_channel",

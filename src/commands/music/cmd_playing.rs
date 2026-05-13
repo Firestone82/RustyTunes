@@ -4,9 +4,7 @@ use crate::player::player::Player;
 use crate::service::embed_service::SendEmbed;
 use tokio::sync::RwLockReadGuard;
 
-/**
-* Display the currently playing track
-*/
+/// Display the currently playing track.
 #[poise::command(
     prefix_command, slash_command,
 )]

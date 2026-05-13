@@ -2,9 +2,7 @@ use crate::bot::{Context, MusicBotError};
 use crate::checks::channel_checks::check_author_in_voice_channel;
 use crate::service::channel_service;
 
-/**
-* Request the bot to join current user voice channel
-*/
+/// Join the voice channel you're currently in.
 #[poise::command(
     prefix_command, slash_command,
     check = "check_author_in_voice_channel",
