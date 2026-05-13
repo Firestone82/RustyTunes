@@ -1,6 +1,15 @@
-use crate::bot::{Context, MusicBotError};
+use crate::bot::{Context, MusicBotData, MusicBotError};
 use crate::service::embed_service::SendEmbed;
 use serenity::all::{Color, CreateEmbed, EditMember, GuildId, Member, Mentionable, PartialGuild, User};
+
+#[derive(Debug, poise::Modal)]
+#[name = "Rename"]
+struct RenameModal {
+    #[name = "New nickname"]
+    #[placeholder = "leave empty to reset to original name"]
+    #[max_length = 32]
+    new_name: Option<String>,
+}
 
 /// Set a user's nickname. Caller's top role must be at-or-above the target's.
 #[poise::command(prefix_command, slash_command, guild_only)]
@@ -8,6 +17,29 @@ pub async fn rename(
     ctx: Context<'_>,
     user: User,
     #[rest] new_name: Option<String>,
+) -> Result<(), MusicBotError> {
+    do_rename(ctx, user, new_name).await
+}
+
+/// Rename a user via right-click → Apps → Rename. Opens a modal for the new nickname.
+#[poise::command(context_menu_command = "Rename", guild_only)]
+pub async fn rename_context(
+    ctx: poise::ApplicationContext<'_, MusicBotData, MusicBotError>,
+    user: User,
+) -> Result<(), MusicBotError> {
+    let data = match poise::Modal::execute(ctx).await? {
+        Some(d) => d,
+        None => return Ok(()),
+    };
+    let RenameModal { new_name } = data;
+
+    do_rename(poise::Context::Application(ctx), user, new_name).await
+}
+
+async fn do_rename(
+    ctx: Context<'_>,
+    user: User,
+    new_name: Option<String>,
 ) -> Result<(), MusicBotError> {
     let guild_id: GuildId = ctx.guild_id().ok_or_else(|| {
         MusicBotError::InternalError("Rename is only available in guilds".to_string())
