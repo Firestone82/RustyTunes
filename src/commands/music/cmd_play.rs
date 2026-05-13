@@ -134,6 +134,7 @@ async fn do_play(ctx: Context<'_>, track_source: String, top: bool) -> Result<()
 
             let interaction = message
                 .await_component_interaction(ctx.serenity_context().shard.clone())
+                .author_id(ctx.author().id)
                 .timeout(Duration::from_secs(60 * 2));
 
             match interaction.await {

@@ -85,6 +85,7 @@ pub async fn queue(ctx: Context<'_>, page: Option<usize>) -> Result<(), MusicBot
     loop {
         let interaction = message
             .await_component_interaction(ctx.serenity_context().shard.clone())
+            .author_id(ctx.author().id)
             .timeout(Duration::from_secs(60))
             .await;
 

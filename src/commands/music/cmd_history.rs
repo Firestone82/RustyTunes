@@ -57,6 +57,7 @@ pub async fn history(ctx: Context<'_>) -> Result<(), MusicBotError> {
 
     let interaction = message
         .await_component_interaction(ctx.serenity_context().shard.clone())
+        .author_id(ctx.author().id)
         .timeout(Duration::from_secs(60 * 2));
 
     match interaction.await {
