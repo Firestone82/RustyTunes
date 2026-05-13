@@ -5,3 +5,4 @@ database.sqlite*
 .idea
 /logs
 /downloads
+/cache
