@@ -10,7 +10,9 @@ use crate::sources::youtube::youtube_client::{SearchError, YoutubeClient};
 use dotenv::var;
 use poise::serenity_prelude;
 use serenity::all::audit_log::Action;
-use serenity::all::{ChannelId, FullEvent, GatewayIntents, GuildChannel, GuildId, MemberAction, Mentionable};
+use serenity::all::{
+    ChannelId, FullEvent, GatewayIntents, GuildChannel, GuildId, MemberAction, Mentionable,
+};
 use songbird::SerenityInit;
 use sqlx::sqlite::SqlitePoolOptions;
 use sqlx::{Pool, Sqlite};
@@ -24,7 +26,7 @@ pub struct MusicBotData {
     pub spotify_client: SpotifyClient,
     pub database_pool: Arc<Database>,
     pub player: Arc<RwLock<Player>>,
-    pub notifier: Arc<RwLock<Notifier>>
+    pub notifier: Arc<RwLock<Notifier>>,
 }
 
 pub type Database = Pool<Sqlite>;
@@ -97,11 +99,11 @@ impl MusicBotClient {
             | GatewayIntents::GUILD_MEMBERS
             | GatewayIntents::GUILD_PRESENCES;
 
-        let discord_token = var("DISCORD_TOKEN")
-            .expect("Expected a valid discord token set in the configuration.");
+        let discord_token =
+            var("DISCORD_TOKEN").expect("Expected a valid discord token set in the configuration.");
 
-        let database_url = var("DATABASE_URL")
-            .expect("Expected a valid database url set in the configuration.");
+        let database_url =
+            var("DATABASE_URL").expect("Expected a valid database url set in the configuration.");
 
         let framework = poise::Framework::<MusicBotData, MusicBotError>::builder()
             .options(poise::FrameworkOptions {
@@ -131,7 +133,10 @@ impl MusicBotClient {
                     utility::cmd_wakeup::wakeup(),
                     utility::cmd_wakeup::wakeup_context(),
                     utility::cmd_rename::rename(),
-                    utility::cmd_rep::rep()
+                    utility::cmd_rep::add_rep(),
+                    utility::cmd_rep::remove_rep(),
+                    utility::cmd_rep::list_rep(),
+
                 ],
                 pre_command: |ctx| Box::pin(async move {
                     tracing::info!("CMD: {} is executing {} ({})", ctx.author().name, ctx.command().name, ctx.invocation_string());
@@ -219,7 +224,7 @@ impl MusicBotClient {
                     crate::player::player::set_idle(ctx);
 
                     tracing::info!("Registering commands in guild");
-                    poise::builtins::register_in_guild(ctx, &fw.options().commands, ready.guilds[0].id, )
+                    poise::builtins::register_in_guild(ctx, &fw.options().commands, ready.guilds[0].id)
                         .await
                         .map_err(|e| {
                             tracing::error!("Failed to register commands in guild: {:?}", e);
@@ -342,14 +347,14 @@ impl MusicBotClient {
                             tokio::time::sleep(tokio::time::Duration::from_secs(10)).await;
                         }
                     });
-                    
+
                     Ok(MusicBotData {
                         request_client: reqwest::Client::new(),
                         youtube_client: YoutubeClient::new(),
                         spotify_client: SpotifyClient::new(),
                         database_pool: database,
                         player: player_handle,
-                        notifier: notifier_handle
+                        notifier: notifier_handle,
                     })
                 })
             })
@@ -361,29 +366,25 @@ impl MusicBotClient {
             .await
             .expect("Failed to build serenity client.");
 
-        Self {
-            serenity_client
-        }
+        Self { serenity_client }
     }
 
     pub async fn start(&mut self) -> Result<(), MusicBotError> {
         tracing::info!("Starting bot client");
 
-        self.serenity_client.start().await
-            .map_err(|e| {
-                tracing::error!("Failed to start server: {:?}", e);
-                MusicBotError::InternalError(e.to_string())
-            })
+        self.serenity_client.start().await.map_err(|e| {
+            tracing::error!("Failed to start server: {:?}", e);
+            MusicBotError::InternalError(e.to_string())
+        })
     }
 }
 
 async fn table_exists(database: &Arc<Database>, name: &str) -> Result<bool, MusicBotError> {
-    let row: Option<i64> = sqlx::query_scalar(
-        "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?"
-    )
-        .bind(name)
-        .fetch_optional(&**database)
-        .await
-        .map_err(|e| MusicBotError::InternalError(format!("Catalog probe failed: {e}")))?;
+    let row: Option<i64> =
+        sqlx::query_scalar("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?")
+            .bind(name)
+            .fetch_optional(&**database)
+            .await
+            .map_err(|e| MusicBotError::InternalError(format!("Catalog probe failed: {e}")))?;
     Ok(row.is_some())
 }
