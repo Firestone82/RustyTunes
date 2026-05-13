@@ -2,6 +2,7 @@ use crate::bot::{Context, Database, MusicBotError};
 use crate::embeds::player_embed::PlayerEmbed;
 use crate::handlers::queue_handler::QueueHandler;
 use crate::service::embed_service::SendEmbed;
+use crate::service::youtube_cache;
 use poise::serenity_prelude as serenity_prelude;
 use rand::seq::SliceRandom;
 use serenity::all::{ActivityData, GuildId};
@@ -86,12 +87,26 @@ impl TrackSource {
 }
 
 impl Track {
-    pub fn build_input(&self, req_client: &reqwest::Client) -> Input {
+    pub async fn build_input(&self, req_client: &reqwest::Client) -> Input {
         match &self.source {
-            TrackSource::YouTube | TrackSource::Spotify => {
-                // `play_url` lets sources (like Spotify) ship a yt-dlp-friendly
-                // input string while keeping `track_url` set to the user-facing
-                // permalink that we render in embeds.
+            TrackSource::YouTube => {
+                let input_url = self.metadata.play_url
+                    .clone()
+                    .unwrap_or_else(|| self.metadata.track_url.clone());
+                // Check the local cache first; download and cache if absent.
+                if let Some(cached_path) = youtube_cache::get_or_cache(
+                    &self.metadata.id,
+                    &input_url,
+                    &self.metadata.title,
+                ).await {
+                    return File::new(cached_path).into();
+                }
+                // Fall back to live streaming if caching failed.
+                YoutubeDl::new(req_client.clone(), input_url).into()
+            }
+            TrackSource::Spotify => {
+                // Spotify tracks are resolved at play-time via yt-dlp search;
+                // there is no stable video ID to key the cache on.
                 let input_url = self.metadata.play_url
                     .clone()
                     .unwrap_or_else(|| self.metadata.track_url.clone());
@@ -290,12 +305,16 @@ impl Player {
                     .to_embed()
                     .send_context(ctx, false, Some(30)).await?;
 
+                // Resolve input (potentially downloading to cache) before
+                // locking the Call so we don't hold the mutex during I/O.
+                let input = next_track.build_input(&ctx.data().request_client).await;
+
                 // Play the next track
                 let mut guard: MutexGuard<Call> = manager
                     .lock()
                     .await;
 
-                let track_handle: TrackHandle = guard.play(next_track.build_input(&ctx.data().request_client).into());
+                let track_handle: TrackHandle = guard.play(input.into());
                 
                 // Set volume
                 let _ = track_handle.set_volume(self.volume);

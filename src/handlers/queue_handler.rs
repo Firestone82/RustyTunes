@@ -49,12 +49,16 @@ impl EventHandler for QueueHandler {
                         PlaybackError::InternalError("Error sending now playing embed".to_owned())
                     });
 
+                // Resolve input (potentially downloading to cache) before
+                // locking the Call so we don't hold the mutex during I/O.
+                let input = next_track.build_input(&self.req_client).await;
+
                 // Play the next track
                 let mut guard: MutexGuard<Call> = self.manager
                     .lock()
                     .await;
 
-                let track_handle: TrackHandle = guard.play(next_track.build_input(&self.req_client).into());
+                let track_handle: TrackHandle = guard.play(input.into());
 
                 // Set volume
                 let _ = track_handle.set_volume(player.volume);
