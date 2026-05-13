@@ -4,7 +4,8 @@ use crate::embeds::queue_embed::QueueEmbed;
 use crate::player::player::Player;
 use crate::service::embed_service::SendEmbed;
 use serenity::all::{ButtonStyle, CreateActionRow, CreateButton, CreateEmbed, CreateInteractionResponse, CreateInteractionResponseMessage, EditMessage};
-use std::time::Duration;
+use std::collections::HashMap;
+use std::time::{Duration, Instant};
 use tokio::sync::RwLockReadGuard;
 
 const ITEMS_PER_PAGE: usize = 10;
@@ -81,6 +82,7 @@ pub async fn queue(ctx: Context<'_>, page: Option<usize>) -> Result<(), MusicBot
         .map_err(|e| MusicBotError::InternalError(e.to_string()))?;
 
     let http = ctx.serenity_context().http.clone();
+    let mut cooldowns: HashMap<serenity::all::UserId, Instant> = HashMap::new();
 
     loop {
         let interaction = message
@@ -91,11 +93,20 @@ pub async fn queue(ctx: Context<'_>, page: Option<usize>) -> Result<(), MusicBot
         match interaction {
             Some(interaction) => {
                 if interaction.user.id != ctx.author().id {
-                    interaction.create_response(&http, CreateInteractionResponse::Message(
-                        CreateInteractionResponseMessage::new()
-                            .content("Only the person who ran this command can navigate the queue.")
-                            .ephemeral(true)
-                    )).await.ok();
+                    let now = Instant::now();
+                    let on_cooldown = cooldowns.get(&interaction.user.id)
+                        .map(|&last| now.duration_since(last) < Duration::from_secs(5))
+                        .unwrap_or(false);
+                    if on_cooldown {
+                        interaction.defer(&http).await.ok();
+                    } else {
+                        cooldowns.insert(interaction.user.id, now);
+                        interaction.create_response(&http, CreateInteractionResponse::Message(
+                            CreateInteractionResponseMessage::new()
+                                .content("Only the person who ran this command can navigate the queue.")
+                                .ephemeral(true)
+                        )).await.ok();
+                    }
                     continue;
                 }
 

@@ -8,6 +8,7 @@ use crate::service::embed_service::SendEmbed;
 use crate::sources::spotify::spotify_client::{SpotifyClient, SpotifyError, SpotifySearchResult};
 use crate::sources::youtube::youtube_client::{SearchError, YouTubeSearchResult, YoutubeClient};
 use serenity::all::{ButtonStyle, CreateActionRow, CreateButton, CreateInteractionResponse, CreateInteractionResponseMessage, Message};
+use std::collections::HashMap;
 use std::convert::Into;
 use std::time::{Duration, Instant};
 use tokio::sync::RwLockWriteGuard;
@@ -133,6 +134,7 @@ async fn do_play(ctx: Context<'_>, track_source: String, top: bool) -> Result<()
                 .map_err(|error| MusicBotError::InternalError(error.to_string()))?;
 
             let deadline = Instant::now() + Duration::from_secs(60 * 2);
+            let mut cooldowns: HashMap<serenity::all::UserId, Instant> = HashMap::new();
             loop {
                 let remaining = deadline.saturating_duration_since(Instant::now());
                 if remaining.is_zero() {
@@ -152,11 +154,20 @@ async fn do_play(ctx: Context<'_>, track_source: String, top: bool) -> Result<()
                 match interaction {
                     Some(interaction) => {
                         if interaction.user.id != ctx.author().id {
-                            interaction.create_response(ctx.http(), CreateInteractionResponse::Message(
-                                CreateInteractionResponseMessage::new()
-                                    .content("Only the person who ran this command can select a track.")
-                                    .ephemeral(true)
-                            )).await.ok();
+                            let now = Instant::now();
+                            let on_cooldown = cooldowns.get(&interaction.user.id)
+                                .map(|&last| now.duration_since(last) < Duration::from_secs(5))
+                                .unwrap_or(false);
+                            if on_cooldown {
+                                interaction.defer(ctx.http()).await.ok();
+                            } else {
+                                cooldowns.insert(interaction.user.id, now);
+                                interaction.create_response(ctx.http(), CreateInteractionResponse::Message(
+                                    CreateInteractionResponseMessage::new()
+                                        .content("Only the person who ran this command can select a track.")
+                                        .ephemeral(true)
+                                )).await.ok();
+                            }
                             continue;
                         }
 

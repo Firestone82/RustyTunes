@@ -5,7 +5,7 @@ use crate::player::player::{Player, Track};
 use crate::service::channel_service;
 use crate::service::embed_service::SendEmbed;
 use serenity::all::{ButtonStyle, CreateActionRow, CreateButton, CreateInteractionResponse, CreateInteractionResponseMessage, Message};
-use std::collections::VecDeque;
+use std::collections::{HashMap, VecDeque};
 use std::time::{Duration, Instant};
 use tokio::sync::RwLockWriteGuard;
 
@@ -56,6 +56,7 @@ pub async fn history(ctx: Context<'_>) -> Result<(), MusicBotError> {
         .map_err(|e| MusicBotError::InternalError(e.to_string()))?;
 
     let deadline = Instant::now() + Duration::from_secs(60 * 2);
+    let mut cooldowns: HashMap<serenity::all::UserId, Instant> = HashMap::new();
     loop {
         let remaining = deadline.saturating_duration_since(Instant::now());
         if remaining.is_zero() {
@@ -75,11 +76,20 @@ pub async fn history(ctx: Context<'_>) -> Result<(), MusicBotError> {
         match interaction {
             Some(interaction) => {
                 if interaction.user.id != ctx.author().id {
-                    interaction.create_response(ctx.http(), CreateInteractionResponse::Message(
-                        CreateInteractionResponseMessage::new()
-                            .content("Only the person who ran this command can select a track.")
-                            .ephemeral(true)
-                    )).await.ok();
+                    let now = Instant::now();
+                    let on_cooldown = cooldowns.get(&interaction.user.id)
+                        .map(|&last| now.duration_since(last) < Duration::from_secs(5))
+                        .unwrap_or(false);
+                    if on_cooldown {
+                        interaction.defer(ctx.http()).await.ok();
+                    } else {
+                        cooldowns.insert(interaction.user.id, now);
+                        interaction.create_response(ctx.http(), CreateInteractionResponse::Message(
+                            CreateInteractionResponseMessage::new()
+                                .content("Only the person who ran this command can select a track.")
+                                .ephemeral(true)
+                        )).await.ok();
+                    }
                     continue;
                 }
 
