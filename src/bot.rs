@@ -414,12 +414,36 @@ impl MusicBotClient {
     pub async fn start(&mut self) -> Result<(), MusicBotError> {
         tracing::info!("Starting bot client");
 
+        let shard_manager = self.serenity_client.shard_manager.clone();
+        tokio::spawn(async move {
+            wait_for_signal().await;
+            tracing::info!("Shutdown signal received, disconnecting bot...");
+            shard_manager.shutdown_all().await;
+        });
+
         self.serenity_client.start().await
             .map_err(|e| {
                 tracing::error!("Failed to start server: {:?}", e);
                 MusicBotError::InternalError(e.to_string())
             })
     }
+}
+
+#[cfg(unix)]
+async fn wait_for_signal() {
+    use tokio::signal::unix::{signal, SignalKind};
+    let mut sigterm = signal(SignalKind::terminate()).expect("Failed to listen for SIGTERM");
+    let mut sigint  = signal(SignalKind::interrupt()).expect("Failed to listen for SIGINT");
+    tokio::select! {
+        _ = sigterm.recv() => tracing::info!("Received SIGTERM"),
+        _ = sigint.recv()  => tracing::info!("Received SIGINT"),
+    }
+}
+
+#[cfg(not(unix))]
+async fn wait_for_signal() {
+    tokio::signal::ctrl_c().await.expect("Failed to listen for Ctrl+C");
+    tracing::info!("Received Ctrl+C");
 }
 
 async fn table_exists(database: &Arc<Database>, name: &str) -> Result<bool, MusicBotError> {
