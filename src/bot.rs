@@ -1,4 +1,5 @@
 use crate::commands;
+use crate::commands::utility::cmd_break::BreakState;
 use crate::commands::{music, reputation, utility};
 use crate::handlers::error_handler;
 use crate::player::notifier::{Notifier, NotifierError};
@@ -12,6 +13,7 @@ use serenity::all::{ChannelId, FullEvent, GatewayIntents, GuildId};
 use songbird::SerenityInit;
 use sqlx::sqlite::SqlitePoolOptions;
 use sqlx::{Pool, Sqlite};
+use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::{RwLock, RwLockWriteGuard};
 
@@ -22,6 +24,7 @@ pub struct MusicBotData {
     pub database_pool: Arc<Database>,
     pub player: Arc<RwLock<Player>>,
     pub notifier: Arc<RwLock<Notifier>>,
+    pub breaks: Arc<RwLock<HashMap<GuildId, Arc<BreakState>>>>,
 }
 
 pub type Database = Pool<Sqlite>;
@@ -125,6 +128,8 @@ impl MusicBotClient {
                     music::cmd_normalize::normalize(),
                     utility::cmd_uwu::uwu(),
                     utility::cmd_uwu::uwu_me(),
+                    utility::cmd_gather::gather(),
+                    utility::cmd_break::r#break(),
                     utility::cmd_notify::notify(),
                     utility::cmd_notify::remind(),
                     utility::cmd_wakeup::wakeup(),
@@ -284,6 +289,7 @@ impl MusicBotClient {
                         database_pool: database,
                         player: player_handle,
                         notifier: notifier_handle,
+                        breaks: Arc::new(RwLock::new(HashMap::new())),
                     })
                 })
             })

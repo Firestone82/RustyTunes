@@ -31,3 +31,5 @@ uwu-rs = "1.0.0"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 tracing-appender = "0.2"
+emojis = "0.6"
+unicode-segmentation = "1.11"

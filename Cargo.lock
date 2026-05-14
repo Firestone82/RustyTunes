@@ -9,6 +9,7 @@ dependencies = [
  "async-trait",
  "base64 0.22.1",
  "dotenv",
+ "emojis",
  "google-youtube3",
  "html-escape",
  "hyper 1.5.0",
@@ -31,6 +32,7 @@ dependencies = [
  "tracing",
  "tracing-appender",
  "tracing-subscriber",
+ "unicode-segmentation",
  "uwu-rs",
 ]
 
@@ -949,6 +951,15 @@ dependencies = [
  "sec1",
  "subtle",
  "zeroize",
+]
+
+[[package]]
+name = "emojis"
+version = "0.6.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "99e1f1df1f181f2539bac8bf027d31ca5ffbf9e559e3f2d09413b9107b5c02f4"
+dependencies = [
+ "phf",
 ]
 
 [[package]]
@@ -2936,6 +2947,24 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e3148f5046208a5d56bcfc03053e3ca6334e51da8dfb19b6cdc8b306fae3283e"
 
 [[package]]
+name = "phf"
+version = "0.11.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1fd6780a80ae0c52cc120a26a1a42c1ae51b247a253e4e06113d23d2c2edd078"
+dependencies = [
+ "phf_shared",
+]
+
+[[package]]
+name = "phf_shared"
+version = "0.11.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "67eabc2ef2a60eb7faa00097bd1ffdb5bd28e62bf39990626a582201b7a754e5"
+dependencies = [
+ "siphasher",
+]
+
+[[package]]
 name = "pin-project"
 version = "1.1.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4163,6 +4192,12 @@ name = "simdutf8"
 version = "0.1.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e3a9fe34e3e7a50316060351f37187a3f546bce95496156754b601a5fa71b76e"
+
+[[package]]
+name = "siphasher"
+version = "1.0.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8ee5873ec9cce0195efcb7a4e9507a04cd49aec9c83d0389df45b1ef7ba2e649"
 
 [[package]]
 name = "skeptic"
