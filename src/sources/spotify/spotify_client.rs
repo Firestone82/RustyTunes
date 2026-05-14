@@ -334,7 +334,7 @@ fn extract_tracks(items: Vec<JsonValue>) -> Vec<SpTrack> {
                 }
             }
         })
-        .filter(|t| t.id.is_some() && t.name.as_deref().map_or(false, |n| !n.is_empty()))
+        .filter(|t| t.id.is_some() && t.name.as_deref().is_some_and(|n| !n.is_empty()))
         .collect()
 }
 

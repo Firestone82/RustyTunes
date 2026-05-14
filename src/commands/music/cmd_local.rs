@@ -31,7 +31,7 @@ pub async fn local(ctx: Context<'_>) -> Result<(), MusicBotError> {
 }
 
 /// Autocomplete from the current local library — used by `play` and `rename`.
-async fn autocomplete_local_track<'a>(_ctx: Context<'_>, partial: &'a str) -> Vec<String> {
+async fn autocomplete_local_track(_ctx: Context<'_>, partial: &str) -> Vec<String> {
     let needle = partial.trim().to_ascii_lowercase();
     let files = local_service::list_local_files().await.unwrap_or_default();
     files
@@ -304,7 +304,7 @@ pub async fn rename_track(
     let parent = target
         .parent()
         .map(|p| p.to_path_buf())
-        .unwrap_or_else(|| local_service::downloads_dir());
+        .unwrap_or_else(local_service::downloads_dir);
 
     let new_path = local_service::unique_path(&parent, &new_filename).await;
 

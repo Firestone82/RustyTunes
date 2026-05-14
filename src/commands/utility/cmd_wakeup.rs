@@ -43,7 +43,7 @@ async fn wakeup_target(
 
     let current_channel: Option<ChannelId> =
         channel_service::get_user_voice_channel(ctx, &ctx.author().id);
-    let count: usize = count.unwrap_or(2).min(5).max(1);
+    let count: usize = count.unwrap_or(2).clamp(1, 5);
 
     if let Some(user_channel) = current_channel {
         let author_m: Mention = ctx.author().mention();
@@ -53,9 +53,10 @@ async fn wakeup_target(
             .await?;
 
         for _ in 0..count {
-            if let Err(_) = target
+            if target
                 .move_to_voice_channel(ctx.http(), afk_channel.clone())
                 .await
+                .is_err()
             {
                 BotEmbed::Error(MusicBotError::InternalError(
                     "Failed to move user to AFK channel".to_string(),
@@ -68,7 +69,11 @@ async fn wakeup_target(
 
             tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
 
-            if let Err(_) = target.move_to_voice_channel(ctx.http(), user_channel).await {
+            if target
+                .move_to_voice_channel(ctx.http(), user_channel)
+                .await
+                .is_err()
+            {
                 BotEmbed::Error(MusicBotError::InternalError(
                     "Failed to move user back to original channel".to_string(),
                 ))
