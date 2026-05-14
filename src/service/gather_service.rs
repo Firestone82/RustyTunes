@@ -38,8 +38,6 @@ pub async fn start_gather(
     let deadline = started_at + MAX_GATHER_DURATION;
 
     let mut arrivals: HashMap<UserId, Duration> = HashMap::new();
-    // Author who initiated gather is auto-marked as present at time 0.
-    arrivals.insert(author_id, Duration::ZERO);
 
     let mut expected: HashSet<UserId> = expected_ids.into_iter().collect();
     expected.insert(author_id);
@@ -195,6 +193,11 @@ pub async fn start_gather(
         }
 
         let now = Instant::now();
+
+        // Track anyone who has joined the voice channel since gather started.
+        for id in current_voice_members(serenity_ctx, guild_id, voice_channel_id, bot_id) {
+            expected.insert(id);
+        }
 
         // Ghost-ping missing members after grace period ends.
         if now >= grace_ends_at && now >= last_ghost_ping + GHOST_PING_INTERVAL {
