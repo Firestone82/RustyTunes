@@ -100,11 +100,7 @@ impl Track {
             return File::new(path.clone()).into();
         }
 
-        let raw_cache = cache_service::cache_path_for(self);
-        let cached_path = match &raw_cache {
-            Some(p) if cache_service::file_exists(p).await => Some(p.clone()),
-            _ => None,
-        };
+        let cached_path = cache_service::find_cached(self).await;
 
         if let Some(raw) = cached_path {
             if normalize {

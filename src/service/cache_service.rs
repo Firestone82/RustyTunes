@@ -1,7 +1,9 @@
 //! On-disk cache for tracks resolved through yt-dlp. Once a track has played
-//! through, the audio is kept under `cache/` keyed by `<title>_<id>.opus` so
-//! subsequent plays skip the YouTube fetch (and the API/quota hit that goes
-//! with it).
+//! through, the audio is kept under `cache/` keyed by `<title>_<id>.<ext>`
+//! (with `<ext>` being whatever native container yt-dlp produced — usually
+//! `webm` or `m4a`) so subsequent plays skip the YouTube fetch (and the API/
+//! quota hit that goes with it). The project's symphonia decoder is built
+//! with `features = ["all"]`, so any container yt-dlp picks plays back fine.
 //!
 //! Optional dynaudnorm-normalized siblings live under `cache/normalized/` and
 //! are produced on demand when a guild has the session-only normalizer on.
@@ -13,7 +15,7 @@ use tokio::process::Command;
 
 const CACHE_DIR: &str = "cache";
 const NORMALIZED_SUBDIR: &str = "normalized";
-const CACHE_EXT: &str = "opus";
+const NORMALIZED_EXT: &str = "opus";
 const MAX_FILENAME_STEM: usize = 80;
 
 pub fn cache_dir() -> PathBuf {
@@ -48,9 +50,9 @@ fn sanitize(name: &str) -> String {
     if out.is_empty() { "track".to_string() } else { out }
 }
 
-/// Cache filename for `track`. `None` means the track isn't a fetched source
-/// (e.g. local files don't go in cache) or it lacks a usable id.
-pub fn cache_path_for(track: &Track) -> Option<PathBuf> {
+/// Stem identifying `track` in the cache (without an extension). `None` means
+/// the track isn't a fetched source (e.g. local files) or it lacks a usable id.
+pub fn cache_stem_for(track: &Track) -> Option<String> {
     match &track.source {
         TrackSource::YouTube | TrackSource::Spotify => {
             let id = sanitize(&track.metadata.id);
@@ -58,33 +60,72 @@ pub fn cache_path_for(track: &Track) -> Option<PathBuf> {
                 return None;
             }
             let title = sanitize(&track.metadata.title);
-            Some(cache_dir().join(format!("{title}_{id}.{CACHE_EXT}")))
+            Some(format!("{title}_{id}"))
         }
         TrackSource::Local(_) => None,
     }
 }
 
-/// Companion filename in `cache/normalized/` for `track`. Same naming as the
-/// raw cache so the two stay one-to-one.
+/// Look up `track` in the cache, ignoring extension. We don't pin a single
+/// extension because `--audio-format opus` requires ffmpeg with libopus, which
+/// isn't a given on every host — letting yt-dlp keep whatever container it
+/// downloads (webm/m4a/opus/…) avoids a hard dep on a libopus-built ffmpeg.
+pub async fn find_cached(track: &Track) -> Option<PathBuf> {
+    let stem = cache_stem_for(track)?;
+    find_with_stem(&cache_dir(), &stem, None).await
+}
+
+/// Companion path in `cache/normalized/`. The normalized output is always
+/// opus because we transcode through ffmpeg ourselves.
 pub fn normalized_path_for(track: &Track) -> Option<PathBuf> {
-    let raw = cache_path_for(track)?;
-    let name = raw.file_name()?.to_owned();
-    Some(normalized_dir().join(name))
+    let stem = cache_stem_for(track)?;
+    Some(normalized_dir().join(format!("{stem}.{NORMALIZED_EXT}")))
 }
 
 pub async fn file_exists(path: &Path) -> bool {
     tokio::fs::metadata(path).await.is_ok()
 }
 
+/// Find a file under `dir` whose name is `<stem>.<ext>`. When `skip_segment`
+/// is `Some("part")`, files like `<stem>.part.<ext>` are ignored — used to
+/// avoid picking up half-written downloads as cache hits.
+async fn find_with_stem(dir: &Path, stem: &str, skip_segment: Option<&str>) -> Option<PathBuf> {
+    let mut read_dir = tokio::fs::read_dir(dir).await.ok()?;
+    let prefix = format!("{stem}.");
+    while let Ok(Some(entry)) = read_dir.next_entry().await {
+        let name = entry.file_name();
+        let name_str = match name.to_str() {
+            Some(s) => s.to_string(),
+            None => continue,
+        };
+        if !name_str.starts_with(&prefix) {
+            continue;
+        }
+        let rest = &name_str[prefix.len()..];
+        if let Some(segment) = skip_segment {
+            // Reject `<stem>.<segment>.<ext>` (e.g. the `.part.webm` left
+            // around while a download is still in flight).
+            let segment_prefix = format!("{segment}.");
+            if rest.starts_with(&segment_prefix) || rest == segment {
+                continue;
+            }
+        }
+        if !rest.contains('.') && !rest.is_empty() {
+            return Some(entry.path());
+        }
+    }
+    None
+}
+
 /// Download `track` through yt-dlp into the cache, returning the final path.
 /// No-op (returns existing path) if a cached copy already exists.
 pub async fn cache_track(track: &Track) -> std::io::Result<PathBuf> {
-    let cache_path = cache_path_for(track).ok_or_else(|| {
+    let stem = cache_stem_for(track).ok_or_else(|| {
         std::io::Error::new(std::io::ErrorKind::InvalidInput, "track is not cacheable")
     })?;
 
-    if file_exists(&cache_path).await {
-        return Ok(cache_path);
+    if let Some(existing) = find_cached(track).await {
+        return Ok(existing);
     }
 
     ensure_dir(&cache_dir()).await?;
@@ -95,63 +136,86 @@ pub async fn cache_track(track: &Track) -> std::io::Result<PathBuf> {
         .clone()
         .unwrap_or_else(|| track.metadata.track_url.clone());
 
-    // yt-dlp + extract-audio always tacks `.opus` onto the stem; use a `.part`
-    // stem so a concurrent run never picks up a half-written file.
-    //
-    // Path component note: `with_extension` *replaces* the trailing extension,
-    // so we build both `part_stem` and `part_path` by appending raw bytes —
-    // otherwise `<stem>.part.with_extension("opus")` would collapse back to
-    // `<stem>.opus` and the rename below would point at a file yt-dlp never
-    // wrote.
-    let part_stem = {
-        let mut s = cache_path.with_extension("").into_os_string();
-        s.push(".part");
-        PathBuf::from(s)
-    };
-    let part_path = {
-        let mut s = part_stem.clone().into_os_string();
-        s.push(".");
-        s.push(CACHE_EXT);
-        PathBuf::from(s)
-    };
+    // Write to `<stem>.part.<ext>` first so a half-downloaded file isn't
+    // picked up by `find_cached` on a concurrent lookup.
+    let output_template = cache_dir().join(format!("{stem}.part.%(ext)s"));
 
-    let output_template = {
-        let mut s = part_stem.into_os_string();
-        s.push(".%(ext)s");
-        s
-    };
-
-    let status = Command::new("yt-dlp")
-        .args([
-            "--no-warnings",
-            "--no-playlist",
-            "-f",
-            "bestaudio/best",
-            "--extract-audio",
-            "--audio-format",
-            CACHE_EXT,
-            "-o",
-        ])
+    let output = Command::new("yt-dlp")
+        .args(["--no-warnings", "--no-playlist", "-f", "bestaudio/best", "-o"])
         .arg(&output_template)
         .arg(&input_url)
         .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .status()
+        .stderr(Stdio::piped())
+        .output()
         .await?;
 
-    if !status.success() {
-        let _ = tokio::fs::remove_file(&part_path).await;
+    if !output.status.success() {
+        cleanup_part_files(&cache_dir(), &stem).await;
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        let tail = stderr
+            .lines()
+            .rev()
+            .take(5)
+            .collect::<Vec<_>>()
+            .into_iter()
+            .rev()
+            .collect::<Vec<_>>()
+            .join(" | ");
         return Err(std::io::Error::other(format!(
-            "yt-dlp failed with status: {status}"
+            "yt-dlp failed ({}): {}",
+            output.status, tail
         )));
     }
 
-    tokio::fs::rename(&part_path, &cache_path).await?;
-    Ok(cache_path)
+    // yt-dlp picked the extension based on whatever stream it grabbed; find
+    // the produced file and rename it to drop the `.part` infix.
+    let part_stem = format!("{stem}.part");
+    let mut read_dir = tokio::fs::read_dir(cache_dir()).await?;
+    let part_prefix = format!("{part_stem}.");
+    while let Some(entry) = read_dir.next_entry().await? {
+        let name = entry.file_name();
+        let name_str = match name.to_str() {
+            Some(s) => s.to_string(),
+            None => continue,
+        };
+        if !name_str.starts_with(&part_prefix) {
+            continue;
+        }
+        let ext = &name_str[part_prefix.len()..];
+        if ext.is_empty() || ext.contains('.') {
+            // Unexpected double extension — skip and let cleanup catch it.
+            continue;
+        }
+        let final_path = cache_dir().join(format!("{stem}.{ext}"));
+        tokio::fs::rename(entry.path(), &final_path).await?;
+        return Ok(final_path);
+    }
+
+    Err(std::io::Error::other(
+        "yt-dlp reported success but produced no output file",
+    ))
 }
 
-/// Produce a dynaudnorm-normalized sibling of `source` under
-/// `cache/normalized/`. Already-normalized files are reused.
+/// Delete any leftover `<stem>.part.*` files in `dir`. Called when yt-dlp
+/// fails so we don't accumulate partials on retry.
+async fn cleanup_part_files(dir: &Path, stem: &str) {
+    let part_prefix = format!("{stem}.part.");
+    let mut read_dir = match tokio::fs::read_dir(dir).await {
+        Ok(rd) => rd,
+        Err(_) => return,
+    };
+    while let Ok(Some(entry)) = read_dir.next_entry().await {
+        let name = entry.file_name();
+        if let Some(s) = name.to_str() {
+            if s.starts_with(&part_prefix) {
+                let _ = tokio::fs::remove_file(entry.path()).await;
+            }
+        }
+    }
+}
+
+/// Produce a dynaudnorm-normalized sibling of `source` at `target`.
+/// Already-normalized files are reused.
 pub async fn normalize_file(source: &Path, target: &Path) -> std::io::Result<()> {
     if file_exists(target).await {
         return Ok(());
@@ -159,9 +223,9 @@ pub async fn normalize_file(source: &Path, target: &Path) -> std::io::Result<()>
 
     ensure_dir(&normalized_dir()).await?;
 
-    let tmp = target.with_extension(format!("part.{CACHE_EXT}"));
+    let tmp = target.with_extension(format!("part.{NORMALIZED_EXT}"));
 
-    let status = Command::new("ffmpeg")
+    let output = Command::new("ffmpeg")
         .arg("-y")
         .arg("-i")
         .arg(source)
@@ -175,14 +239,25 @@ pub async fn normalize_file(source: &Path, target: &Path) -> std::io::Result<()>
         ])
         .arg(&tmp)
         .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .status()
+        .stderr(Stdio::piped())
+        .output()
         .await?;
 
-    if !status.success() {
+    if !output.status.success() {
         let _ = tokio::fs::remove_file(&tmp).await;
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        let tail = stderr
+            .lines()
+            .rev()
+            .take(5)
+            .collect::<Vec<_>>()
+            .into_iter()
+            .rev()
+            .collect::<Vec<_>>()
+            .join(" | ");
         return Err(std::io::Error::other(format!(
-            "ffmpeg failed with status: {status}"
+            "ffmpeg failed ({}): {}",
+            output.status, tail
         )));
     }
 
@@ -193,7 +268,7 @@ pub async fn normalize_file(source: &Path, target: &Path) -> std::io::Result<()>
 /// Fire-and-forget caching of `track` after playback has already started.
 /// Errors are logged but never surfaced — a cache miss next time is fine.
 pub fn spawn_cache(track: Track) {
-    if cache_path_for(&track).is_none() {
+    if cache_stem_for(&track).is_none() {
         return;
     }
     tokio::spawn(async move {
