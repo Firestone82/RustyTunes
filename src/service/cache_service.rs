@@ -4,9 +4,6 @@
 //! `webm` or `m4a`) so subsequent plays skip the YouTube fetch (and the API/
 //! quota hit that goes with it). The project's symphonia decoder is built
 //! with `features = ["all"]`, so any container yt-dlp picks plays back fine.
-//!
-//! Optional dynaudnorm-normalized siblings live under `cache/normalized/` and
-//! are produced on demand when a guild has the session-only normalizer on.
 
 use crate::player::player::{Track, TrackSource};
 use std::path::{Path, PathBuf};
@@ -14,16 +11,10 @@ use std::process::Stdio;
 use tokio::process::Command;
 
 const CACHE_DIR: &str = "cache";
-const NORMALIZED_SUBDIR: &str = "normalized";
-const NORMALIZED_EXT: &str = "opus";
 const MAX_FILENAME_STEM: usize = 80;
 
 pub fn cache_dir() -> PathBuf {
     PathBuf::from(CACHE_DIR)
-}
-
-pub fn normalized_dir() -> PathBuf {
-    cache_dir().join(NORMALIZED_SUBDIR)
 }
 
 async fn ensure_dir(dir: &Path) -> std::io::Result<()> {
@@ -72,35 +63,8 @@ pub fn cache_stem_for(track: &Track) -> Option<String> {
 /// downloads (webm/m4a/opus/…) avoids a hard dep on a libopus-built ffmpeg.
 pub async fn find_cached(track: &Track) -> Option<PathBuf> {
     let stem = cache_stem_for(track)?;
-    find_with_stem(&cache_dir(), &stem, None).await
-}
-
-/// Companion path in `cache/normalized/`. The normalized output is always
-/// opus because we transcode through ffmpeg ourselves.
-///
-/// Local files key off their file stem and are namespaced under `local_…` so
-/// they never collide with a YouTube/Spotify cache entry. Local stems are
-/// unique because `local_service::unique_path` enforces it on download.
-pub fn normalized_path_for(track: &Track) -> Option<PathBuf> {
-    let key = match &track.source {
-        TrackSource::YouTube | TrackSource::Spotify => cache_stem_for(track)?,
-        TrackSource::Local(path) => {
-            let stem = path.file_stem()?.to_str()?;
-            format!("local_{}", sanitize(stem))
-        }
-    };
-    Some(normalized_dir().join(format!("{key}.{NORMALIZED_EXT}")))
-}
-
-pub async fn file_exists(path: &Path) -> bool {
-    tokio::fs::metadata(path).await.is_ok()
-}
-
-/// Find a file under `dir` whose name is `<stem>.<ext>`. When `skip_segment`
-/// is `Some("part")`, files like `<stem>.part.<ext>` are ignored — used to
-/// avoid picking up half-written downloads as cache hits.
-async fn find_with_stem(dir: &Path, stem: &str, skip_segment: Option<&str>) -> Option<PathBuf> {
-    let mut read_dir = tokio::fs::read_dir(dir).await.ok()?;
+    let dir = cache_dir();
+    let mut read_dir = tokio::fs::read_dir(&dir).await.ok()?;
     let prefix = format!("{stem}.");
     while let Ok(Some(entry)) = read_dir.next_entry().await {
         let name = entry.file_name();
@@ -112,13 +76,9 @@ async fn find_with_stem(dir: &Path, stem: &str, skip_segment: Option<&str>) -> O
             continue;
         }
         let rest = &name_str[prefix.len()..];
-        if let Some(segment) = skip_segment {
-            // Reject `<stem>.<segment>.<ext>` (e.g. the `.part.webm` left
-            // around while a download is still in flight).
-            let segment_prefix = format!("{segment}.");
-            if rest.starts_with(&segment_prefix) || rest == segment {
-                continue;
-            }
+        // Skip half-written downloads (`<stem>.part.<ext>`).
+        if rest.starts_with("part.") || rest == "part" {
+            continue;
         }
         if !rest.contains('.') && !rest.is_empty() {
             return Some(entry.path());
@@ -179,9 +139,8 @@ pub async fn cache_track(track: &Track) -> std::io::Result<PathBuf> {
 
     // yt-dlp picked the extension based on whatever stream it grabbed; find
     // the produced file and rename it to drop the `.part` infix.
-    let part_stem = format!("{stem}.part");
+    let part_prefix = format!("{stem}.part.");
     let mut read_dir = tokio::fs::read_dir(cache_dir()).await?;
-    let part_prefix = format!("{part_stem}.");
     while let Some(entry) = read_dir.next_entry().await? {
         let name = entry.file_name();
         let name_str = match name.to_str() {
@@ -224,57 +183,6 @@ async fn cleanup_part_files(dir: &Path, stem: &str) {
     }
 }
 
-/// Produce a dynaudnorm-normalized sibling of `source` at `target`.
-/// Already-normalized files are reused.
-pub async fn normalize_file(source: &Path, target: &Path) -> std::io::Result<()> {
-    if file_exists(target).await {
-        return Ok(());
-    }
-
-    ensure_dir(&normalized_dir()).await?;
-
-    let tmp = target.with_extension(format!("part.{NORMALIZED_EXT}"));
-
-    let output = Command::new("ffmpeg")
-        .arg("-y")
-        .arg("-i")
-        .arg(source)
-        .args([
-            "-af",
-            "dynaudnorm=f=200:g=15:p=0.95",
-            "-c:a",
-            "libopus",
-            "-b:a",
-            "128k",
-        ])
-        .arg(&tmp)
-        .stdout(Stdio::null())
-        .stderr(Stdio::piped())
-        .output()
-        .await?;
-
-    if !output.status.success() {
-        let _ = tokio::fs::remove_file(&tmp).await;
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        let tail = stderr
-            .lines()
-            .rev()
-            .take(5)
-            .collect::<Vec<_>>()
-            .into_iter()
-            .rev()
-            .collect::<Vec<_>>()
-            .join(" | ");
-        return Err(std::io::Error::other(format!(
-            "ffmpeg failed ({}): {}",
-            output.status, tail
-        )));
-    }
-
-    tokio::fs::rename(&tmp, target).await?;
-    Ok(())
-}
-
 /// Fire-and-forget caching of `track` after playback has already started.
 /// Errors are logged but never surfaced — a cache miss next time is fine.
 pub fn spawn_cache(track: Track) {
@@ -293,18 +201,6 @@ pub fn spawn_cache(track: Track) {
                 track.metadata.title,
                 e
             ),
-        }
-    });
-}
-
-/// Fire-and-forget normalization. Used so `resolve_input` doesn't block the
-/// player write lock on an ffmpeg transcode — the current play uses the raw
-/// cache and the normalized file becomes available for the next play.
-pub fn spawn_normalize(source: PathBuf, target: PathBuf) {
-    tokio::spawn(async move {
-        match normalize_file(&source, &target).await {
-            Ok(()) => tracing::info!("Normalized {} -> {}", source.display(), target.display()),
-            Err(e) => tracing::warn!("Failed to normalize {}: {}", source.display(), e),
         }
     });
 }

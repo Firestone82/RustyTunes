@@ -24,7 +24,6 @@ pub enum PlayerEmbed<'a> {
     Resumed(&'a Track),
     Volume(f32),
     VolumeChanged(f32),
-    NormalizeState(bool),
     SilentState(bool),
     Skipped(usize),
     Shuffled,
@@ -114,23 +113,6 @@ impl<'a> PlayerEmbed<'a> {
                     .color(Color::DARK_BLUE)
                     .title("🔊  Volume changed")
                     .description(format!("Volume set to {}%.", volume))
-            },
-            PlayerEmbed::NormalizeState(on) => {
-                let (title, body) = if *on {
-                    (
-                        "🎚️  Normalizer on",
-                        "Loudness normalization is **on** for this session. Quieter sections of tracks will be lifted to match the louder ones.",
-                    )
-                } else {
-                    (
-                        "🎚️  Normalizer off",
-                        "Loudness normalization is **off** for this session. Tracks play with their original dynamic range.",
-                    )
-                };
-                CreateEmbed::new()
-                    .color(Color::DARK_BLUE)
-                    .title(title)
-                    .description(body)
             },
             PlayerEmbed::SilentState(on) => {
                 let (title, body) = if *on {

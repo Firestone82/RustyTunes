@@ -52,7 +52,7 @@ impl EventHandler for QueueHandler {
                 }
 
                 let input = next_track
-                    .resolve_input(&self.req_client, player.normalize)
+                    .resolve_input(&self.req_client)
                     .await;
 
                 // Play the next track

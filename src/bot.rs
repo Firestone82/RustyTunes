@@ -124,7 +124,6 @@ impl MusicBotClient {
                     music::cmd_playing::playing(),
                     music::cmd_history::history(),
                     music::cmd_local::local(),
-                    music::cmd_normalize::normalize(),
                     music::cmd_silent::silent(),
                     utility::cmd_uwu::uwu(),
                     utility::cmd_uwu::uwu_me(),
