@@ -122,7 +122,7 @@ The `notify` command (alias `remind`) lets users schedule timed reminders persis
 - **Auto-leave**: bot automatically leaves the voice channel when it's left alone
 - **Auto-cleanup**: when the bot is kicked, dragged out, or otherwise loses its voice connection, playback state and the queue are cleaned up automatically
 - **Per-guild volume persistence**: the last-set volume is remembered between sessions in SQLite
-- **Cross-track loudness normalization**: opt-in via `!normalize`. When enabled, each cached track's integrated loudness is measured once (EBU R128 via ffmpeg) and a static gain is applied so songs sit at roughly the same perceived loudness without crushing in-song dynamics. Off by default, takes effect immediately on the current track, resets on restart
+- **Cross-track loudness normalization**: opt-in via `!normalize`. When enabled, each cached track's integrated loudness is measured once (EBU R128 via ffmpeg) and a static gain is applied so songs sit at roughly the same perceived loudness without crushing in-song dynamics. Off by default, takes effect immediately on the current track, resets on restart. The target loudness (`NORMALIZE_TARGET_LUFS`, default -10) and gain clamps (`NORMALIZE_MIN_GAIN_DB`, `NORMALIZE_MAX_GAIN_DB`) are tunable via env vars — higher target = louder output
 - **Per-source cache layout**: downloaded audio is filed under `cache/youtube/` or `cache/spotify/` (legacy flat-cached files still play)
 - **Slash + prefix parity**: every command works both ways
 - **Graceful shutdown**: handles SIGINT/SIGTERM (and Ctrl+C on Windows) to disconnect cleanly

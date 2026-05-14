@@ -526,7 +526,7 @@ pub fn schedule_normalization_apply(
     track_id: String,
 ) {
     tokio::spawn(async move {
-        let multiplier = normalize_service::multiplier_for(&path).await;
+        let measurement = normalize_service::measurement_for(&path).await;
         let mut player = player_arc.write().await;
         let still_current = player
             .current_track
@@ -536,8 +536,27 @@ pub fn schedule_normalization_apply(
         if !still_current || !player.should_normalize() {
             return;
         }
-        player.current_gain = multiplier;
-        let _ = handle.set_volume(player.volume * multiplier);
+        let title = player
+            .current_track
+            .as_ref()
+            .map(|t| t.metadata.title.clone())
+            .unwrap_or_default();
+        player.current_gain = measurement.multiplier;
+        let effective = player.volume * measurement.multiplier;
+        let _ = handle.set_volume(effective);
+        let lufs_str = measurement
+            .lufs
+            .map(|l| format!("{l:.2} LUFS"))
+            .unwrap_or_else(|| "unknown LUFS".to_string());
+        tracing::info!(
+            "Normalize applied: '{}' — {} → gain {:+.2} dB (×{:.3}); volume {:.0}% × gain = {:.3} effective",
+            title,
+            lufs_str,
+            measurement.gain_db,
+            measurement.multiplier,
+            player.volume * 100.0,
+            effective,
+        );
     });
 }
 
