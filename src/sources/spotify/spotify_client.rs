@@ -161,7 +161,10 @@ impl SpotifyClient {
 
     async fn access_token(&self) -> Result<String, SpotifyError> {
         let id = self.client_id.as_ref().ok_or(SpotifyError::NotConfigured)?;
-        let secret = self.client_secret.as_ref().ok_or(SpotifyError::NotConfigured)?;
+        let secret = self
+            .client_secret
+            .as_ref()
+            .ok_or(SpotifyError::NotConfigured)?;
 
         let mut guard = self.token.lock().await;
         if let Some(cached) = guard.as_ref() {
@@ -171,7 +174,8 @@ impl SpotifyClient {
         }
 
         let basic = BASE64.encode(format!("{id}:{secret}"));
-        let response = self.http
+        let response = self
+            .http
             .post(SPOTIFY_TOKEN_URL)
             .header("Authorization", format!("Basic {basic}"))
             .form(&[("grant_type", "client_credentials")])
@@ -181,7 +185,9 @@ impl SpotifyClient {
         if !response.status().is_success() {
             let status = response.status();
             let body = response.text().await.unwrap_or_default();
-            return Err(SpotifyError::ApiError(format!("token request failed: {status} {body}")));
+            return Err(SpotifyError::ApiError(format!(
+                "token request failed: {status} {body}"
+            )));
         }
 
         let token: TokenResponse = response.json().await?;
@@ -195,7 +201,8 @@ impl SpotifyClient {
 
     async fn fetch_track(&self, id: &str) -> Result<SpTrack, SpotifyError> {
         let token = self.access_token().await?;
-        let response = self.http
+        let response = self
+            .http
             .get(format!("{SPOTIFY_API}/tracks/{id}"))
             .bearer_auth(token)
             .send()
@@ -207,7 +214,9 @@ impl SpotifyClient {
         if !response.status().is_success() {
             let status = response.status();
             let body = response.text().await.unwrap_or_default();
-            return Err(SpotifyError::ApiError(format!("track fetch failed: {status} {body}")));
+            return Err(SpotifyError::ApiError(format!(
+                "track fetch failed: {status} {body}"
+            )));
         }
 
         Ok(response.json().await?)
@@ -215,7 +224,8 @@ impl SpotifyClient {
 
     async fn fetch_playlist(&self, id: &str) -> Result<SpPlaylist, SpotifyError> {
         let token = self.access_token().await?;
-        let response = self.http
+        let response = self
+            .http
             .get(format!("{SPOTIFY_API}/playlists/{id}"))
             .bearer_auth(token)
             // No `fields` filter: serde ignores unknown fields, and keeping the
@@ -231,7 +241,9 @@ impl SpotifyClient {
         let status = response.status();
         let body = response.text().await.unwrap_or_default();
         if !status.is_success() {
-            return Err(SpotifyError::ApiError(format!("playlist fetch failed: {status} {body}")));
+            return Err(SpotifyError::ApiError(format!(
+                "playlist fetch failed: {status} {body}"
+            )));
         }
 
         serde_json::from_str(&body).map_err(|e| {
@@ -243,18 +255,19 @@ impl SpotifyClient {
     async fn fetch_playlist_page(&self, next_url: &str) -> Result<SpPagedTracks, SpotifyError> {
         tracing::debug!("Fetching playlist page: {next_url}");
         let token = self.access_token().await?;
-        let response = self.http
-            .get(next_url)
-            .bearer_auth(token)
-            .send()
-            .await?;
+        let response = self.http.get(next_url).bearer_auth(token).send().await?;
         let status = response.status();
         let body = response.text().await.unwrap_or_default();
         if !status.is_success() {
-            return Err(SpotifyError::ApiError(format!("playlist page failed: {status} {body}")));
+            return Err(SpotifyError::ApiError(format!(
+                "playlist page failed: {status} {body}"
+            )));
         }
         serde_json::from_str(&body).map_err(|e| {
-            tracing::error!("Failed to decode playlist page: {e}; body snippet: {}", body.chars().take(400).collect::<String>());
+            tracing::error!(
+                "Failed to decode playlist page: {e}; body snippet: {}",
+                body.chars().take(400).collect::<String>()
+            );
             SpotifyError::ApiError(format!("decode playlist page failed: {e}"))
         })
     }
@@ -306,7 +319,8 @@ impl SpotifyClient {
 // Anything that fails (episodes with unexpected shapes, malformed entries) is
 // logged at debug and skipped so one bad row doesn't kill the whole playlist.
 fn extract_tracks(items: Vec<JsonValue>) -> Vec<SpTrack> {
-    items.into_iter()
+    items
+        .into_iter()
         .filter_map(|mut item| {
             let track = item.get_mut("track")?.take();
             if track.is_null() {
@@ -326,7 +340,9 @@ fn extract_tracks(items: Vec<JsonValue>) -> Vec<SpTrack> {
 
 fn track_query(track: &SpTrack) -> String {
     let name = track.name.as_deref().unwrap_or("");
-    let artists = track.artists.iter()
+    let artists = track
+        .artists
+        .iter()
         .map(|a| a.name.as_str())
         .collect::<Vec<_>>()
         .join(", ");
@@ -347,7 +363,12 @@ fn track_query(track: &SpTrack) -> String {
 // holds the `ytsearch1:` query that yt-dlp actually consumes.
 fn build_track(sp: &SpTrack) -> Track {
     let query = track_query(sp);
-    let channel = sp.artists.iter().map(|a| a.name.clone()).collect::<Vec<_>>().join(", ");
+    let channel = sp
+        .artists
+        .iter()
+        .map(|a| a.name.clone())
+        .collect::<Vec<_>>()
+        .join(", ");
     let title = sp.name.clone().unwrap_or_else(|| query.clone());
     let (id, track_url) = match &sp.id {
         Some(spotify_id) => (

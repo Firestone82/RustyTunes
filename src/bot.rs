@@ -10,9 +10,7 @@ use crate::sources::youtube::youtube_client::{SearchError, YoutubeClient};
 use dotenv::var;
 use poise::serenity_prelude;
 
-use serenity::all::{
-    ChannelId, FullEvent, GatewayIntents, GuildId, MemberAction, Mentionable,
-};
+use serenity::all::{ChannelId, FullEvent, GatewayIntents, GuildId, MemberAction, Mentionable};
 use songbird::SerenityInit;
 use sqlx::sqlite::SqlitePoolOptions;
 use sqlx::{Pool, Sqlite};
@@ -384,11 +382,10 @@ impl MusicBotClient {
             shard_manager.shutdown_all().await;
         });
 
-        self.serenity_client.start().await
-            .map_err(|e| {
-                tracing::error!("Failed to start server: {:?}", e);
-                MusicBotError::InternalError(e.to_string())
-            })
+        self.serenity_client.start().await.map_err(|e| {
+            tracing::error!("Failed to start server: {:?}", e);
+            MusicBotError::InternalError(e.to_string())
+        })
     }
 }
 
@@ -405,7 +402,9 @@ async fn wait_for_signal() {
 
 #[cfg(not(unix))]
 async fn wait_for_signal() {
-    tokio::signal::ctrl_c().await.expect("Failed to listen for Ctrl+C");
+    tokio::signal::ctrl_c()
+        .await
+        .expect("Failed to listen for Ctrl+C");
     tracing::info!("Received Ctrl+C");
 }
 

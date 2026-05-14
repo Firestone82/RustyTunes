@@ -1,7 +1,10 @@
 use crate::bot::{Context, Database};
 use crate::embeds::notify_embeds::NotifyEmbed;
 use regex::Regex;
-use serenity::all::{ChannelId, CreateMessage, GuildChannel, GuildId, Mentionable, MessageId, MessageReference, UserId};
+use serenity::all::{
+    ChannelId, CreateMessage, GuildChannel, GuildId, Mentionable, MessageId, MessageReference,
+    UserId,
+};
 use sqlx::types::time::OffsetDateTime;
 use sqlx::Row;
 use std::ops::Add;
@@ -41,7 +44,11 @@ impl MessageNotify {
     pub fn display_note(&self) -> Option<String> {
         let raw = self.note.as_deref()?;
         let (_, clean) = extract_targets(raw);
-        if clean.is_empty() { None } else { Some(clean) }
+        if clean.is_empty() {
+            None
+        } else {
+            Some(clean)
+        }
     }
 
     /// Extra users to ping when this notification fires (used by /remindYou).
@@ -85,7 +92,10 @@ pub struct Notifier {
 }
 
 impl Notifier {
-    pub async fn new(serenity_context: serenity::prelude::Context, database: Arc<Database>) -> Self {
+    pub async fn new(
+        serenity_context: serenity::prelude::Context,
+        database: Arc<Database>,
+    ) -> Self {
         // Runtime-checked (not query!) because the bot's startup migration
         // recreates this table; if the live DB is mid-migration when sqlx
         // does its compile-time verification, query! would fail to compile.
@@ -95,16 +105,21 @@ impl Notifier {
             .await
             .expect("Failed to fetch all messages from database");
 
-        let messages: Vec<MessageNotify> = rows.into_iter().map(|r| MessageNotify {
-            id: r.get("id"),
-            guild_id: GuildId::new(r.get::<i64, _>("guild_id") as u64),
-            channel_id: ChannelId::new(r.get::<i64, _>("channel_id") as u64),
-            user_id: UserId::new(r.get::<i64, _>("user_id") as u64),
-            message_id: r.get::<Option<i64>, _>("message_id").map(|m| MessageId::new(m as u64)),
-            created_at: r.get("created_at"),
-            notify_at: r.get("notify_at"),
-            note: r.get("note"),
-        }).collect();
+        let messages: Vec<MessageNotify> = rows
+            .into_iter()
+            .map(|r| MessageNotify {
+                id: r.get("id"),
+                guild_id: GuildId::new(r.get::<i64, _>("guild_id") as u64),
+                channel_id: ChannelId::new(r.get::<i64, _>("channel_id") as u64),
+                user_id: UserId::new(r.get::<i64, _>("user_id") as u64),
+                message_id: r
+                    .get::<Option<i64>, _>("message_id")
+                    .map(|m| MessageId::new(m as u64)),
+                created_at: r.get("created_at"),
+                notify_at: r.get("notify_at"),
+                note: r.get("note"),
+            })
+            .collect();
 
         Notifier {
             messages,
@@ -135,7 +150,8 @@ impl Notifier {
             source_message_id,
             notify_at,
             note,
-        ).await
+        )
+        .await
     }
 
     pub async fn add_message_for_user(
@@ -189,9 +205,11 @@ impl Notifier {
         guild_id: GuildId,
         id: i64,
     ) -> Result<MessageNotify, NotifierError> {
-        let position = self.messages.iter().position(|m| {
-            m.id == id && m.user_id == user_id && m.guild_id == guild_id
-        }).ok_or(NotifierError::NotFound)?;
+        let position = self
+            .messages
+            .iter()
+            .position(|m| m.id == id && m.user_id == user_id && m.guild_id == guild_id)
+            .ok_or(NotifierError::NotFound)?;
 
         let removed = self.messages.remove(position);
 
@@ -205,7 +223,8 @@ impl Notifier {
     }
 
     pub fn list_for_user(&self, user_id: UserId, guild_id: GuildId) -> Vec<MessageNotify> {
-        let mut out: Vec<MessageNotify> = self.messages
+        let mut out: Vec<MessageNotify> = self
+            .messages
             .iter()
             .filter(|m| m.user_id == user_id && m.guild_id == guild_id)
             .cloned()
@@ -216,24 +235,37 @@ impl Notifier {
 
     pub async fn check_messages(&mut self) {
         let now = get_current_time();
-        let due: Vec<MessageNotify> = self.messages
+        let due: Vec<MessageNotify> = self
+            .messages
             .iter()
             .filter(|m| m.notify_at <= now)
             .cloned()
             .collect();
 
         for message in due {
-            let guild_channel: GuildChannel = match self.serenity_context.http.get_channel(message.channel_id).await {
+            let guild_channel: GuildChannel = match self
+                .serenity_context
+                .http
+                .get_channel(message.channel_id)
+                .await
+            {
                 Ok(ch) => match ch.guild() {
                     Some(gc) => gc,
                     None => {
-                        tracing::error!("Notification channel {} is not a guild channel", message.channel_id);
+                        tracing::error!(
+                            "Notification channel {} is not a guild channel",
+                            message.channel_id
+                        );
                         self.drop_notification(message.id).await;
                         continue;
                     }
                 },
                 Err(e) => {
-                    tracing::error!("Failed to fetch notification channel {}: {:?}", message.channel_id, e);
+                    tracing::error!(
+                        "Failed to fetch notification channel {}: {:?}",
+                        message.channel_id,
+                        e
+                    );
                     self.drop_notification(message.id).await;
                     continue;
                 }
@@ -251,9 +283,7 @@ impl Notifier {
             };
 
             let embed = NotifyEmbed::Notification(&message).to_embed();
-            let mut create_message = CreateMessage::default()
-                .content(content)
-                .embed(embed);
+            let mut create_message = CreateMessage::default().content(content).embed(embed);
 
             if let Some(reply_to) = message.message_id {
                 let reference = MessageReference::from((message.channel_id, reply_to));
@@ -329,7 +359,8 @@ pub fn convert_time_date_from_string(text: String) -> Option<OffsetDateTime> {
         return Some(naive.assume_offset(local_offset));
     }
 
-    let datetime_format = time::format_description::parse("[day]-[month]-[year]_[hour]:[minute]").unwrap();
+    let datetime_format =
+        time::format_description::parse("[day]-[month]-[year]_[hour]:[minute]").unwrap();
     if let Ok(datetime) = PrimitiveDateTime::parse(&text, &datetime_format) {
         return Some(datetime.assume_offset(local_offset));
     }

@@ -7,7 +7,10 @@ use crate::player::player::{Player, Track};
 use crate::service::channel_service;
 use crate::service::embed_service::SendEmbed;
 use crate::service::local_service;
-use serenity::all::{Attachment, ButtonStyle, CreateActionRow, CreateButton, CreateInteractionResponse, CreateInteractionResponseMessage, Message};
+use serenity::all::{
+    Attachment, ButtonStyle, CreateActionRow, CreateButton, CreateInteractionResponse,
+    CreateInteractionResponseMessage, Message,
+};
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::time::{Duration, Instant};
@@ -17,9 +20,10 @@ const PICKER_LIMIT: usize = 25;
 
 /// Manage the local audio library (download, upload, list, play, rename, remove).
 #[poise::command(
-    prefix_command, slash_command,
+    prefix_command,
+    slash_command,
     subcommands("download", "upload", "list", "remove", "play", "rename_track"),
-    check = "check_author_in_same_voice_channel",
+    check = "check_author_in_same_voice_channel"
 )]
 pub async fn local(ctx: Context<'_>) -> Result<(), MusicBotError> {
     // Default action when called without a subcommand: list saved tracks.
@@ -27,10 +31,7 @@ pub async fn local(ctx: Context<'_>) -> Result<(), MusicBotError> {
 }
 
 /// Autocomplete from the current local library — used by `play` and `rename`.
-async fn autocomplete_local_track<'a>(
-    _ctx: Context<'_>,
-    partial: &'a str,
-) -> Vec<String> {
+async fn autocomplete_local_track<'a>(_ctx: Context<'_>, partial: &'a str) -> Vec<String> {
     let needle = partial.trim().to_ascii_lowercase();
     let files = local_service::list_local_files().await.unwrap_or_default();
     files
@@ -45,8 +46,7 @@ async fn autocomplete_local_track<'a>(
 #[poise::command(prefix_command, slash_command)]
 pub async fn download(
     ctx: Context<'_>,
-    #[description = "URL of the audio file to download"]
-    url: String,
+    #[description = "URL of the audio file to download"] url: String,
     #[description = "Save the file under this name"]
     #[rest]
     name: Option<String>,
@@ -62,8 +62,7 @@ pub async fn download(
 #[poise::command(prefix_command, slash_command)]
 pub async fn upload(
     ctx: Context<'_>,
-    #[description = "Audio file to upload"]
-    file: Option<Attachment>,
+    #[description = "Audio file to upload"] file: Option<Attachment>,
     #[description = "Save the file under this name"]
     #[rest]
     name: Option<String>,
@@ -99,10 +98,7 @@ async fn save_and_play(
         .send_context(ctx, true, Some(15))
         .await?;
 
-    let normalized_name = name
-        .as_deref()
-        .map(|n| n.trim())
-        .filter(|n| !n.is_empty());
+    let normalized_name = name.as_deref().map(|n| n.trim()).filter(|n| !n.is_empty());
 
     let path = match save_to_library(ctx, &source, normalized_name).await {
         Ok(path) => path,
@@ -158,9 +154,11 @@ pub async fn play(
         .filter(|n| !n.is_empty());
 
     let matches: Vec<PathBuf> = match needle.as_deref() {
-        Some(q) => local_service::search_local(q).await
+        Some(q) => local_service::search_local(q)
+            .await
             .map_err(|e| MusicBotError::InternalError(format!("Could not read downloads: {e}")))?,
-        None => local_service::list_local_files().await
+        None => local_service::list_local_files()
+            .await
             .map_err(|e| MusicBotError::InternalError(format!("Could not read downloads: {e}")))?,
     };
 
@@ -187,7 +185,14 @@ pub async fn play(
     }
 
     let display: Vec<PathBuf> = matches.into_iter().take(PICKER_LIMIT).collect();
-    let picked = match show_picker(ctx, &display, "play", PlayerEmbed::LocalPickToPlay(&display)).await? {
+    let picked = match show_picker(
+        ctx,
+        &display,
+        "play",
+        PlayerEmbed::LocalPickToPlay(&display),
+    )
+    .await?
+    {
         Some(p) => p,
         None => return Ok(()),
     };
@@ -211,7 +216,8 @@ pub async fn remove(
         return Ok(());
     }
 
-    let matches: Vec<PathBuf> = local_service::search_local(needle).await
+    let matches: Vec<PathBuf> = local_service::search_local(needle)
+        .await
         .map_err(|e| MusicBotError::InternalError(format!("Could not read downloads: {e}")))?;
 
     if matches.is_empty() {
@@ -226,7 +232,14 @@ pub async fn remove(
         matches.into_iter().next().unwrap()
     } else {
         let display: Vec<PathBuf> = matches.into_iter().take(PICKER_LIMIT).collect();
-        match show_picker(ctx, &display, "remove", PlayerEmbed::LocalPickToRemove(&display)).await? {
+        match show_picker(
+            ctx,
+            &display,
+            "remove",
+            PlayerEmbed::LocalPickToRemove(&display),
+        )
+        .await?
+        {
             Some(p) => p,
             None => return Ok(()),
         }
@@ -279,10 +292,7 @@ pub async fn rename_track(
         None => return Ok(()),
     };
 
-    let current_ext = target
-        .extension()
-        .and_then(|e| e.to_str())
-        .unwrap_or("mp3");
+    let current_ext = target.extension().and_then(|e| e.to_str()).unwrap_or("mp3");
 
     let cleaned = local_service::sanitize_filename(new_name);
     let new_filename = if local_service::has_audio_extension(&cleaned) {
@@ -317,10 +327,13 @@ pub async fn rename_track(
         .unwrap_or("?")
         .to_string();
 
-    PlayerEmbed::LocalRenamed { old: &old_display, new: &new_display }
-        .to_embed()
-        .send_context(ctx, true, Some(30))
-        .await?;
+    PlayerEmbed::LocalRenamed {
+        old: &old_display,
+        new: &new_display,
+    }
+    .to_embed()
+    .send_context(ctx, true, Some(30))
+    .await?;
     Ok(())
 }
 
@@ -328,11 +341,9 @@ pub async fn rename_track(
 /// title match — autocomplete-picked names will hit this path. Falls back to
 /// substring search; if substring is ambiguous, shows the candidates and
 /// returns `None`.
-async fn resolve_unique(
-    ctx: Context<'_>,
-    query: &str,
-) -> Result<Option<PathBuf>, MusicBotError> {
-    let matches: Vec<PathBuf> = local_service::search_local(query).await
+async fn resolve_unique(ctx: Context<'_>, query: &str) -> Result<Option<PathBuf>, MusicBotError> {
+    let matches: Vec<PathBuf> = local_service::search_local(query)
+        .await
         .map_err(|e| MusicBotError::InternalError(format!("Could not read downloads: {e}")))?;
 
     if matches.is_empty() {
@@ -344,9 +355,10 @@ async fn resolve_unique(
     }
 
     let needle_lower = query.trim().to_ascii_lowercase();
-    if let Some(exact) = matches.iter().find(|p| {
-        local_service::track_title(p).to_ascii_lowercase() == needle_lower
-    }) {
+    if let Some(exact) = matches
+        .iter()
+        .find(|p| local_service::track_title(p).to_ascii_lowercase() == needle_lower)
+    {
         return Ok(Some(exact.clone()));
     }
 
@@ -363,7 +375,8 @@ async fn resolve_unique(
 }
 
 async fn list_inner(ctx: Context<'_>) -> Result<(), MusicBotError> {
-    let files: Vec<PathBuf> = local_service::list_local_files().await
+    let files: Vec<PathBuf> = local_service::list_local_files()
+        .await
         .map_err(|e| MusicBotError::InternalError(format!("Could not read downloads: {e}")))?;
 
     if files.is_empty() {
@@ -435,15 +448,19 @@ async fn show_picker(
         .map(|chunk| CreateActionRow::Buttons(chunk.to_vec()))
         .collect();
 
-    let reply_handle = ctx.send(
-        poise::CreateReply::default()
-            .embed(embed.to_embed())
-            .components(rows)
-            .reply(true)
-    ).await
+    let reply_handle = ctx
+        .send(
+            poise::CreateReply::default()
+                .embed(embed.to_embed())
+                .components(rows)
+                .reply(true),
+        )
+        .await
         .map_err(|e| MusicBotError::InternalError(e.to_string()))?;
 
-    let message: Message = reply_handle.into_message().await
+    let message: Message = reply_handle
+        .into_message()
+        .await
         .map_err(|e| MusicBotError::InternalError(e.to_string()))?;
 
     let deadline = Instant::now() + Duration::from_secs(60 * 2);
@@ -468,7 +485,8 @@ async fn show_picker(
             Some(interaction) => {
                 if interaction.user.id != ctx.author().id {
                     let now = Instant::now();
-                    let on_cooldown = cooldowns.get(&interaction.user.id)
+                    let on_cooldown = cooldowns
+                        .get(&interaction.user.id)
                         .map(|&last| now.duration_since(last) < Duration::from_secs(5))
                         .unwrap_or(false);
                     if on_cooldown {
@@ -496,7 +514,9 @@ async fn show_picker(
                 }
 
                 let prefix = format!("{id_prefix}_");
-                let index: usize = interaction.data.custom_id
+                let index: usize = interaction
+                    .data
+                    .custom_id
                     .strip_prefix(&prefix)
                     .and_then(|s| s.parse().ok())
                     .ok_or_else(|| MusicBotError::InternalError("Bad picker id".into()))?;

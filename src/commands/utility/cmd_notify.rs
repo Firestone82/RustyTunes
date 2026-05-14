@@ -11,7 +11,7 @@ use tokio::sync::{RwLockReadGuard, RwLockWriteGuard};
     slash_command,
     subcommands("me", "you", "list", "remove"),
     subcommand_required,
-    aliases("remind"),
+    aliases("remind")
 )]
 pub async fn notify(_ctx: Context<'_>) -> Result<(), MusicBotError> {
     Ok(())
@@ -22,7 +22,7 @@ pub async fn notify(_ctx: Context<'_>) -> Result<(), MusicBotError> {
     prefix_command,
     slash_command,
     subcommands("me", "you", "list", "remove"),
-    subcommand_required,
+    subcommand_required
 )]
 pub async fn remind(_ctx: Context<'_>) -> Result<(), MusicBotError> {
     Ok(())
@@ -153,7 +153,10 @@ pub async fn remove(ctx: Context<'_>, id: i64) -> Result<(), MusicBotError> {
     })?;
 
     let mut notifier: RwLockWriteGuard<Notifier> = ctx.data().notifier.write().await;
-    match notifier.remove_for_user(ctx.author().id, guild_id, id).await {
+    match notifier
+        .remove_for_user(ctx.author().id, guild_id, id)
+        .await
+    {
         Ok(removed) => {
             NotifyEmbed::Removed(&removed)
                 .to_embed()

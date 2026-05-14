@@ -7,7 +7,10 @@ use crate::service::channel_service;
 use crate::service::embed_service::SendEmbed;
 use crate::sources::spotify::spotify_client::{SpotifyClient, SpotifyError, SpotifySearchResult};
 use crate::sources::youtube::youtube_client::{SearchError, YouTubeSearchResult, YoutubeClient};
-use serenity::all::{ButtonStyle, CreateActionRow, CreateButton, CreateInteractionResponse, CreateInteractionResponseMessage, Message};
+use serenity::all::{
+    ButtonStyle, CreateActionRow, CreateButton, CreateInteractionResponse,
+    CreateInteractionResponseMessage, Message,
+};
 use std::collections::HashMap;
 use std::convert::Into;
 use std::time::{Duration, Instant};
@@ -18,8 +21,9 @@ const YOUTUBE_PLAYLIST_URL: &str = "https://www.youtube.com/playlist?list=";
 
 /// Play a track or playlist from YouTube or Spotify.
 #[poise::command(
-    prefix_command, slash_command,
-    check = "check_author_in_same_voice_channel",
+    prefix_command,
+    slash_command,
+    check = "check_author_in_same_voice_channel"
 )]
 pub async fn play(ctx: Context<'_>, track_source: Vec<String>) -> Result<(), MusicBotError> {
     do_play(ctx, track_source.join(" "), false).await
@@ -27,26 +31,32 @@ pub async fn play(ctx: Context<'_>, track_source: Vec<String>) -> Result<(), Mus
 
 /// Play a track or playlist immediately by inserting it at the front of the queue.
 #[poise::command(
-    prefix_command, slash_command,
+    prefix_command,
+    slash_command,
     rename = "playtop",
-    check = "check_author_in_same_voice_channel",
+    check = "check_author_in_same_voice_channel"
 )]
 pub async fn play_top(ctx: Context<'_>, track_source: Vec<String>) -> Result<(), MusicBotError> {
     do_play(ctx, track_source.join(" "), true).await
 }
 
 async fn do_play(ctx: Context<'_>, track_source: String, top: bool) -> Result<(), MusicBotError> {
-    let mut result: Result<YouTubeSearchResult, SearchError> = Err(SearchError::InternalError("No search result found".into()));
+    let mut result: Result<YouTubeSearchResult, SearchError> =
+        Err(SearchError::InternalError("No search result found".into()));
 
     // Search YouTube
-    if track_source.starts_with(YOUTUBE_VIDEO_URL) || track_source.starts_with(YOUTUBE_PLAYLIST_URL) {
+    if track_source.starts_with(YOUTUBE_VIDEO_URL) || track_source.starts_with(YOUTUBE_PLAYLIST_URL)
+    {
         let youtube_client: &YoutubeClient = &ctx.data().youtube_client;
 
         if track_source.starts_with(YOUTUBE_VIDEO_URL) {
-            result = youtube_client.search_track_url(track_source.clone(), 1).await;
-        }
-        else if track_source.starts_with(YOUTUBE_PLAYLIST_URL) {
-            result = youtube_client.fetch_playlist_lazy(track_source.clone()).await;
+            result = youtube_client
+                .search_track_url(track_source.clone(), 1)
+                .await;
+        } else if track_source.starts_with(YOUTUBE_PLAYLIST_URL) {
+            result = youtube_client
+                .fetch_playlist_lazy(track_source.clone())
+                .await;
         }
     }
     // Search Spotify
@@ -71,7 +81,9 @@ async fn do_play(ctx: Context<'_>, track_source: String, top: bool) -> Result<()
     // Search using text on YouTube
     else {
         let youtube_client: &YoutubeClient = &ctx.data().youtube_client;
-        result = youtube_client.search_track_url(track_source.clone(), 5).await;
+        result = youtube_client
+            .search_track_url(track_source.clone(), 5)
+            .await;
     }
 
     match result {
@@ -118,15 +130,19 @@ async fn do_play(ctx: Context<'_>, track_source: String, top: bool) -> Result<()
                 .map(|chunk| CreateActionRow::Buttons(chunk.to_vec()))
                 .collect();
 
-            let reply_handle = ctx.send(
-                poise::CreateReply::default()
-                    .embed(PlayerEmbed::Search(&tracks).to_embed())
-                    .components(rows)
-                    .reply(true)
-            ).await
+            let reply_handle = ctx
+                .send(
+                    poise::CreateReply::default()
+                        .embed(PlayerEmbed::Search(&tracks).to_embed())
+                        .components(rows)
+                        .reply(true),
+                )
+                .await
                 .map_err(|error| MusicBotError::InternalError(error.to_string()))?;
 
-            let message: Message = reply_handle.into_message().await
+            let message: Message = reply_handle
+                .into_message()
+                .await
                 .map_err(|error| MusicBotError::InternalError(error.to_string()))?;
 
             let deadline = Instant::now() + Duration::from_secs(60 * 2);
@@ -151,7 +167,8 @@ async fn do_play(ctx: Context<'_>, track_source: String, top: bool) -> Result<()
                     Some(interaction) => {
                         if interaction.user.id != ctx.author().id {
                             let now = Instant::now();
-                            let on_cooldown = cooldowns.get(&interaction.user.id)
+                            let on_cooldown = cooldowns
+                                .get(&interaction.user.id)
                                 .map(|&last| now.duration_since(last) < Duration::from_secs(5))
                                 .unwrap_or(false);
                             if on_cooldown {
@@ -178,7 +195,9 @@ async fn do_play(ctx: Context<'_>, track_source: String, top: bool) -> Result<()
                             return Ok(());
                         }
 
-                        let track_index: usize = interaction.data.custom_id
+                        let track_index: usize = interaction
+                            .data
+                            .custom_id
                             .strip_prefix("track_")
                             .and_then(|s| s.parse().ok())
                             .unwrap();
@@ -259,7 +278,10 @@ async fn do_play(ctx: Context<'_>, track_source: String, top: bool) -> Result<()
     Ok(())
 }
 
-async fn report_playback_error(ctx: Context<'_>, error: crate::player::player::PlaybackError) -> Result<(), MusicBotError> {
+async fn report_playback_error(
+    ctx: Context<'_>,
+    error: crate::player::player::PlaybackError,
+) -> Result<(), MusicBotError> {
     PlayerEmbed::PlaybackErrorEmbed(error.to_string())
         .to_embed()
         .send_context(ctx, true, Some(30))

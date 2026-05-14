@@ -7,9 +7,10 @@ use tokio::sync::RwLockWriteGuard;
 
 /// Toggle session-only cross-track loudness normalization (resets on restart).
 #[poise::command(
-    prefix_command, slash_command,
+    prefix_command,
+    slash_command,
     check = "check_author_in_same_voice_channel",
-    aliases("norm", "loudnorm"),
+    aliases("norm", "loudnorm")
 )]
 pub async fn normalize(ctx: Context<'_>, state: Option<String>) -> Result<(), MusicBotError> {
     let player_arc = ctx.data().player.clone();

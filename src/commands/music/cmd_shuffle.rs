@@ -8,10 +8,11 @@ use tokio::sync::RwLockWriteGuard;
 
 /// Shuffle the current queue.
 #[poise::command(
-    prefix_command, slash_command,
+    prefix_command,
+    slash_command,
     check = "check_author_in_same_voice_channel",
     check = "check_if_player_is_playing",
-    check = "check_if_queue_is_not_empty",
+    check = "check_if_queue_is_not_empty"
 )]
 pub async fn shuffle(ctx: Context<'_>) -> Result<(), MusicBotError> {
     let mut player: RwLockWriteGuard<Player> = ctx.data().player.write().await;

@@ -30,7 +30,7 @@ pub async fn handle(error: poise::FrameworkError<'_, MusicBotData, MusicBotError
         // Bot failed to start
         poise::FrameworkError::Setup { error, .. } => {
             panic!("Failed to start bot: {:?}", error)
-        },
+        }
 
         // Command failed to execute. `error` is already a MusicBotError whose
         // Display impl carries the user-facing prefix — wrapping it again would
@@ -38,7 +38,9 @@ pub async fn handle(error: poise::FrameworkError<'_, MusicBotData, MusicBotError
         poise::FrameworkError::Command { error, ctx, .. } => {
             tracing::error!("Error in command `{}`: {:?}", ctx.command().name, error);
             let embed = BotEmbed::Error(error).to_embed();
-            let _ = ctx.send(poise::CreateReply::default().embed(embed).reply(true)).await;
+            let _ = ctx
+                .send(poise::CreateReply::default().embed(embed).reply(true))
+                .await;
             schedule_prefix_delete(ctx);
         }
 
@@ -56,6 +58,5 @@ pub async fn handle(error: poise::FrameworkError<'_, MusicBotData, MusicBotError
                 tracing::error!("Error while handling error: {}", e);
             }
         }
-
     }
 }

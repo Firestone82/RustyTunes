@@ -51,20 +51,31 @@ pub async fn save_to_library(
         ));
     }
 
-    let dir = local_service::ensure_downloads_dir().await
-        .map_err(|e| MusicBotError::InternalError(format!("Could not create downloads dir: {e}")))?;
+    let dir = local_service::ensure_downloads_dir().await.map_err(|e| {
+        MusicBotError::InternalError(format!("Could not create downloads dir: {e}"))
+    })?;
 
-    let response = ctx.data().request_client.get(url).send().await
+    let response = ctx
+        .data()
+        .request_client
+        .get(url)
+        .send()
+        .await
         .map_err(|e| MusicBotError::InternalError(format!("Request failed: {e}")))?;
 
     if !response.status().is_success() {
         return Err(MusicBotError::InternalError(format!(
-            "Server returned {}", response.status()
+            "Server returned {}",
+            response.status()
         )));
     }
 
     let auto_name = match source {
-        DownloadSource::Attachment { filename, content_type, .. } => {
+        DownloadSource::Attachment {
+            filename,
+            content_type,
+            ..
+        } => {
             if !is_audio(filename, content_type.as_deref()) {
                 return Err(MusicBotError::InternalError(format!(
                     "Attachment `{filename}` doesn't look like an audio file."
@@ -74,8 +85,7 @@ pub async fn save_to_library(
             // Discord allows audio files without recognized extensions; add
             // one so `local list` can find the file later.
             if !local_service::has_audio_extension(&name) {
-                let ext = audio_ext_from_content_type(content_type.as_deref())
-                    .unwrap_or("mp3");
+                let ext = audio_ext_from_content_type(content_type.as_deref()).unwrap_or("mp3");
                 name = format!("{name}.{ext}");
             }
             name
@@ -90,10 +100,13 @@ pub async fn save_to_library(
 
     let target = local_service::unique_path(&dir, &filename).await;
 
-    let bytes = response.bytes().await
+    let bytes = response
+        .bytes()
+        .await
         .map_err(|e| MusicBotError::InternalError(format!("Failed to read body: {e}")))?;
 
-    tokio::fs::write(&target, &bytes).await
+    tokio::fs::write(&target, &bytes)
+        .await
         .map_err(|e| MusicBotError::InternalError(format!("Failed to write file: {e}")))?;
 
     Ok(target)
@@ -177,10 +190,9 @@ fn percent_decode(input: &str) -> String {
     let mut i = 0;
     while i < bytes.len() {
         if bytes[i] == b'%' && i + 2 < bytes.len() {
-            if let Ok(byte) = u8::from_str_radix(
-                std::str::from_utf8(&bytes[i + 1..i + 3]).unwrap_or(""),
-                16,
-            ) {
+            if let Ok(byte) =
+                u8::from_str_radix(std::str::from_utf8(&bytes[i + 1..i + 3]).unwrap_or(""), 16)
+            {
                 out.push(byte);
                 i += 3;
                 continue;

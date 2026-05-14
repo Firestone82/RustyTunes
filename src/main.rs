@@ -3,13 +3,13 @@ use tracing_appender::rolling::{RollingFileAppender, Rotation};
 use tracing_subscriber::{fmt, prelude::*, EnvFilter};
 
 pub mod bot;
-pub mod player;
-pub mod handlers;
-pub mod commands;
-pub mod sources;
 pub mod checks;
-pub mod service;
+pub mod commands;
 pub mod embeds;
+pub mod handlers;
+pub mod player;
+pub mod service;
+pub mod sources;
 
 #[tokio::main]
 async fn main() -> Result<(), MusicBotError> {
@@ -43,10 +43,7 @@ async fn main() -> Result<(), MusicBotError> {
         .install_default()
         .expect("Failed to install rustls ring CryptoProvider");
 
-    MusicBotClient::new()
-        .await
-        .start()
-        .await?;
+    MusicBotClient::new().await.start().await?;
 
     tracing::info!("Bot shut down cleanly.");
     Ok(())
