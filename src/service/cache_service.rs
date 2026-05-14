@@ -77,9 +77,19 @@ pub async fn find_cached(track: &Track) -> Option<PathBuf> {
 
 /// Companion path in `cache/normalized/`. The normalized output is always
 /// opus because we transcode through ffmpeg ourselves.
+///
+/// Local files key off their file stem and are namespaced under `local_…` so
+/// they never collide with a YouTube/Spotify cache entry. Local stems are
+/// unique because `local_service::unique_path` enforces it on download.
 pub fn normalized_path_for(track: &Track) -> Option<PathBuf> {
-    let stem = cache_stem_for(track)?;
-    Some(normalized_dir().join(format!("{stem}.{NORMALIZED_EXT}")))
+    let key = match &track.source {
+        TrackSource::YouTube | TrackSource::Spotify => cache_stem_for(track)?,
+        TrackSource::Local(path) => {
+            let stem = path.file_stem()?.to_str()?;
+            format!("local_{}", sanitize(stem))
+        }
+    };
+    Some(normalized_dir().join(format!("{key}.{NORMALIZED_EXT}")))
 }
 
 pub async fn file_exists(path: &Path) -> bool {

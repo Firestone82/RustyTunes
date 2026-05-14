@@ -96,30 +96,40 @@ impl Track {
     /// `normalize` is consulted here rather than mutating playback after the
     /// fact because songbird gives us no clean post-decode filter hook.
     pub async fn resolve_input(&self, req_client: &reqwest::Client, normalize: bool) -> Input {
+        // Pick a normalized copy if we have one and the guild asked for it.
+        // First play of any track misses (the normalized sibling doesn't
+        // exist yet) — we play the raw audio and kick off normalization in
+        // the background so the next play uses the normalized file. ffmpeg
+        // would otherwise hold the player write lock for several seconds.
+        let normalize_target = if normalize {
+            cache_service::normalized_path_for(self)
+        } else {
+            None
+        };
+
+        if let Some(target) = &normalize_target {
+            if cache_service::file_exists(target).await {
+                return File::new(target.clone()).into();
+            }
+        }
+
         if let TrackSource::Local(path) = &self.source {
+            if let Some(target) = normalize_target {
+                cache_service::spawn_normalize(path.clone(), target);
+            }
             return File::new(path.clone()).into();
         }
 
-        let cached_path = cache_service::find_cached(self).await;
-
-        if let Some(raw) = cached_path {
-            if normalize {
-                if let Some(norm) = cache_service::normalized_path_for(self) {
-                    if cache_service::file_exists(&norm).await {
-                        return File::new(norm).into();
-                    }
-                    // First-time normalize: ffmpeg can take many seconds, and
-                    // `resolve_input` is awaited while the player write lock is
-                    // held. Build the normalized cache in the background so
-                    // skip/stop/volume aren't blocked; this play uses the raw
-                    // cache, the next play picks up the normalized file.
-                    cache_service::spawn_normalize(raw.clone(), norm);
-                }
+        if let Some(raw) = cache_service::find_cached(self).await {
+            if let Some(target) = normalize_target {
+                cache_service::spawn_normalize(raw.clone(), target);
             }
             return File::new(raw).into();
         }
 
-        // Cache miss: stream now, fill the cache for next time.
+        // Cache miss: stream now, fill the cache for next time. Normalization
+        // can't run on a live stream, so the user gets the raw track once and
+        // the normalized version after the cache write completes.
         // `play_url` lets sources (like Spotify) ship a yt-dlp-friendly input
         // string while keeping `track_url` set to the user-facing permalink.
         let input_url = self
