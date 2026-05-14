@@ -62,20 +62,30 @@ impl EventHandler for QueueHandler {
 
                 let track_handle: TrackHandle = guard.play(input.into());
 
-                // Reset gain for the new track; if normalization is on and
-                // we have a file path, kick off an async loudness
-                // measurement and apply the multiplier once it lands.
+                // Reset gain for the new track. Streamed inputs get cached
+                // in the background and the cache helper applies the gain
+                // to the live handle once ffmpeg returns — see
+                // `spawn_cache_and_apply`.
                 player.current_gain = 1.0;
                 player.current_source_path = source_path.clone();
                 let _ = track_handle.set_volume(player.volume);
 
-                if player.should_normalize() {
-                    if let Some(path) = source_path {
-                        player::schedule_normalization_apply(
+                match source_path {
+                    Some(path) => {
+                        if player.should_normalize() {
+                            player::schedule_normalization_apply(
+                                self.player.clone(),
+                                track_handle.clone(),
+                                path,
+                                next_track.id.clone(),
+                            );
+                        }
+                    }
+                    None => {
+                        player::spawn_cache_and_apply(
+                            next_track.clone(),
                             self.player.clone(),
                             track_handle.clone(),
-                            path,
-                            next_track.id.clone(),
                         );
                     }
                 }

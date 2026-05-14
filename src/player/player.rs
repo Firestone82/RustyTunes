@@ -90,12 +90,14 @@ impl TrackSource {
 impl Track {
     /// Pick the best input for this track:
     ///   1. If a raw cache exists, play that.
-    ///   2. Else stream through yt-dlp and kick off a background cache write
-    ///      so the next play of the same track is a cheap file read.
+    ///   2. Else stream through yt-dlp; the caller is expected to kick off
+    ///      a background cache-and-normalize pass via
+    ///      `spawn_cache_and_apply` so the gain can be applied mid-track
+    ///      as soon as the cache is ready.
     ///
     /// Returns the chosen `Input` along with the on-disk path it was built
     /// from (when available). The path is what loudness normalization needs;
-    /// streamed inputs return `None` and play un-normalized that one time.
+    /// streamed inputs return `None`.
     pub async fn resolve_input(&self, req_client: &reqwest::Client) -> (Input, Option<PathBuf>) {
         if let TrackSource::Local(path) = &self.source {
             return (File::new(path.clone()).into(), Some(path.clone()));
@@ -106,7 +108,7 @@ impl Track {
             return (File::new(raw).into(), Some(path));
         }
 
-        // Cache miss: stream now, fill the cache for next time.
+        // Cache miss: stream now. The caller fires off the cache write.
         // `play_url` lets sources (like Spotify) ship a yt-dlp-friendly input
         // string while keeping `track_url` set to the user-facing permalink.
         let input_url = self
@@ -114,7 +116,6 @@ impl Track {
             .play_url
             .clone()
             .unwrap_or_else(|| self.metadata.track_url.clone());
-        cache_service::spawn_cache(self.clone());
         (YoutubeDl::new(req_client.clone(), input_url).into(), None)
     }
 }
@@ -346,20 +347,33 @@ impl Player {
 
                 let track_handle: TrackHandle = guard.play(input.into());
 
-                // Reset per-track gain. If normalization is on and we have
-                // a file path, kick off an async loudness measurement and
-                // apply it once it lands.
+                // Reset per-track gain. There are two cases:
+                //   - File on disk (cache hit or local): measure & apply (if
+                //     normalize is on) using the existing path.
+                //   - Streaming (cache miss): spawn the cache download; the
+                //     helper records the path on the player and applies the
+                //     gain to the live track handle as soon as ffmpeg
+                //     finishes, so first plays get normalized too.
                 self.current_gain = 1.0;
                 self.current_source_path = source_path.clone();
                 let _ = track_handle.set_volume(self.volume);
 
-                if self.should_normalize() {
-                    if let Some(path) = source_path {
-                        schedule_normalization_apply(
+                match source_path {
+                    Some(path) => {
+                        if self.should_normalize() {
+                            schedule_normalization_apply(
+                                ctx.data().player.clone(),
+                                track_handle.clone(),
+                                path,
+                                next_track.id.clone(),
+                            );
+                        }
+                    }
+                    None => {
+                        spawn_cache_and_apply(
+                            next_track.clone(),
                             ctx.data().player.clone(),
                             track_handle.clone(),
-                            path,
-                            next_track.id.clone(),
                         );
                     }
                 }
@@ -524,6 +538,56 @@ pub fn schedule_normalization_apply(
         }
         player.current_gain = multiplier;
         let _ = handle.set_volume(player.volume * multiplier);
+    });
+}
+
+/// Streaming first-play helper: caches `track` in the background and, once
+/// the file lands, records its path on the player and schedules a loudness
+/// measurement so normalization can apply to the currently playing track
+/// without having to wait for the next play. A no-op for tracks that aren't
+/// cacheable (local files, or anything missing an id).
+pub fn spawn_cache_and_apply(
+    track: Track,
+    player_arc: Arc<tokio::sync::RwLock<Player>>,
+    handle: TrackHandle,
+) {
+    if !cache_service::is_cacheable(&track) {
+        return;
+    }
+    tokio::spawn(async move {
+        match cache_service::cache_track(&track).await {
+            Ok(path) => {
+                tracing::info!(
+                    "Cached '{}' to {}",
+                    track.metadata.title,
+                    path.display()
+                );
+
+                // Stash the path on the player so future `!normalize` toggles
+                // can find the file — but only if the user hasn't already
+                // skipped to a different track.
+                {
+                    let mut player = player_arc.write().await;
+                    let still_current = player
+                        .current_track
+                        .as_ref()
+                        .map(|t| t.id == track.id)
+                        .unwrap_or(false);
+                    if still_current {
+                        player.current_source_path = Some(path.clone());
+                    }
+                }
+
+                // Measure (result is cached for next play) and apply if the
+                // user has normalization on and the track is still current.
+                schedule_normalization_apply(player_arc, handle, path, track.id);
+            }
+            Err(e) => tracing::warn!(
+                "Failed to cache '{}': {}",
+                track.metadata.title,
+                e
+            ),
+        }
     });
 }
 

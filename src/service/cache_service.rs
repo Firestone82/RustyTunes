@@ -16,6 +16,10 @@ use std::path::{Path, PathBuf};
 use std::process::Stdio;
 use tokio::process::Command;
 
+// `cache_track` is the only public write entrypoint now — callers spawn the
+// task themselves so they can chain follow-up work (e.g. applying loudness
+// normalization to the currently playing track once its cache is ready).
+
 const CACHE_DIR: &str = "cache";
 const YOUTUBE_SUBDIR: &str = "youtube";
 const SPOTIFY_SUBDIR: &str = "spotify";
@@ -112,8 +116,10 @@ async fn find_in_dir(dir: &Path, stem: &str) -> Option<PathBuf> {
         if rest.starts_with("part.") || rest == "part" {
             continue;
         }
-        // Skip sidecar files used by normalize_service.
-        if rest == normalize_service::SIDECAR_EXT {
+        // Skip sidecar files used by normalize_service (current + legacy).
+        if rest == normalize_service::SIDECAR_EXT
+            || rest == normalize_service::LEGACY_SIDECAR_EXT
+        {
             continue;
         }
         if !rest.contains('.') && !rest.is_empty() {
@@ -222,29 +228,9 @@ async fn cleanup_part_files(dir: &Path, stem: &str) {
     }
 }
 
-/// Fire-and-forget caching of `track` after playback has already started.
-/// Errors are logged but never surfaced — a cache miss next time is fine.
-/// After a successful download the loudness gain is precomputed so the next
-/// play with normalization on doesn't have to wait for ffmpeg.
-pub fn spawn_cache(track: Track) {
-    if cache_stem_for(&track).is_none() {
-        return;
-    }
-    tokio::spawn(async move {
-        match cache_track(&track).await {
-            Ok(path) => {
-                tracing::info!(
-                    "Cached '{}' to {}",
-                    track.metadata.title,
-                    path.display()
-                );
-                normalize_service::spawn_precompute(path);
-            }
-            Err(e) => tracing::warn!(
-                "Failed to cache '{}': {}",
-                track.metadata.title,
-                e
-            ),
-        }
-    });
+/// Whether `track` has enough metadata to be cacheable. Used by callers
+/// before they spawn a cache-and-apply background job so we don't kick off
+/// work for tracks we can't cache (local files, or sources missing an id).
+pub fn is_cacheable(track: &Track) -> bool {
+    cache_stem_for(track).is_some()
 }

@@ -18,36 +18,49 @@ use std::process::Stdio;
 use std::sync::{Mutex, OnceLock};
 use tokio::process::Command;
 
-/// EBU R128 target integrated loudness. -16 LUFS sits between Spotify (-14)
-/// and Apple Music (-16) and leaves a bit of headroom before peak limiting.
-const TARGET_LUFS: f32 = -16.0;
+/// EBU R128 target integrated loudness. -14 LUFS matches Spotify / YouTube
+/// / Tidal and is loud enough that typical commercial masters don't feel
+/// noticeably attenuated when the normalizer is on.
+const TARGET_LUFS: f32 = -14.0;
 
-/// Clamp range for the derived gain (in dB). Caps amplification to avoid
-/// blasting silence-y tracks, and keeps loud tracks from being pulled down
-/// hard enough to feel obviously crushed.
-const MAX_GAIN_DB: f32 = 6.0;
-const MIN_GAIN_DB: f32 = -12.0;
+/// Clamp range for the derived gain (in dB). Attenuation is intentionally
+/// tight so the normalizer never feels like a volume cut — the worst it
+/// will do to a hot master is shave 3 dB. Quiet content gets a generous
+/// boost ceiling so old/quiet recordings come up to a reasonable level.
+const MAX_GAIN_DB: f32 = 12.0;
+const MIN_GAIN_DB: f32 = -3.0;
 
-/// Extension used for the per-file gain sidecar.
-pub const SIDECAR_EXT: &str = "gain";
+/// Extension used for the per-file LUFS sidecar. The file stores the raw
+/// measured integrated loudness (`input_i`) rather than a derived gain so
+/// tweaking `TARGET_LUFS`/`MIN_GAIN_DB`/`MAX_GAIN_DB` doesn't invalidate
+/// existing measurements.
+pub const SIDECAR_EXT: &str = "lufs";
 
-/// In-memory cache of measured gains, keyed by absolute path string. We
-/// keep this even with the sidecar on disk because measuring back-to-back
-/// reads of the same file would otherwise hit the filesystem each time.
-static GAIN_CACHE: OnceLock<Mutex<HashMap<String, f32>>> = OnceLock::new();
+/// Legacy `.gain` sidecars from before the format change. Skipped during
+/// playback discovery so they aren't picked up as audio, but otherwise
+/// ignored — values stored in them aren't compatible with the new schema.
+pub const LEGACY_SIDECAR_EXT: &str = "gain";
+
+/// In-memory cache of measured loudness (in LUFS), keyed by absolute path
+/// string. Avoids re-reading the sidecar from disk on every play.
+static LUFS_CACHE: OnceLock<Mutex<HashMap<String, f32>>> = OnceLock::new();
 
 fn cache_handle() -> &'static Mutex<HashMap<String, f32>> {
-    GAIN_CACHE.get_or_init(|| Mutex::new(HashMap::new()))
+    LUFS_CACHE.get_or_init(|| Mutex::new(HashMap::new()))
 }
 
 fn cache_get(key: &str) -> Option<f32> {
     cache_handle().lock().ok()?.get(key).copied()
 }
 
-fn cache_set(key: String, gain_db: f32) {
+fn cache_set(key: String, lufs: f32) {
     if let Ok(mut guard) = cache_handle().lock() {
-        guard.insert(key, gain_db);
+        guard.insert(key, lufs);
     }
+}
+
+fn lufs_to_gain_db(lufs: f32) -> f32 {
+    (TARGET_LUFS - lufs).clamp(MIN_GAIN_DB, MAX_GAIN_DB)
 }
 
 /// Convert a dB gain offset to an amplitude multiplier suitable for
@@ -66,46 +79,28 @@ pub async fn multiplier_for(path: &Path) -> f32 {
 }
 
 /// Measure-or-recall the gain offset (in dB) for `path`. Tries the memory
-/// cache, then the on-disk sidecar, then falls back to running ffmpeg. A
-/// successful measurement is written through to both layers.
+/// cache, then the on-disk sidecar, then falls back to running ffmpeg. The
+/// raw LUFS measurement is persisted; the gain is derived on read from the
+/// current target/clamp constants.
 pub async fn gain_db_for(path: &Path) -> Option<f32> {
     let key = path.to_string_lossy().to_string();
 
-    if let Some(g) = cache_get(&key) {
-        return Some(g);
+    if let Some(lufs) = cache_get(&key) {
+        return Some(lufs_to_gain_db(lufs));
     }
 
-    if let Some(g) = read_sidecar(path).await {
-        cache_set(key.clone(), g);
-        return Some(g);
+    if let Some(lufs) = read_sidecar(path).await {
+        cache_set(key.clone(), lufs);
+        return Some(lufs_to_gain_db(lufs));
     }
 
-    let measured = measure_with_ffmpeg(path).await?;
-    let gain_db = (TARGET_LUFS - measured).clamp(MIN_GAIN_DB, MAX_GAIN_DB);
+    let lufs = measure_with_ffmpeg(path).await?;
 
-    if let Err(e) = write_sidecar(path, gain_db).await {
-        tracing::debug!("Failed to write gain sidecar for {}: {e}", path.display());
+    if let Err(e) = write_sidecar(path, lufs).await {
+        tracing::debug!("Failed to write LUFS sidecar for {}: {e}", path.display());
     }
-    cache_set(key, gain_db);
-    Some(gain_db)
-}
-
-/// Run loudness measurement in the background so playback isn't blocked.
-/// Used right after a cache write so the next play has the gain ready.
-pub fn spawn_precompute(path: PathBuf) {
-    tokio::spawn(async move {
-        match gain_db_for(&path).await {
-            Some(g) => tracing::debug!(
-                "Loudness gain for {}: {:+.2} dB",
-                path.display(),
-                g
-            ),
-            None => tracing::debug!(
-                "Skipped loudness analysis for {} (ffmpeg unavailable or parse failed)",
-                path.display()
-            ),
-        }
-    });
+    cache_set(key, lufs);
+    Some(lufs_to_gain_db(lufs))
 }
 
 fn sidecar_path(path: &Path) -> Option<PathBuf> {
@@ -120,11 +115,11 @@ async fn read_sidecar(path: &Path) -> Option<f32> {
     contents.trim().parse::<f32>().ok()
 }
 
-async fn write_sidecar(path: &Path, gain_db: f32) -> std::io::Result<()> {
+async fn write_sidecar(path: &Path, lufs: f32) -> std::io::Result<()> {
     let sidecar = sidecar_path(path).ok_or_else(|| {
         std::io::Error::new(std::io::ErrorKind::InvalidInput, "no sidecar path for input")
     })?;
-    tokio::fs::write(sidecar, format!("{gain_db:.2}")).await
+    tokio::fs::write(sidecar, format!("{lufs:.2}")).await
 }
 
 /// Invoke `ffmpeg -af loudnorm=print_format=json` on `path` and pull the
