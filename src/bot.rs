@@ -126,6 +126,7 @@ impl MusicBotClient {
                     music::cmd_history::history(),
                     music::cmd_local::local(),
                     music::cmd_silent::silent(),
+                    music::cmd_normalize::normalize(),
                     utility::cmd_uwu::uwu(),
                     utility::cmd_uwu::uwu_me(),
                     utility::cmd_notify::notify(),

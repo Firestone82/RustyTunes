@@ -25,6 +25,7 @@ pub enum PlayerEmbed<'a> {
     Volume(f32),
     VolumeChanged(f32),
     SilentState(bool),
+    NormalizeState(bool),
     Skipped(usize),
     Shuffled,
     Search(&'a [Track]),
@@ -113,6 +114,23 @@ impl<'a> PlayerEmbed<'a> {
                     .color(Color::DARK_BLUE)
                     .title("🔊  Volume changed")
                     .description(format!("Volume set to {}%.", volume))
+            },
+            PlayerEmbed::NormalizeState(on) => {
+                let (title, body) = if *on {
+                    (
+                        "🎚️  Normalization on",
+                        "Cross-track loudness normalization is **on** — every upcoming track gets its measured gain applied so songs sit at roughly the same perceived loudness.",
+                    )
+                } else {
+                    (
+                        "🎚️  Normalization off",
+                        "Cross-track loudness normalization is **off** — upcoming tracks play at their original loudness.",
+                    )
+                };
+                CreateEmbed::new()
+                    .color(Color::DARK_BLUE)
+                    .title(title)
+                    .description(body)
             },
             PlayerEmbed::SilentState(on) => {
                 let (title, body) = if *on {

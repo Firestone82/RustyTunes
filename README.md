@@ -20,8 +20,8 @@ This project is a Discord bot developed in Rust, designed to play music in Disco
 ### Prerequisites
 - Installed rust from [rust-lang.org](https://www.rust-lang.org/tools/install)
 - Installed yt-dlp from [github.com/yt-dlp/yt-dlp](https://github.com/yt-dlp/yt-dlp)
-  - `ffmpeg` is required for yt-dlp to work properly
   - `yt-dlp` should be in the system PATH
+- Installed `ffmpeg` (in the system PATH) — used by yt-dlp for post-processing **and** by the bot's loudness analyzer to measure each track's integrated LUFS for cross-track volume normalization
 - YouTube Data API token from [Google Cloud Console](https://developers.google.com/youtube/registering_an_application)
 - Discord bot token from [Discord Developer Portal](https://discord.com/developers/applications)
 - (Optional) Spotify Client ID & Secret from [Spotify Developer Dashboard](https://developer.spotify.com/dashboard) — required for Spotify URL support
@@ -52,6 +52,9 @@ This project is a Discord bot developed in Rust, designed to play music in Disco
    sudo curl -L https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp -o /usr/local/bin/yt-dlp
    sudo chmod a+rx /usr/local/bin/yt-dlp
 
+   # ffmpeg (required by yt-dlp and by the loudness normalizer)
+   sudo apt-get install ffmpeg
+
    # CMAKE
    sudo apt-get install cmake
     ```
@@ -81,6 +84,8 @@ All commands are available as both **prefix commands** (default prefix `!`) and 
 - `stop` — stop playback and clear the active track
 - `playing` — show the currently playing track
 - `volume [1-100]` — set the playback volume; append `!` (e.g. `volume 200!`) to opt into the extended 1–500 overdrive range
+- `normalize [on|off]` — toggle session-only cross-track loudness normalization (off by default, applies to every source once enabled, resets on restart)
+- `silent [on|off]` — suppress NowPlaying announcements for the session
 - `join` / `leave` — manually summon or dismiss the bot from your voice channel
 
 ### Queue Management
@@ -117,6 +122,8 @@ The `notify` command (alias `remind`) lets users schedule timed reminders persis
 - **Auto-leave**: bot automatically leaves the voice channel when it's left alone
 - **Auto-cleanup**: when the bot is kicked, dragged out, or otherwise loses its voice connection, playback state and the queue are cleaned up automatically
 - **Per-guild volume persistence**: the last-set volume is remembered between sessions in SQLite
+- **Cross-track loudness normalization**: opt-in via `!normalize`. When enabled, each cached track's integrated loudness is measured once (EBU R128 via ffmpeg) and a static gain is applied so songs sit at roughly the same perceived loudness without crushing in-song dynamics. Off by default, takes effect immediately on the current track, resets on restart. The target loudness (`NORMALIZE_TARGET_LUFS`, default -10) and gain clamps (`NORMALIZE_MIN_GAIN_DB`, `NORMALIZE_MAX_GAIN_DB`) are tunable via env vars — higher target = louder output
+- **Per-source cache layout**: downloaded audio is filed under `cache/youtube/` or `cache/spotify/` (legacy flat-cached files still play)
 - **Slash + prefix parity**: every command works both ways
 - **Graceful shutdown**: handles SIGINT/SIGTERM (and Ctrl+C on Windows) to disconnect cleanly
 - **Structured logging**: powered by `tracing` with environment-controlled filtering

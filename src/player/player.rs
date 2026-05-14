@@ -3,6 +3,7 @@ use crate::embeds::player_embed::PlayerEmbed;
 use crate::handlers::queue_handler::QueueHandler;
 use crate::service::cache_service;
 use crate::service::embed_service::SendEmbed;
+use crate::service::normalize_service;
 use poise::serenity_prelude as serenity_prelude;
 use rand::seq::SliceRandom;
 use serenity::all::{ActivityData, GuildId};
@@ -89,18 +90,25 @@ impl TrackSource {
 impl Track {
     /// Pick the best input for this track:
     ///   1. If a raw cache exists, play that.
-    ///   2. Else stream through yt-dlp and kick off a background cache write
-    ///      so the next play of the same track is a cheap file read.
-    pub async fn resolve_input(&self, req_client: &reqwest::Client) -> Input {
+    ///   2. Else stream through yt-dlp; the caller is expected to kick off
+    ///      a background cache-and-normalize pass via
+    ///      `spawn_cache_and_apply` so the gain can be applied mid-track
+    ///      as soon as the cache is ready.
+    ///
+    /// Returns the chosen `Input` along with the on-disk path it was built
+    /// from (when available). The path is what loudness normalization needs;
+    /// streamed inputs return `None`.
+    pub async fn resolve_input(&self, req_client: &reqwest::Client) -> (Input, Option<PathBuf>) {
         if let TrackSource::Local(path) = &self.source {
-            return File::new(path.clone()).into();
+            return (File::new(path.clone()).into(), Some(path.clone()));
         }
 
         if let Some(raw) = cache_service::find_cached(self).await {
-            return File::new(raw).into();
+            let path = raw.clone();
+            return (File::new(raw).into(), Some(path));
         }
 
-        // Cache miss: stream now, fill the cache for next time.
+        // Cache miss: stream now. The caller fires off the cache write.
         // `play_url` lets sources (like Spotify) ship a yt-dlp-friendly input
         // string while keeping `track_url` set to the user-facing permalink.
         let input_url = self
@@ -108,8 +116,7 @@ impl Track {
             .play_url
             .clone()
             .unwrap_or_else(|| self.metadata.track_url.clone());
-        cache_service::spawn_cache(self.clone());
-        YoutubeDl::new(req_client.clone(), input_url).into()
+        (YoutubeDl::new(req_client.clone(), input_url).into(), None)
     }
 }
 
@@ -132,10 +139,24 @@ pub struct Player {
     pub queue: Vec<Track>,
     pub history: VecDeque<Track>,
     pub volume: f32,
+    /// Multiplier applied on top of `volume` for the current track to even
+    /// out perceived loudness across songs. `1.0` when normalization is off
+    /// or no measurement is available yet. Updated asynchronously when a
+    /// fresh measurement comes back from ffmpeg.
+    pub current_gain: f32,
+    /// On-disk path of the currently playing track (cached file or local
+    /// file). Used by `!normalize` to re-measure and apply gain mid-track.
+    /// `None` for streamed inputs that have no analyzable file yet.
+    pub current_source_path: Option<PathBuf>,
     pub inactivity_cancel: Arc<AtomicBool>,
     /// Session-only "shh" mode — when on, the NowPlaying embed is suppressed.
     /// Resets to `false` on bot restart.
     pub silent: bool,
+    /// Session-only loudness normalization toggle. Off by default and reset
+    /// to `false` on bot restart — flip it on with `!normalize` for the
+    /// session. When on, it applies to every source (YouTube, Spotify, and
+    /// local files) for every track that has a measurable file path.
+    pub normalize: bool,
     guild_id: GuildId,
     database: Arc<Database>,
 }
@@ -167,11 +188,19 @@ impl Player {
             queue: Vec::new(),
             history: VecDeque::new(),
             volume,
+            current_gain: 1.0,
+            current_source_path: None,
             inactivity_cancel: Arc::new(AtomicBool::new(false)),
             silent: false,
+            normalize: false,
             guild_id,
             database
         }
+    }
+
+    /// Whether loudness normalization should apply this session.
+    pub fn should_normalize(&self) -> bool {
+        self.normalize
     }
 
     pub fn push_to_history(&mut self, track: Track) {
@@ -307,7 +336,7 @@ impl Player {
                         .send_context(ctx, false, Some(30)).await?;
                 }
 
-                let input = next_track
+                let (input, source_path) = next_track
                     .resolve_input(&ctx.data().request_client)
                     .await;
 
@@ -317,9 +346,37 @@ impl Player {
                     .await;
 
                 let track_handle: TrackHandle = guard.play(input.into());
-                
-                // Set volume
+
+                // Reset per-track gain. There are two cases:
+                //   - File on disk (cache hit or local): measure & apply (if
+                //     normalize is on) using the existing path.
+                //   - Streaming (cache miss): spawn the cache download; the
+                //     helper records the path on the player and applies the
+                //     gain to the live track handle as soon as ffmpeg
+                //     finishes, so first plays get normalized too.
+                self.current_gain = 1.0;
+                self.current_source_path = source_path.clone();
                 let _ = track_handle.set_volume(self.volume);
+
+                match source_path {
+                    Some(path) => {
+                        if self.should_normalize() {
+                            schedule_normalization_apply(
+                                ctx.data().player.clone(),
+                                track_handle.clone(),
+                                path,
+                                next_track.id.clone(),
+                            );
+                        }
+                    }
+                    None => {
+                        spawn_cache_and_apply(
+                            next_track.clone(),
+                            ctx.data().player.clone(),
+                            track_handle.clone(),
+                        );
+                    }
+                }
 
                 // Add event to handle the track end
                 let _ = track_handle.add_event(
@@ -387,9 +444,9 @@ impl Player {
         // Normalize volume
         volume /= 100.0;
         volume = volume.max(0.0);
-        
+
         if let Some(track_handle) = &self.track_handle {
-            let _ = track_handle.set_volume(volume);
+            let _ = track_handle.set_volume(volume * self.current_gain);
         }
 
         let guild_id_map: i64 = self.guild_id.get() as i64;
@@ -444,6 +501,8 @@ impl Player {
         self.is_paused = false;
         self.track_handle = None;
         self.current_track = None;
+        self.current_source_path = None;
+        self.current_gain = 1.0;
 
         Ok(())
     }
@@ -454,6 +513,101 @@ impl Player {
 
         Ok(())
     }
+}
+
+/// Spawn a task that measures `path`'s loudness, then applies the resulting
+/// multiplier to `handle` provided the player is still on `track_id` and the
+/// normalize toggle is still on by the time the measurement returns. Used
+/// both when a track starts and when `!normalize` is flipped mid-track.
+pub fn schedule_normalization_apply(
+    player_arc: Arc<tokio::sync::RwLock<Player>>,
+    handle: TrackHandle,
+    path: PathBuf,
+    track_id: String,
+) {
+    tokio::spawn(async move {
+        let measurement = normalize_service::measurement_for(&path).await;
+        let mut player = player_arc.write().await;
+        let still_current = player
+            .current_track
+            .as_ref()
+            .map(|t| t.id == track_id)
+            .unwrap_or(false);
+        if !still_current || !player.should_normalize() {
+            return;
+        }
+        let title = player
+            .current_track
+            .as_ref()
+            .map(|t| t.metadata.title.clone())
+            .unwrap_or_default();
+        player.current_gain = measurement.multiplier;
+        let effective = player.volume * measurement.multiplier;
+        let _ = handle.set_volume(effective);
+        let lufs_str = measurement
+            .lufs
+            .map(|l| format!("{l:.2} LUFS"))
+            .unwrap_or_else(|| "unknown LUFS".to_string());
+        tracing::info!(
+            "Normalize applied: '{}' — {} → gain {:+.2} dB (×{:.3}); volume {:.0}% × gain = {:.3} effective",
+            title,
+            lufs_str,
+            measurement.gain_db,
+            measurement.multiplier,
+            player.volume * 100.0,
+            effective,
+        );
+    });
+}
+
+/// Streaming first-play helper: caches `track` in the background and, once
+/// the file lands, records its path on the player and schedules a loudness
+/// measurement so normalization can apply to the currently playing track
+/// without having to wait for the next play. A no-op for tracks that aren't
+/// cacheable (local files, or anything missing an id).
+pub fn spawn_cache_and_apply(
+    track: Track,
+    player_arc: Arc<tokio::sync::RwLock<Player>>,
+    handle: TrackHandle,
+) {
+    if !cache_service::is_cacheable(&track) {
+        return;
+    }
+    tokio::spawn(async move {
+        match cache_service::cache_track(&track).await {
+            Ok(path) => {
+                tracing::info!(
+                    "Cached '{}' to {}",
+                    track.metadata.title,
+                    path.display()
+                );
+
+                // Stash the path on the player so future `!normalize` toggles
+                // can find the file — but only if the user hasn't already
+                // skipped to a different track.
+                {
+                    let mut player = player_arc.write().await;
+                    let still_current = player
+                        .current_track
+                        .as_ref()
+                        .map(|t| t.id == track.id)
+                        .unwrap_or(false);
+                    if still_current {
+                        player.current_source_path = Some(path.clone());
+                    }
+                }
+
+                // Measure (result is cached for next play) and apply if the
+                // user has normalization on and the track is still current.
+                schedule_normalization_apply(player_arc, handle, path, track.id);
+            }
+            Err(e) => tracing::warn!(
+                "Failed to cache '{}': {}",
+                track.metadata.title,
+                e
+            ),
+        }
+    });
 }
 
 /// Set the bot's Discord activity. We bake the "Playing " word into the label
