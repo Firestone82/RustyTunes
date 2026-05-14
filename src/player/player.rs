@@ -147,8 +147,9 @@ pub struct Player {
     /// Session-only "shh" mode — when on, the NowPlaying embed is suppressed.
     /// Resets to `false` on bot restart.
     pub silent: bool,
-    /// Session-only loudness normalization toggles, one per source. Each
-    /// resets to `false` on bot restart.
+    /// Session-only loudness normalization toggles, one per source. On by
+    /// default for every source and reset to `true` on bot restart — the
+    /// `!normalize` command flips them off when desired.
     pub normalize_youtube: bool,
     pub normalize_spotify: bool,
     pub normalize_local: bool,
@@ -186,9 +187,9 @@ impl Player {
             current_gain: 1.0,
             inactivity_cancel: Arc::new(AtomicBool::new(false)),
             silent: false,
-            normalize_youtube: false,
-            normalize_spotify: false,
-            normalize_local: false,
+            normalize_youtube: true,
+            normalize_spotify: true,
+            normalize_local: true,
             guild_id,
             database
         }
