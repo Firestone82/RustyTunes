@@ -25,6 +25,7 @@ pub enum PlayerEmbed<'a> {
     Volume(f32),
     VolumeChanged(f32),
     SilentState(bool),
+    NormalizeState { youtube: bool, spotify: bool, local: bool, changed: Option<&'a str> },
     Skipped(usize),
     Shuffled,
     Search(&'a [Track]),
@@ -113,6 +114,26 @@ impl<'a> PlayerEmbed<'a> {
                     .color(Color::DARK_BLUE)
                     .title("🔊  Volume changed")
                     .description(format!("Volume set to {}%.", volume))
+            },
+            PlayerEmbed::NormalizeState { youtube, spotify, local, changed } => {
+                let title = match changed {
+                    Some(label) => format!("🎚️  Normalization updated · {label}"),
+                    None => "🎚️  Volume normalization".to_string(),
+                };
+                let line = |label: &str, on: bool| {
+                    let mark = if on { "on" } else { "off" };
+                    format!("**{label}**: `{mark}`")
+                };
+                let description = format!(
+                    "{}\n{}\n{}\n\n_Applies to upcoming tracks. Resets on bot restart._",
+                    line("YouTube", *youtube),
+                    line("Spotify", *spotify),
+                    line("Local", *local),
+                );
+                CreateEmbed::new()
+                    .color(Color::DARK_BLUE)
+                    .title(title)
+                    .description(description)
             },
             PlayerEmbed::SilentState(on) => {
                 let (title, body) = if *on {

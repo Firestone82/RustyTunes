@@ -3,6 +3,7 @@ use crate::embeds::player_embed::PlayerEmbed;
 use crate::handlers::queue_handler::QueueHandler;
 use crate::service::cache_service;
 use crate::service::embed_service::SendEmbed;
+use crate::service::normalize_service;
 use poise::serenity_prelude as serenity_prelude;
 use rand::seq::SliceRandom;
 use serenity::all::{ActivityData, GuildId};
@@ -91,13 +92,18 @@ impl Track {
     ///   1. If a raw cache exists, play that.
     ///   2. Else stream through yt-dlp and kick off a background cache write
     ///      so the next play of the same track is a cheap file read.
-    pub async fn resolve_input(&self, req_client: &reqwest::Client) -> Input {
+    ///
+    /// Returns the chosen `Input` along with the on-disk path it was built
+    /// from (when available). The path is what loudness normalization needs;
+    /// streamed inputs return `None` and play un-normalized that one time.
+    pub async fn resolve_input(&self, req_client: &reqwest::Client) -> (Input, Option<PathBuf>) {
         if let TrackSource::Local(path) = &self.source {
-            return File::new(path.clone()).into();
+            return (File::new(path.clone()).into(), Some(path.clone()));
         }
 
         if let Some(raw) = cache_service::find_cached(self).await {
-            return File::new(raw).into();
+            let path = raw.clone();
+            return (File::new(raw).into(), Some(path));
         }
 
         // Cache miss: stream now, fill the cache for next time.
@@ -109,7 +115,7 @@ impl Track {
             .clone()
             .unwrap_or_else(|| self.metadata.track_url.clone());
         cache_service::spawn_cache(self.clone());
-        YoutubeDl::new(req_client.clone(), input_url).into()
+        (YoutubeDl::new(req_client.clone(), input_url).into(), None)
     }
 }
 
@@ -132,10 +138,20 @@ pub struct Player {
     pub queue: Vec<Track>,
     pub history: VecDeque<Track>,
     pub volume: f32,
+    /// Multiplier applied on top of `volume` for the current track to even
+    /// out perceived loudness across songs. `1.0` when normalization is off
+    /// or no measurement is available yet. Updated asynchronously when a
+    /// fresh measurement comes back from ffmpeg.
+    pub current_gain: f32,
     pub inactivity_cancel: Arc<AtomicBool>,
     /// Session-only "shh" mode — when on, the NowPlaying embed is suppressed.
     /// Resets to `false` on bot restart.
     pub silent: bool,
+    /// Session-only loudness normalization toggles, one per source. Each
+    /// resets to `false` on bot restart.
+    pub normalize_youtube: bool,
+    pub normalize_spotify: bool,
+    pub normalize_local: bool,
     guild_id: GuildId,
     database: Arc<Database>,
 }
@@ -167,10 +183,23 @@ impl Player {
             queue: Vec::new(),
             history: VecDeque::new(),
             volume,
+            current_gain: 1.0,
             inactivity_cancel: Arc::new(AtomicBool::new(false)),
             silent: false,
+            normalize_youtube: false,
+            normalize_spotify: false,
+            normalize_local: false,
             guild_id,
             database
+        }
+    }
+
+    /// Whether loudness normalization should apply to `source` this session.
+    pub fn should_normalize(&self, source: &TrackSource) -> bool {
+        match source {
+            TrackSource::YouTube => self.normalize_youtube,
+            TrackSource::Spotify => self.normalize_spotify,
+            TrackSource::Local(_) => self.normalize_local,
         }
     }
 
@@ -307,7 +336,7 @@ impl Player {
                         .send_context(ctx, false, Some(30)).await?;
                 }
 
-                let input = next_track
+                let (input, source_path) = next_track
                     .resolve_input(&ctx.data().request_client)
                     .await;
 
@@ -317,9 +346,37 @@ impl Player {
                     .await;
 
                 let track_handle: TrackHandle = guard.play(input.into());
-                
-                // Set volume
+
+                // Reset per-track gain. If normalization is enabled for this
+                // source and we have a file path, kick off an async loudness
+                // measurement and apply it once it lands.
+                self.current_gain = 1.0;
                 let _ = track_handle.set_volume(self.volume);
+
+                if self.should_normalize(&next_track.source) {
+                    if let Some(path) = source_path {
+                        let player_arc = ctx.data().player.clone();
+                        let handle = track_handle.clone();
+                        let track_id = next_track.id.clone();
+                        let track_source = next_track.source.clone();
+                        tokio::spawn(async move {
+                            let multiplier = normalize_service::multiplier_for(&path).await;
+                            let mut player = player_arc.write().await;
+                            // Bail if a new track has started or the toggle
+                            // was flipped off while we were measuring.
+                            let still_current = player
+                                .current_track
+                                .as_ref()
+                                .map(|t| t.id == track_id)
+                                .unwrap_or(false);
+                            if !still_current || !player.should_normalize(&track_source) {
+                                return;
+                            }
+                            player.current_gain = multiplier;
+                            let _ = handle.set_volume(player.volume * multiplier);
+                        });
+                    }
+                }
 
                 // Add event to handle the track end
                 let _ = track_handle.add_event(
@@ -387,9 +444,9 @@ impl Player {
         // Normalize volume
         volume /= 100.0;
         volume = volume.max(0.0);
-        
+
         if let Some(track_handle) = &self.track_handle {
-            let _ = track_handle.set_volume(volume);
+            let _ = track_handle.set_volume(volume * self.current_gain);
         }
 
         let guild_id_map: i64 = self.guild_id.get() as i64;

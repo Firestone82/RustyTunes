@@ -1,20 +1,39 @@
 //! On-disk cache for tracks resolved through yt-dlp. Once a track has played
-//! through, the audio is kept under `cache/` keyed by `<title>_<id>.<ext>`
-//! (with `<ext>` being whatever native container yt-dlp produced — usually
-//! `webm` or `m4a`) so subsequent plays skip the YouTube fetch (and the API/
-//! quota hit that goes with it). The project's symphonia decoder is built
-//! with `features = ["all"]`, so any container yt-dlp picks plays back fine.
+//! through, the audio is kept under `cache/<source>/<title>_<id>.<ext>`
+//! (with `<source>` being `youtube` or `spotify`, and `<ext>` whatever native
+//! container yt-dlp produced — usually `webm` or `m4a`) so subsequent plays
+//! skip the YouTube fetch (and the API/quota hit that goes with it). The
+//! project's symphonia decoder is built with `features = ["all"]`, so any
+//! container yt-dlp picks plays back fine.
+//!
+//! Legacy flat `cache/<stem>.<ext>` files from before the split are still
+//! discovered on read, so an existing cache survives the upgrade — only new
+//! downloads land in the per-source folders.
 
 use crate::player::player::{Track, TrackSource};
+use crate::service::normalize_service;
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
 use tokio::process::Command;
 
 const CACHE_DIR: &str = "cache";
+const YOUTUBE_SUBDIR: &str = "youtube";
+const SPOTIFY_SUBDIR: &str = "spotify";
 const MAX_FILENAME_STEM: usize = 80;
 
 pub fn cache_dir() -> PathBuf {
     PathBuf::from(CACHE_DIR)
+}
+
+/// Per-source cache directory. `None` for tracks that aren't fetched (local
+/// files), since we never write those to the cache.
+pub fn cache_dir_for(source: &TrackSource) -> Option<PathBuf> {
+    let sub = match source {
+        TrackSource::YouTube => YOUTUBE_SUBDIR,
+        TrackSource::Spotify => SPOTIFY_SUBDIR,
+        TrackSource::Local(_) => return None,
+    };
+    Some(cache_dir().join(sub))
 }
 
 async fn ensure_dir(dir: &Path) -> std::io::Result<()> {
@@ -61,10 +80,23 @@ pub fn cache_stem_for(track: &Track) -> Option<String> {
 /// extension because `--audio-format opus` requires ffmpeg with libopus, which
 /// isn't a given on every host — letting yt-dlp keep whatever container it
 /// downloads (webm/m4a/opus/…) avoids a hard dep on a libopus-built ffmpeg.
+///
+/// Search order: per-source subdirectory first, then the legacy flat root so
+/// pre-split caches keep working without a migration step.
 pub async fn find_cached(track: &Track) -> Option<PathBuf> {
     let stem = cache_stem_for(track)?;
-    let dir = cache_dir();
-    let mut read_dir = tokio::fs::read_dir(&dir).await.ok()?;
+
+    if let Some(dir) = cache_dir_for(&track.source) {
+        if let Some(path) = find_in_dir(&dir, &stem).await {
+            return Some(path);
+        }
+    }
+
+    find_in_dir(&cache_dir(), &stem).await
+}
+
+async fn find_in_dir(dir: &Path, stem: &str) -> Option<PathBuf> {
+    let mut read_dir = tokio::fs::read_dir(dir).await.ok()?;
     let prefix = format!("{stem}.");
     while let Ok(Some(entry)) = read_dir.next_entry().await {
         let name = entry.file_name();
@@ -78,6 +110,10 @@ pub async fn find_cached(track: &Track) -> Option<PathBuf> {
         let rest = &name_str[prefix.len()..];
         // Skip half-written downloads (`<stem>.part.<ext>`).
         if rest.starts_with("part.") || rest == "part" {
+            continue;
+        }
+        // Skip sidecar files used by normalize_service.
+        if rest == normalize_service::SIDECAR_EXT {
             continue;
         }
         if !rest.contains('.') && !rest.is_empty() {
@@ -98,7 +134,10 @@ pub async fn cache_track(track: &Track) -> std::io::Result<PathBuf> {
         return Ok(existing);
     }
 
-    ensure_dir(&cache_dir()).await?;
+    let dir = cache_dir_for(&track.source).ok_or_else(|| {
+        std::io::Error::new(std::io::ErrorKind::InvalidInput, "track has no cache directory")
+    })?;
+    ensure_dir(&dir).await?;
 
     let input_url = track
         .metadata
@@ -108,7 +147,7 @@ pub async fn cache_track(track: &Track) -> std::io::Result<PathBuf> {
 
     // Write to `<stem>.part.<ext>` first so a half-downloaded file isn't
     // picked up by `find_cached` on a concurrent lookup.
-    let output_template = cache_dir().join(format!("{stem}.part.%(ext)s"));
+    let output_template = dir.join(format!("{stem}.part.%(ext)s"));
 
     let output = Command::new("yt-dlp")
         .args(["--no-warnings", "--no-playlist", "-f", "bestaudio/best", "-o"])
@@ -120,7 +159,7 @@ pub async fn cache_track(track: &Track) -> std::io::Result<PathBuf> {
         .await?;
 
     if !output.status.success() {
-        cleanup_part_files(&cache_dir(), &stem).await;
+        cleanup_part_files(&dir, &stem).await;
         let stderr = String::from_utf8_lossy(&output.stderr);
         let tail = stderr
             .lines()
@@ -140,7 +179,7 @@ pub async fn cache_track(track: &Track) -> std::io::Result<PathBuf> {
     // yt-dlp picked the extension based on whatever stream it grabbed; find
     // the produced file and rename it to drop the `.part` infix.
     let part_prefix = format!("{stem}.part.");
-    let mut read_dir = tokio::fs::read_dir(cache_dir()).await?;
+    let mut read_dir = tokio::fs::read_dir(&dir).await?;
     while let Some(entry) = read_dir.next_entry().await? {
         let name = entry.file_name();
         let name_str = match name.to_str() {
@@ -155,7 +194,7 @@ pub async fn cache_track(track: &Track) -> std::io::Result<PathBuf> {
             // Unexpected double extension — skip and let cleanup catch it.
             continue;
         }
-        let final_path = cache_dir().join(format!("{stem}.{ext}"));
+        let final_path = dir.join(format!("{stem}.{ext}"));
         tokio::fs::rename(entry.path(), &final_path).await?;
         return Ok(final_path);
     }
@@ -185,17 +224,22 @@ async fn cleanup_part_files(dir: &Path, stem: &str) {
 
 /// Fire-and-forget caching of `track` after playback has already started.
 /// Errors are logged but never surfaced — a cache miss next time is fine.
+/// After a successful download the loudness gain is precomputed so the next
+/// play with normalization on doesn't have to wait for ffmpeg.
 pub fn spawn_cache(track: Track) {
     if cache_stem_for(&track).is_none() {
         return;
     }
     tokio::spawn(async move {
         match cache_track(&track).await {
-            Ok(path) => tracing::info!(
-                "Cached '{}' to {}",
-                track.metadata.title,
-                path.display()
-            ),
+            Ok(path) => {
+                tracing::info!(
+                    "Cached '{}' to {}",
+                    track.metadata.title,
+                    path.display()
+                );
+                normalize_service::spawn_precompute(path);
+            }
             Err(e) => tracing::warn!(
                 "Failed to cache '{}': {}",
                 track.metadata.title,
