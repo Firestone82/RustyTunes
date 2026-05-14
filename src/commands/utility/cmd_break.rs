@@ -151,14 +151,32 @@ pub async fn start(
         .await
         .insert(guild_id, Arc::clone(&state));
 
+    // Ping all voice members in a separate message above the embed.
+    let bot_id = ctx.serenity_context().cache.current_user().id;
+    let voice_mentions: String = ctx
+        .serenity_context()
+        .cache
+        .guild(guild_id)
+        .as_ref()
+        .map(|g| {
+            g.voice_states
+                .values()
+                .filter(|vs| vs.channel_id == Some(voice_channel_id) && vs.user_id != bot_id)
+                .map(|vs| vs.user_id.mention().to_string())
+                .collect::<Vec<_>>()
+                .join(" ")
+        })
+        .unwrap_or_default();
+    if !voice_mentions.is_empty() {
+        let _ = text_channel_id
+            .send_message(&ctx.http(), CreateMessage::new().content(voice_mentions))
+            .await;
+    }
+
     let mut msg: Message = text_channel_id
         .send_message(
             &ctx.http(),
             CreateMessage::new()
-                .content(format!(
-                    "@here  ⏸️  {} started a break.",
-                    author_mention
-                ))
                 .embed(build_break_embed(&state, None))
                 .components(break_buttons(false)),
         )

@@ -50,20 +50,24 @@ pub async fn start_gather(
     let mut expected: HashSet<UserId> = expected_ids.iter().copied().collect();
     expected.insert(author_id);
 
-    // Ping only the users currently in voice instead of @here.
+    // Ping all voice members in a standalone message so the mention appears
+    // above the embed and is not baked into the embed message itself.
     let voice_mentions: String = expected_ids
         .iter()
         .map(|id| id.mention().to_string())
         .collect::<Vec<_>>()
         .join(" ");
+    let _ = text_channel_id
+        .send_message(
+            &serenity_ctx.http,
+            CreateMessage::new().content(voice_mentions),
+        )
+        .await;
 
     let mut msg: Message = text_channel_id
         .send_message(
             &serenity_ctx.http,
             CreateMessage::new()
-                .content(format!(
-                    "{voice_mentions}  📣  Gathering in voice channel — click **I'm here!** below."
-                ))
                 .embed(build_embed(
                     serenity_ctx,
                     guild_id,
