@@ -13,6 +13,7 @@ const GHOST_PING_INTERVAL: Duration = Duration::from_secs(30);
 const MAX_GATHER_DURATION: Duration = Duration::from_secs(60 * 30);
 const GHOST_PING_LIFETIME: Duration = Duration::from_millis(700);
 const MIN_EDIT_INTERVAL: Duration = Duration::from_secs(5);
+const MAX_NAME_LEN: usize = 16;
 
 const BTN_HERE: &str = "gather_im_here";
 const BTN_CANCEL: &str = "gather_cancel";
@@ -374,12 +375,12 @@ fn build_embed(
         expected
             .iter()
             .map(|id| {
-                let name = guild
+                let raw = guild
                     .as_ref()
                     .and_then(|g| g.members.get(id))
                     .map(|m| m.display_name().to_string())
                     .unwrap_or_else(|| format!("User {}", id.get()));
-                (*id, name)
+                (*id, sanitize_name(&raw))
             })
             .collect()
     };
@@ -409,7 +410,7 @@ fn build_embed(
         .map(|(n, _)| n.chars().count())
         .max()
         .unwrap_or(4)
-        .clamp(4, 24);
+        .clamp(4, MAX_NAME_LEN);
     let status_width = rows
         .iter()
         .map(|(_, s)| s.chars().count())
@@ -495,6 +496,27 @@ fn arrivals_order(
         Some(d) => (0, d.as_millis(), row.0.clone()),
         None => (1, 0, row.0.clone()),
     }
+}
+
+/// Replace emoji grapheme clusters with their `:shortcode:` (or `:name:`),
+/// then truncate to `MAX_NAME_LEN` chars so the table stays aligned in
+/// Discord's monospace code block font.
+fn sanitize_name(name: &str) -> String {
+    use unicode_segmentation::UnicodeSegmentation;
+
+    let mut out = String::new();
+    for g in name.graphemes(true) {
+        if let Some(emoji) = emojis::get(g) {
+            let label = emoji.shortcode().unwrap_or(emoji.name());
+            out.push(':');
+            out.push_str(label.trim_matches(':'));
+            out.push(':');
+        } else {
+            out.push_str(g);
+        }
+    }
+
+    out.chars().take(MAX_NAME_LEN).collect()
 }
 
 fn format_mmss(d: Duration) -> String {
