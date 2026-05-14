@@ -9,14 +9,13 @@ use crate::sources::spotify::spotify_client::{SpotifyClient, SpotifyError};
 use crate::sources::youtube::youtube_client::{SearchError, YoutubeClient};
 use dotenv::var;
 use poise::serenity_prelude;
-use serenity::all::audit_log::Action;
+
 use serenity::all::{
-    ChannelId, FullEvent, GatewayIntents, GuildChannel, GuildId, MemberAction, Mentionable,
+    ChannelId, FullEvent, GatewayIntents, GuildId, MemberAction, Mentionable,
 };
 use songbird::SerenityInit;
 use sqlx::sqlite::SqlitePoolOptions;
 use sqlx::{Pool, Sqlite};
-use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::{RwLock, RwLockWriteGuard};
 
