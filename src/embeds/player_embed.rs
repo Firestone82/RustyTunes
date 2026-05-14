@@ -11,7 +11,10 @@ fn track_description(track: &Track) -> String {
     match &track.source {
         TrackSource::Local(_) => format!("**{}**", track.metadata.title),
         _ if track.metadata.track_url.is_empty() => format!("**{}**", track.metadata.title),
-        _ => format!("**[{}]({})**", track.metadata.title, track.metadata.track_url),
+        _ => format!(
+            "**[{}]({})**",
+            track.metadata.title, track.metadata.track_url
+        ),
     }
 }
 
@@ -318,9 +321,7 @@ fn local_listing_embed(title: &str, description: &str, files: &[PathBuf]) -> Cre
         .description(description.to_string());
 
     for (i, path) in files.iter().enumerate() {
-        let name = path.file_name()
-            .and_then(|n| n.to_str())
-            .unwrap_or("?");
+        let name = path.file_name().and_then(|n| n.to_str()).unwrap_or("?");
         embed = embed.field(format!("{}. {}", i + 1, name), "\u{200b}", false);
     }
     embed

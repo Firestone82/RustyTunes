@@ -1,2 +1,2 @@
-pub mod player;
 pub mod notifier;
+pub mod player;

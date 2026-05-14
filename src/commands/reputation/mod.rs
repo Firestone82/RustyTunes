@@ -2,9 +2,9 @@ use crate::bot::{Context, MusicBotError};
 
 use time::{Duration, OffsetDateTime};
 
-pub mod cmd_plus;
 pub mod cmd_list;
 pub mod cmd_minus;
+pub mod cmd_plus;
 
 #[derive(sqlx::FromRow)]
 pub struct Rep {
@@ -15,7 +15,6 @@ pub struct Rep {
     pub reason: String,
     pub created_at: OffsetDateTime,
 }
-
 
 /// Detects if giver spams
 /// If yes it returns true otherwise false
@@ -32,10 +31,9 @@ LIMIT 1
         giver_id,
         receiver_id
     )
-        .fetch_optional(&*ctx.data().database_pool)
-        .await
-        .map_err(|e| MusicBotError::InternalError(e.to_string()))?;
-
+    .fetch_optional(&*ctx.data().database_pool)
+    .await
+    .map_err(|e| MusicBotError::InternalError(e.to_string()))?;
 
     let now = OffsetDateTime::now_utc();
 

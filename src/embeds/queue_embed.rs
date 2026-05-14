@@ -29,18 +29,19 @@ pub enum QueueEmbed<'a> {
 impl<'a> QueueEmbed<'a> {
     pub fn to_embed(&self) -> CreateEmbed {
         match self {
-            QueueEmbed::IsEmpty => {
-                CreateEmbed::new()
-                    .color(Color::DARK_RED)
-                    .title("🚫  Empty queue")
-                    .description("The queue is empty.")
-            },
+            QueueEmbed::IsEmpty => CreateEmbed::new()
+                .color(Color::DARK_RED)
+                .title("🚫  Empty queue")
+                .description("The queue is empty."),
             QueueEmbed::Current { queue, page } => {
                 let mut embed: CreateEmbed = CreateEmbed::new()
                     .color(Color::DARK_BLUE)
                     .title("📜  Queue")
                     .description("Upcoming tracks:")
-                    .footer(CreateEmbedFooter::new(format!("Queue length: {}", queue.len())));
+                    .footer(CreateEmbedFooter::new(format!(
+                        "Queue length: {}",
+                        queue.len()
+                    )));
 
                 let page: usize = *page.max(&1);
                 let mut start: usize = (page - 1) * 10;
@@ -49,7 +50,8 @@ impl<'a> QueueEmbed<'a> {
                     start = queue.len().saturating_sub(1);
                 }
 
-                let queue_slice: Vec<&Track> = queue.iter().skip(start).take(10).collect::<Vec<&Track>>();
+                let queue_slice: Vec<&Track> =
+                    queue.iter().skip(start).take(10).collect::<Vec<&Track>>();
 
                 for (index, track) in queue_slice.iter().enumerate() {
                     let location = track_location(track);
@@ -59,7 +61,11 @@ impl<'a> QueueEmbed<'a> {
                         format!("{}\nAdded by: {}", location, track.added_by)
                     };
                     embed = embed.field(
-                        format!("{}  {}", utils_service::number_to_emoji(index + start + 1), track.metadata.title),
+                        format!(
+                            "{}  {}",
+                            utils_service::number_to_emoji(index + start + 1),
+                            track.metadata.title
+                        ),
                         value,
                         false,
                     );
@@ -72,7 +78,8 @@ impl<'a> QueueEmbed<'a> {
                     .color(Color::DARK_GREEN)
                     .author(CreateEmbedAuthor::new(format!(
                         "🎵  Track added to queue  ·  {} {}",
-                        track.source.emoji(), track.source.label()
+                        track.source.emoji(),
+                        track.source.label()
                     )))
                     .title(format!("**{}**", track.metadata.title));
                 if !matches!(track.source, TrackSource::Local(_))
@@ -90,37 +97,39 @@ impl<'a> QueueEmbed<'a> {
                     .url(playlist.playlist_url.clone())
                     .description(playlist.description.clone());
 
-                embed.footer(CreateEmbedFooter::new(format!("Playlist length: {}", playlist.tracks.len())))
+                embed.footer(CreateEmbedFooter::new(format!(
+                    "Playlist length: {}",
+                    playlist.tracks.len()
+                )))
             }
-            QueueEmbed::Skipped(amount) => {
-                CreateEmbed::new()
-                    .color(Color::DARK_BLUE)
-                    .title("⏭️  Skipped")
-                    .description(format!("Skipped {} track(s).", amount))
-            }
+            QueueEmbed::Skipped(amount) => CreateEmbed::new()
+                .color(Color::DARK_BLUE)
+                .title("⏭️  Skipped")
+                .description(format!("Skipped {} track(s).", amount)),
             QueueEmbed::TrackRemoved(track) => {
                 let body = match &track.source {
                     TrackSource::Local(_) => format!("**{}**", track.metadata.title),
-                    _ if track.metadata.track_url.is_empty() => format!("**{}**", track.metadata.title),
-                    _ => format!("**[{}]({})**", track.metadata.title, track.metadata.track_url),
+                    _ if track.metadata.track_url.is_empty() => {
+                        format!("**{}**", track.metadata.title)
+                    }
+                    _ => format!(
+                        "**[{}]({})**",
+                        track.metadata.title, track.metadata.track_url
+                    ),
                 };
                 CreateEmbed::new()
                     .color(Color::DARK_GREEN)
                     .title("🗑️  Track removed")
                     .description(body)
             }
-            QueueEmbed::InvalidIndex(index) => {
-                CreateEmbed::new()
-                    .color(Color::DARK_RED)
-                    .title("🚫  Invalid index")
-                    .description(format!("No track at position **{}** in the queue.", index))
-            }
-            QueueEmbed::Cleared(amount) => {
-                CreateEmbed::new()
-                    .color(Color::DARK_GREEN)
-                    .title("🧹  Queue cleared")
-                    .description(format!("Removed **{}** track(s) from the queue.", amount))
-            }
+            QueueEmbed::InvalidIndex(index) => CreateEmbed::new()
+                .color(Color::DARK_RED)
+                .title("🚫  Invalid index")
+                .description(format!("No track at position **{}** in the queue.", index)),
+            QueueEmbed::Cleared(amount) => CreateEmbed::new()
+                .color(Color::DARK_GREEN)
+                .title("🧹  Queue cleared")
+                .description(format!("Removed **{}** track(s) from the queue.", amount)),
         }
     }
 }

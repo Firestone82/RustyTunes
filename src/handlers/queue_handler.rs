@@ -7,10 +7,10 @@ use poise::serenity_prelude;
 use serenity::all::{GuildChannel, GuildId};
 use songbird::{
     tracks::TrackHandle,
-    {Call, Event, EventContext, EventHandler}
+    {Call, Event, EventContext, EventHandler},
 };
-use std::sync::Arc;
 use std::sync::atomic::Ordering;
+use std::sync::Arc;
 use tokio::sync::{Mutex, MutexGuard, RwLock, RwLockWriteGuard};
 
 #[derive(AllArgsConstructor, Clone)]
@@ -34,7 +34,11 @@ impl EventHandler for QueueHandler {
 
         tracing::info!("Track ended; advancing queue");
 
-        let next = if player.queue.is_empty() { None } else { Some(player.queue.remove(0)) };
+        let next = if player.queue.is_empty() {
+            None
+        } else {
+            Some(player.queue.remove(0))
+        };
         match next {
             Some(next_track) => {
                 tracing::info!("Playing next track: {}", next_track.metadata.title);
@@ -43,22 +47,25 @@ impl EventHandler for QueueHandler {
                 if !player.silent {
                     let _ = PlayerEmbed::NowPlaying(&next_track)
                         .to_embed()
-                        .send_channel(self.serenity_ctx.http.clone(), &self.guild_channel, Some(30), None)
+                        .send_channel(
+                            self.serenity_ctx.http.clone(),
+                            &self.guild_channel,
+                            Some(30),
+                            None,
+                        )
                         .await
                         .map_err(|error| {
                             tracing::error!("Error sending now playing embed: {:?}", error);
-                            PlaybackError::InternalError("Error sending now playing embed".to_owned())
+                            PlaybackError::InternalError(
+                                "Error sending now playing embed".to_owned(),
+                            )
                         });
                 }
 
-                let (input, source_path) = next_track
-                    .resolve_input(&self.req_client)
-                    .await;
+                let (input, source_path) = next_track.resolve_input(&self.req_client).await;
 
                 // Play the next track
-                let mut guard: MutexGuard<Call> = self.manager
-                    .lock()
-                    .await;
+                let mut guard: MutexGuard<Call> = self.manager.lock().await;
 
                 let track_handle: TrackHandle = guard.play(input.into());
 
@@ -91,10 +98,8 @@ impl EventHandler for QueueHandler {
                 }
 
                 // Add event to handle the track end
-                let _ = track_handle.add_event(
-                    Event::Track(songbird::TrackEvent::End),
-                    self.clone()
-                );
+                let _ =
+                    track_handle.add_event(Event::Track(songbird::TrackEvent::End), self.clone());
 
                 player::set_now_playing(&self.serenity_ctx, &next_track);
 

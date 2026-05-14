@@ -77,7 +77,11 @@ impl<'a> NotifyEmbed<'a> {
                     .color(Color::DARK_BLUE)
                     .title("🔔  Notification")
                     .description(description)
-                    .field("Requested at:", format!("`{}`", format_time(notify.created_at)), true);
+                    .field(
+                        "Requested at:",
+                        format!("`{}`", format_time(notify.created_at)),
+                        true,
+                    );
 
                 if !targets.is_empty() {
                     builder = builder.field("From:", notify.user_id.mention().to_string(), true);
@@ -124,23 +128,23 @@ impl<'a> NotifyEmbed<'a> {
                     .title("🔔  Your notifications")
                     .description(description)
             }
-            NotifyEmbed::Removed(notify) => {
-                CreateEmbed::new()
-                    .color(Color::DARK_BLUE)
-                    .title("🗑️  Notification removed")
-                    .description(format!(
-                        "Removed notification `#{}` scheduled for `{}`.",
-                        notify.id,
-                        format_time(notify.notify_at)
-                    ))
-            }
-            NotifyEmbed::NotFound => {
-                CreateEmbed::new()
-                    .color(Color::DARK_RED)
-                    .title("🚫  Notification not found")
-                    .description("No notification with that id belongs to you in this guild.")
-            }
-            NotifyEmbed::RemindedFor { targets, notify, note } => {
+            NotifyEmbed::Removed(notify) => CreateEmbed::new()
+                .color(Color::DARK_BLUE)
+                .title("🗑️  Notification removed")
+                .description(format!(
+                    "Removed notification `#{}` scheduled for `{}`.",
+                    notify.id,
+                    format_time(notify.notify_at)
+                )),
+            NotifyEmbed::NotFound => CreateEmbed::new()
+                .color(Color::DARK_RED)
+                .title("🚫  Notification not found")
+                .description("No notification with that id belongs to you in this guild."),
+            NotifyEmbed::RemindedFor {
+                targets,
+                notify,
+                note,
+            } => {
                 let mut builder = CreateEmbed::new()
                     .color(Color::DARK_BLUE)
                     .title("🔔  Reminder set")

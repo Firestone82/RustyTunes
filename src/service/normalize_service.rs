@@ -193,7 +193,10 @@ async fn read_sidecar(path: &Path) -> Option<f32> {
 
 async fn write_sidecar(path: &Path, lufs: f32) -> std::io::Result<()> {
     let sidecar = sidecar_path(path).ok_or_else(|| {
-        std::io::Error::new(std::io::ErrorKind::InvalidInput, "no sidecar path for input")
+        std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            "no sidecar path for input",
+        )
     })?;
     tokio::fs::write(sidecar, format!("{lufs:.2}")).await
 }
@@ -203,20 +206,9 @@ async fn write_sidecar(path: &Path, lufs: f32) -> std::io::Result<()> {
 /// Returns `None` if ffmpeg isn't installed or its output can't be parsed.
 async fn measure_with_ffmpeg(path: &Path) -> Option<f32> {
     let output = Command::new("ffmpeg")
-        .args([
-            "-hide_banner",
-            "-nostats",
-            "-nostdin",
-            "-i",
-        ])
+        .args(["-hide_banner", "-nostats", "-nostdin", "-i"])
         .arg(path)
-        .args([
-            "-af",
-            "loudnorm=I=-16:print_format=json",
-            "-f",
-            "null",
-            "-",
-        ])
+        .args(["-af", "loudnorm=I=-16:print_format=json", "-f", "null", "-"])
         .stdout(Stdio::null())
         .stderr(Stdio::piped())
         .output()

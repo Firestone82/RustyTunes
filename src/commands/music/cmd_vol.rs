@@ -12,9 +12,10 @@ const EXTENDED_MAX_VOLUME: f32 = 500.0;
 
 /// Change the volume (1-100, or 1-500 with a trailing `!`).
 #[poise::command(
-    prefix_command, slash_command,
+    prefix_command,
+    slash_command,
     check = "check_author_in_same_voice_channel",
-    aliases("vol"),
+    aliases("vol")
 )]
 pub async fn volume(ctx: Context<'_>, volume: Option<String>) -> Result<(), MusicBotError> {
     if let Some(raw) = volume {
@@ -24,11 +25,15 @@ pub async fn volume(ctx: Context<'_>, volume: Option<String>) -> Result<(), Musi
             None => (trimmed, false),
         };
 
-        let parsed: f32 = number_part.parse().map_err(|_| {
-            MusicBotError::InternalError(format!("Invalid volume value: {raw}"))
-        })?;
+        let parsed: f32 = number_part
+            .parse()
+            .map_err(|_| MusicBotError::InternalError(format!("Invalid volume value: {raw}")))?;
 
-        let max = if extended { EXTENDED_MAX_VOLUME } else { DEFAULT_MAX_VOLUME };
+        let max = if extended {
+            EXTENDED_MAX_VOLUME
+        } else {
+            DEFAULT_MAX_VOLUME
+        };
         let clamped = parsed.clamp(1.0, max);
 
         let mut player: RwLockWriteGuard<Player> = ctx.data().player.write().await;

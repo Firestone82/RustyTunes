@@ -6,7 +6,7 @@ pub enum BotEmbed<'a> {
     CurrentUserNotInSharedChannel(&'a ChannelId),
     TargetUserNotInVoiceChannel,
     YouShallNotKickMe,
-    Error(MusicBotError)
+    Error(MusicBotError),
 }
 
 impl<'a> BotEmbed<'a> {

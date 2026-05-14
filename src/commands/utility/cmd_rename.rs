@@ -1,6 +1,8 @@
 use crate::bot::{Context, MusicBotData, MusicBotError};
 use crate::service::embed_service::SendEmbed;
-use serenity::all::{Color, CreateEmbed, EditMember, GuildId, Member, Mentionable, PartialGuild, User};
+use serenity::all::{
+    Color, CreateEmbed, EditMember, GuildId, Member, Mentionable, PartialGuild, User,
+};
 
 #[derive(Debug, poise::Modal)]
 #[name = "Rename"]
@@ -45,12 +47,19 @@ async fn do_rename(
         MusicBotError::InternalError("Rename is only available in guilds".to_string())
     })?;
 
-    let guild: PartialGuild = ctx.http().get_guild(guild_id).await
+    let guild: PartialGuild = ctx
+        .http()
+        .get_guild(guild_id)
+        .await
         .map_err(|e| MusicBotError::InternalError(format!("Failed to fetch guild: {e}")))?;
 
-    let actor: Member = guild.member(ctx.http(), ctx.author().id).await
+    let actor: Member = guild
+        .member(ctx.http(), ctx.author().id)
+        .await
         .map_err(|e| MusicBotError::InternalError(format!("Failed to fetch your member: {e}")))?;
-    let target: Member = guild.member(ctx.http(), user.id).await
+    let target: Member = guild
+        .member(ctx.http(), user.id)
+        .await
         .map_err(|e| MusicBotError::InternalError(format!("Failed to fetch target member: {e}")))?;
 
     let actor_top = highest_role_position(&guild, &actor);
@@ -87,8 +96,13 @@ async fn do_rename(
         EditMember::new().nickname(trimmed)
     };
 
-    let previous = target.nick.clone()
-        .unwrap_or_else(|| target.user.global_name.clone().unwrap_or_else(|| target.user.name.clone()));
+    let previous = target.nick.clone().unwrap_or_else(|| {
+        target
+            .user
+            .global_name
+            .clone()
+            .unwrap_or_else(|| target.user.name.clone())
+    });
 
     if let Err(e) = guild_id.edit_member(ctx.http(), target.user.id, edit).await {
         tracing::error!("Failed to rename {}: {:?}", target.user.id, e);
@@ -105,7 +119,11 @@ async fn do_rename(
     }
 
     let next = if trimmed.is_empty() {
-        target.user.global_name.clone().unwrap_or(target.user.name.clone())
+        target
+            .user
+            .global_name
+            .clone()
+            .unwrap_or(target.user.name.clone())
     } else {
         trimmed.to_string()
     };
@@ -122,7 +140,8 @@ async fn do_rename(
 }
 
 fn highest_role_position(guild: &PartialGuild, member: &Member) -> u16 {
-    member.roles
+    member
+        .roles
         .iter()
         .filter_map(|role_id| guild.roles.get(role_id))
         .map(|role| role.position)

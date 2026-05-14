@@ -18,7 +18,7 @@ pub async fn list_rep(
 ) -> Result<(), MusicBotError> {
     let target_user = user.as_ref().unwrap_or_else(|| ctx.author());
     let target_id = target_user.id.to_string();
-    
+
     let total_rep: i64 = sqlx::query_scalar!(
         "
 SELECT COALESCE(SUM(rep_value), 0)
@@ -27,9 +27,9 @@ WHERE receiver_id == ?
 ",
         target_id
     )
-        .fetch_one(&*ctx.data().database_pool)
-        .await
-        .map_err(|e| MusicBotError::InternalError(e.to_string()))?;
+    .fetch_one(&*ctx.data().database_pool)
+    .await
+    .map_err(|e| MusicBotError::InternalError(e.to_string()))?;
 
     let logs = sqlx::query_as!(
         Rep,
@@ -41,9 +41,9 @@ ORDER BY created_at DESC
          ",
         target_id
     )
-        .fetch_all(&*ctx.data().database_pool)
-        .await
-        .map_err(|e| MusicBotError::InternalError(e.to_string()))?;
+    .fetch_all(&*ctx.data().database_pool)
+    .await
+    .map_err(|e| MusicBotError::InternalError(e.to_string()))?;
 
     let items_per_page = 5;
     let total_pages = logs.len().div_ceil(items_per_page).max(1);
@@ -59,8 +59,13 @@ ORDER BY created_at DESC
         .send(
             poise::CreateReply::default()
                 .embed(
-                    ReputationEmbed::List(get_page_slice(current_page), &target_id, total_rep, logs.len())
-                        .to_embed(),
+                    ReputationEmbed::List(
+                        get_page_slice(current_page),
+                        &target_id,
+                        total_rep,
+                        logs.len(),
+                    )
+                    .to_embed(),
                 )
                 .components(get_nav_components(current_page, total_pages))
                 .reply(true),
@@ -71,7 +76,6 @@ ORDER BY created_at DESC
         .await
         .map_err(|error| MusicBotError::InternalError(error.to_string()))?;
 
-
     loop {
         match tokio::time::timeout(
             Duration::from_mins(2),
@@ -80,7 +84,7 @@ ORDER BY created_at DESC
                 .stream()
                 .next(),
         )
-            .await
+        .await
         {
             Ok(Some(interaction)) => {
                 if interaction.user.id != ctx.author().id {
@@ -125,7 +129,7 @@ ORDER BY created_at DESC
                                         total_rep,
                                         logs.len(),
                                     )
-                                        .to_embed(),
+                                    .to_embed(),
                                 )
                                 .components(get_nav_components(current_page, total_pages)),
                         ),

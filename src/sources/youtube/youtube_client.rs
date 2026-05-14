@@ -63,8 +63,8 @@ impl Default for YoutubeClient {
 
 impl YoutubeClient {
     pub fn new() -> Self {
-        let youtube_token = var("YOUTUBE_TOKEN")
-            .expect("Expected a valid youtube token set in the configuration.");
+        let youtube_token =
+            var("YOUTUBE_TOKEN").expect("Expected a valid youtube token set in the configuration.");
 
         let connector = google_youtube3::hyper_rustls::HttpsConnectorBuilder::new()
             .with_native_roots()
@@ -73,8 +73,7 @@ impl YoutubeClient {
             .enable_http1()
             .build();
 
-        let client = google_youtube3::hyper::Client::builder()
-            .build(connector);
+        let client = google_youtube3::hyper::Client::builder().build(connector);
 
         Self {
             api_key: youtube_token,
@@ -82,26 +81,28 @@ impl YoutubeClient {
         }
     }
 
-    pub async fn search_track_url(&self, url: String, max_tracks: u32) -> Result<YouTubeSearchResult, SearchError> {
-        let request = self.youtube
+    pub async fn search_track_url(
+        &self,
+        url: String,
+        max_tracks: u32,
+    ) -> Result<YouTubeSearchResult, SearchError> {
+        let request = self
+            .youtube
             .search()
-            .list(&vec![
-                String::from("id"),
-                String::from("snippet"),
-            ])
+            .list(&vec![String::from("id"), String::from("snippet")])
             .q(&url)
             .param("key", &self.api_key)
             .add_type("video")
             .max_results(max_tracks);
 
-        let (_, response) = request.doit()
-            .await
-            .map_err(map_api_error)?;
+        let (_, response) = request.doit().await.map_err(map_api_error)?;
 
-        let items: Vec<SearchResult> = response.items
-            .ok_or_else(|| SearchError::VideoNotFound(format!("No video found for url: {}", url)))?;
+        let items: Vec<SearchResult> = response.items.ok_or_else(|| {
+            SearchError::VideoNotFound(format!("No video found for url: {}", url))
+        })?;
 
-        let mut tracks: Vec<Track> = items.iter()
+        let mut tracks: Vec<Track> = items
+            .iter()
             .filter_map(|result| {
                 let video_id: String = result.id.as_ref()?.video_id.clone()?;
 
@@ -117,14 +118,12 @@ impl YoutubeClient {
                     play_url: None,
                 };
 
-                Some(Ok(
-                    Track {
-                        id: video_id,
-                        metadata,
-                        added_by: String::new(),
-                        source: crate::player::player::TrackSource::YouTube,
-                    }
-                ))
+                Some(Ok(Track {
+                    id: video_id,
+                    metadata,
+                    added_by: String::new(),
+                    source: crate::player::player::TrackSource::YouTube,
+                }))
             })
             .collect::<Result<Vec<Track>, SearchError>>()?;
 
@@ -140,26 +139,28 @@ impl YoutubeClient {
         }
     }
 
-    pub async fn search_playlist_url(&self, url: String) -> Result<YouTubeSearchResult, SearchError> {
+    pub async fn search_playlist_url(
+        &self,
+        url: String,
+    ) -> Result<YouTubeSearchResult, SearchError> {
         let playlist_id: &str = url.trim_start_matches(PLAYLIST_URI);
-        
-        let playlist_request = self.youtube
+
+        let playlist_request = self
+            .youtube
             .playlists()
-            .list(&vec![
-                String::from("id"),
-                String::from("snippet"),
-            ])
+            .list(&vec![String::from("id"), String::from("snippet")])
             .add_id(playlist_id)
             .param("key", &self.api_key)
             .max_results(1);
-        
-        let (_, response) = playlist_request.doit()
-            .await
-            .map_err(map_api_error)?;
+
+        let (_, response) = playlist_request.doit().await.map_err(map_api_error)?;
 
         if let Some(playlist) = response.items {
             if playlist.is_empty() {
-                return Err(SearchError::PlaylistNotFound(format!("No playlist found for url: {}", url)))
+                return Err(SearchError::PlaylistNotFound(format!(
+                    "No playlist found for url: {}",
+                    url
+                )));
             }
 
             let snippet = playlist.first().unwrap().snippet.as_ref().unwrap();
@@ -167,26 +168,30 @@ impl YoutubeClient {
             let title: &String = snippet.title.as_ref().unwrap();
             let description: &String = snippet.description.as_ref().unwrap();
 
-            let tracks_request = self.youtube
+            let tracks_request = self
+                .youtube
                 .playlist_items()
-                .list(&vec![
-                    String::from("id"),
-                    String::from("snippet"),
-                ])
+                .list(&vec![String::from("id"), String::from("snippet")])
                 .playlist_id(playlist_id)
                 .param("key", &self.api_key)
                 .max_results(50);
 
-            let (_, response) = tracks_request.doit()
-                .await
-                .map_err(map_api_error)?;
+            let (_, response) = tracks_request.doit().await.map_err(map_api_error)?;
 
-            let items: Vec<PlaylistItem> = response.items
-                .ok_or_else(|| SearchError::VideoNotFound(format!("No video found for url: {}", url)))?;
+            let items: Vec<PlaylistItem> = response.items.ok_or_else(|| {
+                SearchError::VideoNotFound(format!("No video found for url: {}", url))
+            })?;
 
-            let tracks: Vec<Track> = items.iter()
+            let tracks: Vec<Track> = items
+                .iter()
                 .filter_map(|result| {
-                    let video_id: String = result.snippet.as_ref()?.resource_id.clone()?.video_id.clone()?;
+                    let video_id: String = result
+                        .snippet
+                        .as_ref()?
+                        .resource_id
+                        .clone()?
+                        .video_id
+                        .clone()?;
 
                     let snippet: &PlaylistItemSnippet = result.snippet.as_ref()?;
                     let title: &String = snippet.title.as_ref()?;
@@ -200,42 +205,45 @@ impl YoutubeClient {
                         play_url: None,
                     };
 
-                    Some(Ok(
-                        Track {
-                            id: video_id,
-                            metadata,
-                            added_by: String::new(),
-                            source: crate::player::player::TrackSource::YouTube,
-                        }
-                    ))
+                    Some(Ok(Track {
+                        id: video_id,
+                        metadata,
+                        added_by: String::new(),
+                        source: crate::player::player::TrackSource::YouTube,
+                    }))
                 })
                 .collect::<Result<Vec<Track>, SearchError>>()?;
 
-            Ok(YouTubeSearchResult::Playlist(
-                Playlist {
-                    id: playlist_id.to_string(),
-                    title: decode_html_entities(title).to_string(),
-                    description: decode_html_entities(description).to_string(),
-                    playlist_url: format!("{PLAYLIST_URI}{}", playlist_id),
-                    tracks,
-                }
-            ))
+            Ok(YouTubeSearchResult::Playlist(Playlist {
+                id: playlist_id.to_string(),
+                title: decode_html_entities(title).to_string(),
+                description: decode_html_entities(description).to_string(),
+                playlist_url: format!("{PLAYLIST_URI}{}", playlist_id),
+                tracks,
+            }))
         } else {
-            Err(SearchError::PlaylistNotFound(format!("No playlist found for url: {}", url)))
+            Err(SearchError::PlaylistNotFound(format!(
+                "No playlist found for url: {}",
+                url
+            )))
         }
     }
 
     /// Enumerate a YouTube playlist using yt-dlp's `--flat-playlist` mode.
     /// Streams results line-by-line so we get track titles immediately from
     /// yt-dlp scraping — zero YouTube Data API quota used.
-    pub async fn fetch_playlist_lazy(&self, url: String) -> Result<YouTubeSearchResult, SearchError> {
+    pub async fn fetch_playlist_lazy(
+        &self,
+        url: String,
+    ) -> Result<YouTubeSearchResult, SearchError> {
         let playlist_id = url.trim_start_matches(PLAYLIST_URI).to_string();
 
         let mut child = tokio::process::Command::new("yt-dlp")
             .args([
                 "--flat-playlist",
                 "--no-warnings",
-                "--print", "%j",  // one JSON object per line
+                "--print",
+                "%j", // one JSON object per line
                 &url,
             ])
             .stdout(Stdio::piped())
@@ -243,7 +251,9 @@ impl YoutubeClient {
             .spawn()
             .map_err(|e| SearchError::InternalError(format!("Failed to spawn yt-dlp: {e}")))?;
 
-        let stdout = child.stdout.take()
+        let stdout = child
+            .stdout
+            .take()
             .ok_or_else(|| SearchError::InternalError("yt-dlp stdout missing".into()))?;
 
         let mut lines = BufReader::new(stdout).lines();
@@ -269,7 +279,8 @@ impl YoutubeClient {
 
             let Some(id) = v["id"].as_str() else { continue };
             let title = v["title"].as_str().unwrap_or(id).to_string();
-            let channel = v["channel"].as_str()
+            let channel = v["channel"]
+                .as_str()
                 .or_else(|| v["uploader"].as_str())
                 .unwrap_or("")
                 .to_string();

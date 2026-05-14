@@ -5,12 +5,10 @@ use crate::service::embed_service::SendEmbed;
 use tokio::sync::RwLockReadGuard;
 
 /// Display the currently playing track.
-#[poise::command(
-    prefix_command, slash_command,
-)]
+#[poise::command(prefix_command, slash_command)]
 pub async fn playing(ctx: Context<'_>) -> Result<(), MusicBotError> {
     let player: RwLockReadGuard<Player> = ctx.data().player.read().await;
-    
+
     if let Some(track) = &player.current_track {
         PlayerEmbed::NowPlaying(track)
             .to_embed()

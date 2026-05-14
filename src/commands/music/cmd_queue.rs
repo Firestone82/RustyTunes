@@ -3,7 +3,10 @@ use crate::embeds::player_embed::PlayerEmbed;
 use crate::embeds::queue_embed::QueueEmbed;
 use crate::player::player::Player;
 use crate::service::embed_service::SendEmbed;
-use serenity::all::{ButtonStyle, CreateActionRow, CreateButton, CreateEmbed, CreateInteractionResponse, CreateInteractionResponseMessage, EditMessage};
+use serenity::all::{
+    ButtonStyle, CreateActionRow, CreateButton, CreateEmbed, CreateInteractionResponse,
+    CreateInteractionResponseMessage, EditMessage,
+};
 use std::collections::HashMap;
 use std::time::{Duration, Instant};
 use tokio::sync::RwLockReadGuard;
@@ -34,16 +37,20 @@ fn build_embeds(player: &Player, page: usize) -> Vec<CreateEmbed> {
     }
 
     if !player.queue.is_empty() {
-        embeds.push(QueueEmbed::Current { queue: &player.queue, page }.to_embed());
+        embeds.push(
+            QueueEmbed::Current {
+                queue: &player.queue,
+                page,
+            }
+            .to_embed(),
+        );
     }
 
     embeds
 }
 
 /// List upcoming tracks in the queue.
-#[poise::command(
-    prefix_command, slash_command,
-)]
+#[poise::command(prefix_command, slash_command)]
 pub async fn queue(ctx: Context<'_>, page: Option<usize>) -> Result<(), MusicBotError> {
     let player: RwLockReadGuard<Player> = ctx.data().player.read().await;
 
@@ -70,15 +77,20 @@ pub async fn queue(ctx: Context<'_>, page: Option<usize>) -> Result<(), MusicBot
     }
 
     if !needs_pagination {
-        ctx.send(reply).await
+        ctx.send(reply)
+            .await
             .map_err(|e| MusicBotError::InternalError(e.to_string()))?;
         return Ok(());
     }
 
-    let reply_handle = ctx.send(reply.components(nav_buttons(page, total_pages))).await
+    let reply_handle = ctx
+        .send(reply.components(nav_buttons(page, total_pages)))
+        .await
         .map_err(|e| MusicBotError::InternalError(e.to_string()))?;
 
-    let mut message = reply_handle.into_message().await
+    let mut message = reply_handle
+        .into_message()
+        .await
         .map_err(|e| MusicBotError::InternalError(e.to_string()))?;
 
     let http = ctx.serenity_context().http.clone();
@@ -94,7 +106,8 @@ pub async fn queue(ctx: Context<'_>, page: Option<usize>) -> Result<(), MusicBot
             Some(interaction) => {
                 if interaction.user.id != ctx.author().id {
                     let now = Instant::now();
-                    let on_cooldown = cooldowns.get(&interaction.user.id)
+                    let on_cooldown = cooldowns
+                        .get(&interaction.user.id)
                         .map(|&last| now.duration_since(last) < Duration::from_secs(5))
                         .unwrap_or(false);
                     if on_cooldown {
@@ -110,21 +123,28 @@ pub async fn queue(ctx: Context<'_>, page: Option<usize>) -> Result<(), MusicBot
                     continue;
                 }
 
-                interaction.defer(&http).await
+                interaction
+                    .defer(&http)
+                    .await
                     .map_err(|e| MusicBotError::InternalError(e.to_string()))?;
 
                 let player = ctx.data().player.read().await;
 
                 if player.queue.is_empty() && player.current_track.is_none() {
                     drop(player);
-                    let _ = message.edit(&http, EditMessage::new()
-                        .embeds(vec![QueueEmbed::IsEmpty.to_embed()])
-                        .components(vec![])
-                    ).await;
+                    let _ = message
+                        .edit(
+                            &http,
+                            EditMessage::new()
+                                .embeds(vec![QueueEmbed::IsEmpty.to_embed()])
+                                .components(vec![]),
+                        )
+                        .await;
                     break;
                 }
 
-                let total_pages = ((player.queue.len() + ITEMS_PER_PAGE - 1) / ITEMS_PER_PAGE).max(1);
+                let total_pages =
+                    ((player.queue.len() + ITEMS_PER_PAGE - 1) / ITEMS_PER_PAGE).max(1);
 
                 match interaction.data.custom_id.as_str() {
                     "queue_prev" => page = page.saturating_sub(1).max(1),

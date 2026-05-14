@@ -3,9 +3,10 @@ use crate::bot::{Context, MusicBotError};
 /// Show command help.
 #[poise::command(
     rename = "help",
-    prefix_command, slash_command,
+    prefix_command,
+    slash_command,
     track_edits,
-    aliases("h"),
+    aliases("h")
 )]
 pub async fn help(
     ctx: Context<'_>,
@@ -17,10 +18,12 @@ pub async fn help(
         ctx,
         command.as_deref(),
         poise::builtins::HelpConfiguration {
-            extra_text_at_bottom: "RustyTunes (Rusty) created by Pavel Mikula as VŠB-TUO project. :)",
+            extra_text_at_bottom:
+                "RustyTunes (Rusty) created by Pavel Mikula as VŠB-TUO project. :)",
             ..Default::default()
         },
-    ).await?;
+    )
+    .await?;
 
     Ok(())
 }

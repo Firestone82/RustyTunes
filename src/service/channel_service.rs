@@ -15,12 +15,15 @@ pub async fn join_user_channel(ctx: Context<'_>) -> Result<ChannelId, MusicBotEr
         Some(user_channel) => user_channel,
         None => {
             tracing::debug!("User not in voice channel");
-            return Err(MusicBotError::UserNotInVoiceChannelError)
+            return Err(MusicBotError::UserNotInVoiceChannelError);
         }
     };
-    
-    let manager: Arc<Songbird> = songbird::get(ctx.serenity_context()).await
-        .ok_or_else(|| MusicBotError::InternalError("Could not locate voice channel. Songbird manager does not exist".to_owned()))?;
+
+    let manager: Arc<Songbird> = songbird::get(ctx.serenity_context()).await.ok_or_else(|| {
+        MusicBotError::InternalError(
+            "Could not locate voice channel. Songbird manager does not exist".to_owned(),
+        )
+    })?;
 
     match manager.join(guild_id, chanel_id).await {
         Ok(handle_lock) => {
@@ -30,15 +33,12 @@ pub async fn join_user_channel(ctx: Context<'_>) -> Result<ChannelId, MusicBotEr
             // listener — songbird's CoreEvent::DriverDisconnect also fires on
             // transient drops (e.g. when an admin moves the bot), which is too
             // aggressive for a "leave the channel" trigger.
-            handle.add_global_event(
-                Event::Track(songbird::TrackEvent::Error),
-                ErrorHandler
-            );
+            handle.add_global_event(Event::Track(songbird::TrackEvent::Error), ErrorHandler);
         }
 
         Err(error) => {
             tracing::error!("Error joining voice channel: {:?}", error);
-            return Err(MusicBotError::UnableToJoinVoiceChannelError)
+            return Err(MusicBotError::UnableToJoinVoiceChannelError);
         }
     }
 
@@ -51,8 +51,9 @@ pub async fn leave_channel(ctx: Context<'_>) -> Result<(), MusicBotError> {
         MusicBotError::InternalError("Could not locate voice channel. Guild ID is none".to_owned())
     })?;
 
-    let manager: Arc<Songbird> = songbird::get(ctx.serenity_context()).await
-        .ok_or_else(|| MusicBotError::InternalError("Songbird manager not registered".to_owned()))?;
+    let manager: Arc<Songbird> = songbird::get(ctx.serenity_context()).await.ok_or_else(|| {
+        MusicBotError::InternalError("Songbird manager not registered".to_owned())
+    })?;
 
     // Stop playback and clear the queue regardless of voice state.
     let _ = ctx.data().player.write().await.stop_playback().await;
@@ -67,7 +68,9 @@ pub async fn leave_channel(ctx: Context<'_>) -> Result<(), MusicBotError> {
 
         if let Err(error) = manager.remove(guild_id).await {
             tracing::error!("Could not remove songbird call: {:?}", error);
-            return Err(MusicBotError::InternalError("Could not leave voice channel".to_owned()));
+            return Err(MusicBotError::InternalError(
+                "Could not leave voice channel".to_owned(),
+            ));
         }
     } else {
         tracing::debug!("/leave called but no active songbird call; treating as no-op");
@@ -77,8 +80,7 @@ pub async fn leave_channel(ctx: Context<'_>) -> Result<(), MusicBotError> {
 }
 
 pub fn get_user_voice_channel(ctx: Context<'_>, user_id: &UserId) -> Option<ChannelId> {
-    ctx
-        .guild()
+    ctx.guild()
         .as_ref()
         .and_then(|guild| guild.voice_states.get(user_id))
         .and_then(|voice_state| voice_state.channel_id)

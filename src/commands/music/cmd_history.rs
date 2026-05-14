@@ -4,15 +4,19 @@ use crate::embeds::player_embed::PlayerEmbed;
 use crate::player::player::{Player, Track};
 use crate::service::channel_service;
 use crate::service::embed_service::SendEmbed;
-use serenity::all::{ButtonStyle, CreateActionRow, CreateButton, CreateInteractionResponse, CreateInteractionResponseMessage, Message};
+use serenity::all::{
+    ButtonStyle, CreateActionRow, CreateButton, CreateInteractionResponse,
+    CreateInteractionResponseMessage, Message,
+};
 use std::collections::{HashMap, VecDeque};
 use std::time::{Duration, Instant};
 use tokio::sync::RwLockWriteGuard;
 
 /// Show the last 10 played tracks and optionally replay one.
 #[poise::command(
-    prefix_command, slash_command,
-    check = "check_author_in_same_voice_channel",
+    prefix_command,
+    slash_command,
+    check = "check_author_in_same_voice_channel"
 )]
 pub async fn history(ctx: Context<'_>) -> Result<(), MusicBotError> {
     let player = ctx.data().player.read().await;
@@ -44,15 +48,19 @@ pub async fn history(ctx: Context<'_>) -> Result<(), MusicBotError> {
         .map(|chunk| CreateActionRow::Buttons(chunk.to_vec()))
         .collect();
 
-    let reply_handle = ctx.send(
-        poise::CreateReply::default()
-            .embed(PlayerEmbed::History(&history).to_embed())
-            .components(rows)
-            .reply(true)
-    ).await
+    let reply_handle = ctx
+        .send(
+            poise::CreateReply::default()
+                .embed(PlayerEmbed::History(&history).to_embed())
+                .components(rows)
+                .reply(true),
+        )
+        .await
         .map_err(|e| MusicBotError::InternalError(e.to_string()))?;
 
-    let message: Message = reply_handle.into_message().await
+    let message: Message = reply_handle
+        .into_message()
+        .await
         .map_err(|e| MusicBotError::InternalError(e.to_string()))?;
 
     let deadline = Instant::now() + Duration::from_secs(60 * 2);
@@ -77,7 +85,8 @@ pub async fn history(ctx: Context<'_>) -> Result<(), MusicBotError> {
             Some(interaction) => {
                 if interaction.user.id != ctx.author().id {
                     let now = Instant::now();
-                    let on_cooldown = cooldowns.get(&interaction.user.id)
+                    let on_cooldown = cooldowns
+                        .get(&interaction.user.id)
                         .map(|&last| now.duration_since(last) < Duration::from_secs(5))
                         .unwrap_or(false);
                     if on_cooldown {
@@ -96,7 +105,9 @@ pub async fn history(ctx: Context<'_>) -> Result<(), MusicBotError> {
                 interaction.defer(ctx.http()).await?;
                 message.delete(ctx.http()).await?;
 
-                let track_index: usize = interaction.data.custom_id
+                let track_index: usize = interaction
+                    .data
+                    .custom_id
                     .strip_prefix("history_")
                     .and_then(|s| s.parse().ok())
                     .unwrap();

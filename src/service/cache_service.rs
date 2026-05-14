@@ -61,7 +61,11 @@ fn sanitize(name: &str) -> String {
         }
         out.push(c);
     }
-    if out.is_empty() { "track".to_string() } else { out }
+    if out.is_empty() {
+        "track".to_string()
+    } else {
+        out
+    }
 }
 
 /// Stem identifying `track` in the cache (without an extension). `None` means
@@ -117,9 +121,7 @@ async fn find_in_dir(dir: &Path, stem: &str) -> Option<PathBuf> {
             continue;
         }
         // Skip sidecar files used by normalize_service (current + legacy).
-        if rest == normalize_service::SIDECAR_EXT
-            || rest == normalize_service::LEGACY_SIDECAR_EXT
-        {
+        if rest == normalize_service::SIDECAR_EXT || rest == normalize_service::LEGACY_SIDECAR_EXT {
             continue;
         }
         if !rest.contains('.') && !rest.is_empty() {
@@ -141,7 +143,10 @@ pub async fn cache_track(track: &Track) -> std::io::Result<PathBuf> {
     }
 
     let dir = cache_dir_for(&track.source).ok_or_else(|| {
-        std::io::Error::new(std::io::ErrorKind::InvalidInput, "track has no cache directory")
+        std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            "track has no cache directory",
+        )
     })?;
     ensure_dir(&dir).await?;
 
@@ -156,7 +161,13 @@ pub async fn cache_track(track: &Track) -> std::io::Result<PathBuf> {
     let output_template = dir.join(format!("{stem}.part.%(ext)s"));
 
     let output = Command::new("yt-dlp")
-        .args(["--no-warnings", "--no-playlist", "-f", "bestaudio/best", "-o"])
+        .args([
+            "--no-warnings",
+            "--no-playlist",
+            "-f",
+            "bestaudio/best",
+            "-o",
+        ])
         .arg(&output_template)
         .arg(&input_url)
         .stdout(Stdio::null())

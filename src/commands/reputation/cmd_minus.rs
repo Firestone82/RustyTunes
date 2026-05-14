@@ -44,19 +44,19 @@ VALUES (?, ?, ?, ?)
         -1,
         reason,
     )
-        .execute(&*ctx.data().database_pool)
-        .await
-        .map_err(|e| MusicBotError::InternalError(e.to_string()))?;
+    .execute(&*ctx.data().database_pool)
+    .await
+    .map_err(|e| MusicBotError::InternalError(e.to_string()))?;
 
     ReputationEmbed::MinusRep(&RepEmbed {
         giver_id,
         receiver_id,
         reason,
     })
-        .to_embed()
-        .send_context(ctx, false, None)
-        .await
-        .map_err(|e| MusicBotError::InternalError(e.to_string()))?;
+    .to_embed()
+    .send_context(ctx, false, None)
+    .await
+    .map_err(|e| MusicBotError::InternalError(e.to_string()))?;
 
     Ok(())
 }
