@@ -1,7 +1,7 @@
 use crate::bot::{Context, MusicBotError};
 use crate::checks::channel_checks::check_author_in_voice_channel;
 use crate::embeds::bot_embeds::BotEmbed;
-use crate::player::notifier::{convert_time_offset_from_string, get_current_time};
+use crate::player::notifier::{get_current_time, parse_duration_from_string};
 use crate::service::channel_service;
 use crate::service::embed_service::SendEmbed;
 use crate::service::gather_service;
@@ -352,13 +352,11 @@ pub async fn extend(
 }
 
 fn parse_break_duration(text: &str) -> Option<Duration> {
-    let target = convert_time_offset_from_string(text.trim().to_string())?;
-    let now = get_current_time();
-    let secs = (target - now).whole_seconds();
-    if secs <= 0 {
+    let d = parse_duration_from_string(text.trim())?;
+    if d == Duration::ZERO {
         return None;
     }
-    Some(Duration::from_secs(secs as u64))
+    Some(d)
 }
 
 fn break_buttons(disabled: bool) -> Vec<CreateActionRow> {
