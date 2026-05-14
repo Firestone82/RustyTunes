@@ -1,16 +1,14 @@
 use crate::commands;
 use crate::commands::{music, reputation, utility};
-use crate::embeds::bot_embeds::BotEmbed;
 use crate::handlers::error_handler;
 use crate::player::notifier::{Notifier, NotifierError};
 use crate::player::player::{PlaybackError, Player};
-use crate::service::embed_service::SendEmbed;
 use crate::sources::spotify::spotify_client::{SpotifyClient, SpotifyError};
 use crate::sources::youtube::youtube_client::{SearchError, YoutubeClient};
 use dotenv::var;
 use poise::serenity_prelude;
 
-use serenity::all::{ChannelId, FullEvent, GatewayIntents, GuildId, MemberAction, Mentionable};
+use serenity::all::{ChannelId, FullEvent, GatewayIntents, GuildId};
 use songbird::SerenityInit;
 use sqlx::sqlite::SqlitePoolOptions;
 use sqlx::{Pool, Sqlite};
