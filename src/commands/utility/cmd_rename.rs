@@ -131,8 +131,12 @@ async fn do_rename(
     CreateEmbed::new()
         .color(Color::DARK_BLUE)
         .title("✏️  Renamed")
-        .description(format!("{} → `{}`", target.mention(), next))
-        .field("Previous:", format!("`{previous}`"), true)
+        .description(format!(
+            "`{}` --> `{}`\n{}",
+            previous,
+            next,
+            target.mention()
+        ))
         .send_context(ctx, true, None)
         .await?;
 

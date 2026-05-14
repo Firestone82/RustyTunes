@@ -1,11 +1,14 @@
 use crate::bot::MusicBotError;
 use serenity::all::{
-    ButtonStyle, ChannelId, Color, CreateActionRow, CreateButton, CreateEmbed,
-    CreateInteractionResponse, CreateInteractionResponseMessage, CreateMessage, EditMessage,
-    GuildId, Mentionable, Message, UserId,
+    ButtonStyle, ChannelId, Color, ComponentInteractionCollector, CreateActionRow, CreateButton,
+    CreateEmbed, CreateInteractionResponse, CreateInteractionResponseMessage, CreateMessage,
+    EditMessage, GuildId, Mentionable, Message, UserId,
 };
+use serenity::futures::StreamExt;
+use serenity::http::Http;
 use serenity::prelude::Context as SerenityContext;
 use std::collections::{HashMap, HashSet};
+use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 const GRACE_PERIOD: Duration = Duration::from_secs(60);
@@ -14,6 +17,8 @@ const MAX_GATHER_DURATION: Duration = Duration::from_secs(60 * 30);
 const GHOST_PING_LIFETIME: Duration = Duration::from_millis(700);
 const MIN_EDIT_INTERVAL: Duration = Duration::from_secs(5);
 const MAX_NAME_LEN: usize = 22;
+// Max wait in the select loop — keeps button response latency well within 3 s.
+const LOOP_POLL: Duration = Duration::from_millis(800);
 
 const BTN_HERE: &str = "gather_im_here";
 const BTN_CANCEL: &str = "gather_cancel";
@@ -28,7 +33,8 @@ pub async fn start_gather(
 ) -> Result<(), MusicBotError> {
     let bot_id = serenity_ctx.cache.current_user().id;
 
-    let expected_ids: Vec<UserId> = current_voice_members(serenity_ctx, guild_id, voice_channel_id, bot_id);
+    let expected_ids: Vec<UserId> =
+        current_voice_members(serenity_ctx, guild_id, voice_channel_id, bot_id);
 
     if expected_ids.is_empty() {
         return Err(MusicBotError::InternalError(
@@ -41,15 +47,23 @@ pub async fn start_gather(
     let deadline = started_at + MAX_GATHER_DURATION;
 
     let mut arrivals: HashMap<UserId, Duration> = HashMap::new();
-
-    let mut expected: HashSet<UserId> = expected_ids.into_iter().collect();
+    let mut expected: HashSet<UserId> = expected_ids.iter().copied().collect();
     expected.insert(author_id);
+
+    // Ping only the users currently in voice instead of @here.
+    let voice_mentions: String = expected_ids
+        .iter()
+        .map(|id| id.mention().to_string())
+        .collect::<Vec<_>>()
+        .join(" ");
 
     let mut msg: Message = text_channel_id
         .send_message(
             &serenity_ctx.http,
             CreateMessage::new()
-                .content("@here  📣  Gathering in voice channel — click **I'm here!** below.")
+                .content(format!(
+                    "{voice_mentions}  📣  Gathering in voice channel — click **I'm here!** below."
+                ))
                 .embed(build_embed(
                     serenity_ctx,
                     guild_id,
@@ -67,213 +81,102 @@ pub async fn start_gather(
     let mut last_ghost_ping = started_at;
     let mut last_edit = Instant::now();
     let mut cancelled = false;
-    let shard = serenity_ctx.shard.clone();
+
+    // A persistent stream buffers every interaction on this message so no
+    // button click is ever dropped between loop iterations.
+    let interaction_stream = ComponentInteractionCollector::new(serenity_ctx)
+        .message_id(msg.id)
+        .stream();
+    tokio::pin!(interaction_stream);
 
     loop {
         let now = Instant::now();
-
-        // Stop conditions
-        if now >= deadline {
-            break;
-        }
-        if cancelled {
-            break;
-        }
-        let missing: Vec<UserId> = expected
-            .iter()
-            .filter(|id| !arrivals.contains_key(id))
-            .copied()
-            .collect();
-        if missing.is_empty() && now >= grace_ends_at {
-            // Everyone here and grace done.
+        if now >= deadline || cancelled {
             break;
         }
 
-        let next_ping_at = last_ghost_ping + GHOST_PING_INTERVAL;
-        let next_event = next_ping_at.min(deadline);
-        let wait = next_event.saturating_duration_since(now);
+        // If everyone has arrived, end the grace period right now and exit.
+        if expected.iter().all(|id| arrivals.contains_key(id)) {
+            grace_ends_at = grace_ends_at.min(now);
+            break;
+        }
 
-        let interaction = msg
-            .await_component_interaction(shard.clone())
-            .timeout(wait)
-            .await;
+        let next_periodic = if now < grace_ends_at {
+            grace_ends_at
+        } else {
+            (last_ghost_ping + GHOST_PING_INTERVAL).min(deadline)
+        };
+        let wait = next_periodic
+            .saturating_duration_since(now)
+            .min(LOOP_POLL);
 
-        match interaction {
-            Some(ic) => {
-                match ic.data.custom_id.as_str() {
-                    BTN_CANCEL => {
-                        if ic.user.id != author_id {
-                            ic.create_response(
-                                &serenity_ctx.http,
-                                CreateInteractionResponse::Message(
-                                    CreateInteractionResponseMessage::new()
-                                        .content("Only the person who started the gathering can cancel it.")
-                                        .ephemeral(true),
-                                ),
-                            )
-                            .await
-                            .ok();
-                            continue;
-                        }
-                        ic.create_response(&serenity_ctx.http, CreateInteractionResponse::Acknowledge)
-                            .await
-                            .ok();
-                        cancelled = true;
-                    }
-                    BTN_FORCE_START => {
-                        if ic.user.id != author_id {
-                            ic.create_response(
-                                &serenity_ctx.http,
-                                CreateInteractionResponse::Message(
-                                    CreateInteractionResponseMessage::new()
-                                        .content("Only the person who started the gathering can force-start it.")
-                                        .ephemeral(true),
-                                ),
-                            )
-                            .await
-                            .ok();
-                            continue;
-                        }
-                        grace_ends_at = Instant::now();
-                        ic.create_response(
-                            &serenity_ctx.http,
-                            CreateInteractionResponse::UpdateMessage(
-                                CreateInteractionResponseMessage::new()
-                                    .embed(build_embed(
-                                        serenity_ctx,
-                                        guild_id,
-                                        &expected,
-                                        &arrivals,
-                                        started_at,
-                                        grace_ends_at,
-                                        None,
-                                    ))
-                                    .components(buttons(false)),
-                            ),
-                        )
-                        .await
-                        .ok();
-                        last_edit = Instant::now();
-                    }
-                    BTN_HERE => {
-                        // Must be in the voice channel.
-                        let in_voice =
-                            user_in_voice(serenity_ctx, guild_id, voice_channel_id, ic.user.id);
-
-                        if !in_voice {
-                            ic.create_response(
-                                &serenity_ctx.http,
-                                CreateInteractionResponse::Message(
-                                    CreateInteractionResponseMessage::new()
-                                        .content("You need to be in the voice channel to check in.")
-                                        .ephemeral(true),
-                                ),
-                            )
-                            .await
-                            .ok();
-                            continue;
-                        }
-
-                        if arrivals.contains_key(&ic.user.id) {
-                            ic.create_response(
-                                &serenity_ctx.http,
-                                CreateInteractionResponse::Message(
-                                    CreateInteractionResponseMessage::new()
-                                        .content("You're already checked in.")
-                                        .ephemeral(true),
-                                ),
-                            )
-                            .await
-                            .ok();
-                            continue;
-                        }
-
-                        let now = Instant::now();
-                        let lateness = if now <= grace_ends_at {
-                            Duration::ZERO
-                        } else {
-                            now - started_at
-                        };
-
-                        arrivals.insert(ic.user.id, lateness);
-                        // Anyone who clicks (and is in voice) joins the expected set
-                        // even if they weren't there when the gather started.
-                        expected.insert(ic.user.id);
-
-                        ic.create_response(
-                            &serenity_ctx.http,
-                            CreateInteractionResponse::UpdateMessage(
-                                CreateInteractionResponseMessage::new()
-                                    .embed(build_embed(
-                                        serenity_ctx,
-                                        guild_id,
-                                        &expected,
-                                        &arrivals,
-                                        started_at,
-                                        grace_ends_at,
-                                        None,
-                                    ))
-                                    .components(buttons(false)),
-                            ),
-                        )
-                        .await
-                        .ok();
-                        last_edit = Instant::now();
-                    }
-                    _ => {
-                        ic.create_response(&serenity_ctx.http, CreateInteractionResponse::Acknowledge)
-                            .await
-                            .ok();
-                    }
+        tokio::select! {
+            ic = interaction_stream.next() => {
+                match ic {
+                    Some(ic) => handle_interaction(
+                        &ic,
+                        serenity_ctx,
+                        guild_id,
+                        voice_channel_id,
+                        author_id,
+                        started_at,
+                        &mut grace_ends_at,
+                        &mut expected,
+                        &mut arrivals,
+                        &mut cancelled,
+                        &mut last_edit,
+                    )
+                    .await,
+                    None => break,
                 }
             }
-            None => {
-                // timeout — handled below by ghost-ping check / loop conditions.
-            }
+            _ = tokio::time::sleep(wait) => {}
         }
 
         let now = Instant::now();
 
-        // Track anyone who has joined the voice channel since gather started.
+        // Track late joiners from voice channel.
         for id in current_voice_members(serenity_ctx, guild_id, voice_channel_id, bot_id) {
             expected.insert(id);
         }
 
-        // Ghost-ping missing members after grace period ends.
+        // Ghost-ping missing members after grace expires.
         if now >= grace_ends_at && now >= last_ghost_ping + GHOST_PING_INTERVAL {
             last_ghost_ping = now;
-            let still_missing: Vec<UserId> = expected
+            let missing: Vec<UserId> = expected
                 .iter()
                 .filter(|id| !arrivals.contains_key(id))
                 .copied()
                 .collect();
-            if !still_missing.is_empty() {
-                ghost_ping(serenity_ctx, text_channel_id, &still_missing).await;
+            if !missing.is_empty() {
+                tokio::spawn(ghost_ping(
+                    serenity_ctx.http.clone(),
+                    text_channel_id,
+                    missing,
+                ));
             }
         }
 
-        // Refresh embed (clock-driven changes like grace expiring should be visible).
-        // Throttled to avoid hitting Discord's per-message edit rate limit.
-        if Instant::now() < last_edit + MIN_EDIT_INTERVAL {
-            continue;
+        // Throttled periodic embed refresh.
+        if Instant::now() >= last_edit + MIN_EDIT_INTERVAL {
+            last_edit = Instant::now();
+            let _ = msg
+                .edit(
+                    &serenity_ctx.http,
+                    EditMessage::new()
+                        .embed(build_embed(
+                            serenity_ctx,
+                            guild_id,
+                            &expected,
+                            &arrivals,
+                            started_at,
+                            grace_ends_at,
+                            None,
+                        ))
+                        .components(buttons(false)),
+                )
+                .await;
         }
-        last_edit = Instant::now();
-        let _ = msg
-            .edit(
-                &serenity_ctx.http,
-                EditMessage::new()
-                    .embed(build_embed(
-                        serenity_ctx,
-                        guild_id,
-                        &expected,
-                        &arrivals,
-                        started_at,
-                        grace_ends_at,
-                        None,
-                    ))
-                    .components(buttons(false)),
-            )
-            .await;
     }
 
     let footer = if cancelled {
@@ -302,6 +205,149 @@ pub async fn start_gather(
         .await;
 
     Ok(())
+}
+
+#[allow(clippy::too_many_arguments)]
+async fn handle_interaction(
+    ic: &serenity::all::ComponentInteraction,
+    serenity_ctx: &SerenityContext,
+    guild_id: GuildId,
+    voice_channel_id: ChannelId,
+    author_id: UserId,
+    started_at: Instant,
+    grace_ends_at: &mut Instant,
+    expected: &mut HashSet<UserId>,
+    arrivals: &mut HashMap<UserId, Duration>,
+    cancelled: &mut bool,
+    last_edit: &mut Instant,
+) {
+    match ic.data.custom_id.as_str() {
+        BTN_CANCEL => {
+            if ic.user.id != author_id {
+                ic.create_response(
+                    &serenity_ctx.http,
+                    CreateInteractionResponse::Message(
+                        CreateInteractionResponseMessage::new()
+                            .content("Only the person who started the gathering can cancel it.")
+                            .ephemeral(true),
+                    ),
+                )
+                .await
+                .ok();
+                return;
+            }
+            ic.create_response(&serenity_ctx.http, CreateInteractionResponse::Acknowledge)
+                .await
+                .ok();
+            *cancelled = true;
+        }
+        BTN_FORCE_START => {
+            if ic.user.id != author_id {
+                ic.create_response(
+                    &serenity_ctx.http,
+                    CreateInteractionResponse::Message(
+                        CreateInteractionResponseMessage::new()
+                            .content(
+                                "Only the person who started the gathering can force-start it.",
+                            )
+                            .ephemeral(true),
+                    ),
+                )
+                .await
+                .ok();
+                return;
+            }
+            *grace_ends_at = Instant::now();
+            ic.create_response(
+                &serenity_ctx.http,
+                CreateInteractionResponse::UpdateMessage(
+                    CreateInteractionResponseMessage::new()
+                        .embed(build_embed(
+                            serenity_ctx,
+                            guild_id,
+                            expected,
+                            arrivals,
+                            started_at,
+                            *grace_ends_at,
+                            None,
+                        ))
+                        .components(buttons(false)),
+                ),
+            )
+            .await
+            .ok();
+            *last_edit = Instant::now();
+        }
+        BTN_HERE => {
+            if !user_in_voice(serenity_ctx, guild_id, voice_channel_id, ic.user.id) {
+                ic.create_response(
+                    &serenity_ctx.http,
+                    CreateInteractionResponse::Message(
+                        CreateInteractionResponseMessage::new()
+                            .content("You need to be in the voice channel to check in.")
+                            .ephemeral(true),
+                    ),
+                )
+                .await
+                .ok();
+                return;
+            }
+
+            if arrivals.contains_key(&ic.user.id) {
+                ic.create_response(
+                    &serenity_ctx.http,
+                    CreateInteractionResponse::Message(
+                        CreateInteractionResponseMessage::new()
+                            .content("You're already checked in.")
+                            .ephemeral(true),
+                    ),
+                )
+                .await
+                .ok();
+                return;
+            }
+
+            let now = Instant::now();
+            let lateness = if now <= *grace_ends_at {
+                Duration::ZERO
+            } else {
+                now - started_at
+            };
+
+            arrivals.insert(ic.user.id, lateness);
+            expected.insert(ic.user.id);
+
+            // If everyone has now arrived during grace, end grace immediately.
+            if expected.iter().all(|id| arrivals.contains_key(id)) {
+                *grace_ends_at = now;
+            }
+
+            ic.create_response(
+                &serenity_ctx.http,
+                CreateInteractionResponse::UpdateMessage(
+                    CreateInteractionResponseMessage::new()
+                        .embed(build_embed(
+                            serenity_ctx,
+                            guild_id,
+                            expected,
+                            arrivals,
+                            started_at,
+                            *grace_ends_at,
+                            None,
+                        ))
+                        .components(buttons(false)),
+                ),
+            )
+            .await
+            .ok();
+            *last_edit = Instant::now();
+        }
+        _ => {
+            ic.create_response(&serenity_ctx.http, CreateInteractionResponse::Acknowledge)
+                .await
+                .ok();
+        }
+    }
 }
 
 fn current_voice_members(
@@ -369,7 +415,6 @@ fn build_embed(
     let in_grace = now < grace_ends_at;
     let grace_remaining = grace_ends_at.saturating_duration_since(now);
 
-    // Resolve names once with a single cache borrow.
     let names: HashMap<UserId, String> = {
         let guild = serenity_ctx.cache.guild(guild_id);
         expected
@@ -398,7 +443,6 @@ fn build_embed(
         })
         .collect();
 
-    // Sort: present first (by arrival time), then missing.
     rows.sort_by(|a, b| {
         let aa = arrivals_order(arrivals, a, &names);
         let bb = arrivals_order(arrivals, b, &names);
@@ -454,8 +498,7 @@ fn build_embed(
         )
     } else {
         format!(
-            "Counting since gather started — elapsed: **{}**. Late arrivals \
-             are stamped with their time-from-start.",
+            "Counting since gather started — elapsed: **{}**.\nLate arrivals are stamped with their time-from-start.",
             format_mmss(elapsed)
         )
     };
@@ -500,9 +543,15 @@ fn arrivals_order(
     }
 }
 
-/// Replace emoji grapheme clusters with their `:shortcode:` (or `:name:`),
-/// then truncate to `MAX_NAME_LEN` chars so the table stays aligned in
-/// Discord's monospace code block font.
+fn format_mmss(d: Duration) -> String {
+    let total = d.as_secs();
+    let m = total / 60;
+    let s = total % 60;
+    format!("{:02}:{:02}", m, s)
+}
+
+/// Replace emoji grapheme clusters with their `:shortcode:` then truncate
+/// to MAX_NAME_LEN so the table stays aligned in Discord's monospace font.
 fn sanitize_name(name: &str) -> String {
     use unicode_segmentation::UnicodeSegmentation;
 
@@ -521,18 +570,7 @@ fn sanitize_name(name: &str) -> String {
     out.chars().take(MAX_NAME_LEN).collect()
 }
 
-fn format_mmss(d: Duration) -> String {
-    let total = d.as_secs();
-    let m = total / 60;
-    let s = total % 60;
-    format!("{:02}:{:02}", m, s)
-}
-
-async fn ghost_ping(
-    serenity_ctx: &SerenityContext,
-    text_channel_id: ChannelId,
-    users: &[UserId],
-) {
+async fn ghost_ping(http: Arc<Http>, text_channel_id: ChannelId, users: Vec<UserId>) {
     let content = users
         .iter()
         .map(|u| u.mention().to_string())
@@ -540,16 +578,18 @@ async fn ghost_ping(
         .join(" ");
 
     let sent = text_channel_id
-        .send_message(&serenity_ctx.http, CreateMessage::new().content(content))
+        .send_message(&http, CreateMessage::new().content(content))
         .await;
 
     if let Ok(m) = sent {
-        let http = serenity_ctx.http.clone();
+        let http_clone = http.clone();
         let ch = text_channel_id;
         let mid = m.id;
         tokio::spawn(async move {
             tokio::time::sleep(GHOST_PING_LIFETIME).await;
-            let _ = http.delete_message(ch, mid, Some("gather ghost ping")).await;
+            let _ = http_clone
+                .delete_message(ch, mid, Some("gather ghost ping"))
+                .await;
         });
     }
 }
