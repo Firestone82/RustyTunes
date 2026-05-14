@@ -6,7 +6,7 @@ pub enum ReputationEmbed<'a> {
     SpamError,
     PlusRep(&'a RepEmbed),
     MinusRep(&'a RepEmbed),
-    List(&'a [Rep], &'a str, &'a i64),
+    List(&'a [Rep], &'a str, i64, usize),
     NotFound,
 }
 
@@ -21,49 +21,46 @@ impl ReputationEmbed<'_> {
         match self {
             ReputationEmbed::PlusRep(rep) => CreateEmbed::new()
                 .color(serenity::all::Color::DARK_GREEN)
-                .title("✅  Reputation given")
-                .description(format!(
-                    "Gave +1 reputation from <@{}> to <@{}> \nfor: {}",
-                    rep.giver_id, rep.receiver_id, rep.reason
-                )),
+                .title("✅  Reputation Increased")
+                .field("Target", format!("<@{}>", rep.receiver_id), true)
+                .field("Given by", format!("<@{}>", rep.giver_id), true)
+                .field("Amount", "+1 💚", true)
+                .field("Reason", format!("```{}```", rep.reason), false),
 
             ReputationEmbed::MinusRep(rep) => CreateEmbed::new()
                 .color(serenity::all::Color::DARK_RED)
-                .title("❌  Reputation taken")
-                .description(format!(
-                    "Took -1 reputation from <@{}> to <@{}> \nfor: {}",
-                    rep.giver_id, rep.receiver_id, rep.reason
-                )),
+                .title("❌  Reputation Decreased")
+                .field("Target", format!("<@{}>", rep.receiver_id), true)
+                .field("Given by", format!("<@{}>", rep.giver_id), true)
+                .field("Amount", "-1 💔", true)
+                .field("Reason", format!("```{}```", rep.reason), false),
 
-            ReputationEmbed::List(reps, for_user, calculated_rep) => {
+            ReputationEmbed::List(reps, for_user, calculated_rep, rep_count) => {
                 let mut embed = CreateEmbed::new()
                     .color(serenity::all::Color::DARK_BLUE)
                     .title("📜  Reputation logs")
                     .description(format!(
-                        "Here are the reputation logs for user:<@{}>",
+                        "**👤 User:** <@{}>",
                         for_user
                     ));
 
                 match reps.is_empty() {
                     false => {
                         for rep in reps.iter() {
-                            embed = embed.field(
-                                format!("Reputation {}", if rep.rep_value == 1 { "added ✅" } else { "removed ❌" }),
-                                format!("from <@{}> \nreason: {} ({})", rep.giver_id, rep.reason, rep.created_at.date()),
-                                false,
-                            );
+                            embed = embed
+                                .field("Amount", if rep.rep_value == 1 { "✅ +1" } else { "❌ -1" }, true)
+                                .field("Given by", format!("<@{}>", rep.giver_id), true)
+                                .field("Date", format!("`{}`", rep.created_at.date()), true)
+                                .field("Reason", format!("```{}```", rep.reason), false);
                         }
                         embed = embed.footer(CreateEmbedFooter::new(format!(
-                            "Total reputation logs: {}\nTotal reputation: {}",
-                            reps.len(),
-                            calculated_rep
+                            "📊 Overall rep: {} | 📑 Logs: {}",
+                            calculated_rep,
+                            rep_count,
                         )));
                     }
                     true => {
-                        embed = embed.description(format!(
-                            "No reputation logs found for user:<@{}>",
-                            for_user
-                        ));
+                        embed = embed.footer(CreateEmbedFooter::new("This user has no reputation logs yet."));
                     }
                 }
                 embed
