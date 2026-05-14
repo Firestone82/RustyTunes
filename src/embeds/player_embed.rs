@@ -24,6 +24,7 @@ pub enum PlayerEmbed<'a> {
     Resumed(&'a Track),
     Volume(f32),
     VolumeChanged(f32),
+    SilentState(bool),
     Skipped(usize),
     Shuffled,
     Search(&'a [Track]),
@@ -112,6 +113,23 @@ impl<'a> PlayerEmbed<'a> {
                     .color(Color::DARK_BLUE)
                     .title("🔊  Volume changed")
                     .description(format!("Volume set to {}%.", volume))
+            },
+            PlayerEmbed::SilentState(on) => {
+                let (title, body) = if *on {
+                    (
+                        "🔕  Silent mode on",
+                        "Now Playing announcements are **suppressed** for this session.",
+                    )
+                } else {
+                    (
+                        "🔔  Silent mode off",
+                        "Now Playing announcements are back on for this session.",
+                    )
+                };
+                CreateEmbed::new()
+                    .color(Color::DARK_BLUE)
+                    .title(title)
+                    .description(body)
             },
             PlayerEmbed::Skipped(amount) => {
                 CreateEmbed::new()

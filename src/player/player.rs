@@ -1,6 +1,7 @@
 use crate::bot::{Context, Database, MusicBotError};
 use crate::embeds::player_embed::PlayerEmbed;
 use crate::handlers::queue_handler::QueueHandler;
+use crate::service::cache_service;
 use crate::service::embed_service::SendEmbed;
 use poise::serenity_prelude as serenity_prelude;
 use rand::seq::SliceRandom;
@@ -86,19 +87,29 @@ impl TrackSource {
 }
 
 impl Track {
-    pub fn build_input(&self, req_client: &reqwest::Client) -> Input {
-        match &self.source {
-            TrackSource::YouTube | TrackSource::Spotify => {
-                // `play_url` lets sources (like Spotify) ship a yt-dlp-friendly
-                // input string while keeping `track_url` set to the user-facing
-                // permalink that we render in embeds.
-                let input_url = self.metadata.play_url
-                    .clone()
-                    .unwrap_or_else(|| self.metadata.track_url.clone());
-                YoutubeDl::new(req_client.clone(), input_url).into()
-            }
-            TrackSource::Local(path) => File::new(path.clone()).into(),
+    /// Pick the best input for this track:
+    ///   1. If a raw cache exists, play that.
+    ///   2. Else stream through yt-dlp and kick off a background cache write
+    ///      so the next play of the same track is a cheap file read.
+    pub async fn resolve_input(&self, req_client: &reqwest::Client) -> Input {
+        if let TrackSource::Local(path) = &self.source {
+            return File::new(path.clone()).into();
         }
+
+        if let Some(raw) = cache_service::find_cached(self).await {
+            return File::new(raw).into();
+        }
+
+        // Cache miss: stream now, fill the cache for next time.
+        // `play_url` lets sources (like Spotify) ship a yt-dlp-friendly input
+        // string while keeping `track_url` set to the user-facing permalink.
+        let input_url = self
+            .metadata
+            .play_url
+            .clone()
+            .unwrap_or_else(|| self.metadata.track_url.clone());
+        cache_service::spawn_cache(self.clone());
+        YoutubeDl::new(req_client.clone(), input_url).into()
     }
 }
 
@@ -122,6 +133,9 @@ pub struct Player {
     pub history: VecDeque<Track>,
     pub volume: f32,
     pub inactivity_cancel: Arc<AtomicBool>,
+    /// Session-only "shh" mode — when on, the NowPlaying embed is suppressed.
+    /// Resets to `false` on bot restart.
+    pub silent: bool,
     guild_id: GuildId,
     database: Arc<Database>,
 }
@@ -154,6 +168,7 @@ impl Player {
             history: VecDeque::new(),
             volume,
             inactivity_cancel: Arc::new(AtomicBool::new(false)),
+            silent: false,
             guild_id,
             database
         }
@@ -285,17 +300,23 @@ impl Player {
             Some(next_track) => {
                 tracing::info!("Found: {}", next_track.metadata.title);
 
-                // Send "Now playing message"
-                PlayerEmbed::NowPlaying(&next_track)
-                    .to_embed()
-                    .send_context(ctx, false, Some(30)).await?;
+                // Send "Now playing message" unless the guild has session-only silent mode on.
+                if !self.silent {
+                    PlayerEmbed::NowPlaying(&next_track)
+                        .to_embed()
+                        .send_context(ctx, false, Some(30)).await?;
+                }
+
+                let input = next_track
+                    .resolve_input(&ctx.data().request_client)
+                    .await;
 
                 // Play the next track
                 let mut guard: MutexGuard<Call> = manager
                     .lock()
                     .await;
 
-                let track_handle: TrackHandle = guard.play(next_track.build_input(&ctx.data().request_client).into());
+                let track_handle: TrackHandle = guard.play(input.into());
                 
                 // Set volume
                 let _ = track_handle.set_volume(self.volume);

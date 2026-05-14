@@ -39,22 +39,28 @@ impl EventHandler for QueueHandler {
             Some(next_track) => {
                 tracing::info!("Playing next track: {}", next_track.metadata.title);
 
-                // Send "Now playing message"
-                let _ = PlayerEmbed::NowPlaying(&next_track)
-                    .to_embed()
-                    .send_channel(self.serenity_ctx.http.clone(), &self.guild_channel, Some(30), None)
-                    .await
-                    .map_err(|error| {
-                        tracing::error!("Error sending now playing embed: {:?}", error);
-                        PlaybackError::InternalError("Error sending now playing embed".to_owned())
-                    });
+                // Send "Now playing message" unless the guild has session-only silent mode on.
+                if !player.silent {
+                    let _ = PlayerEmbed::NowPlaying(&next_track)
+                        .to_embed()
+                        .send_channel(self.serenity_ctx.http.clone(), &self.guild_channel, Some(30), None)
+                        .await
+                        .map_err(|error| {
+                            tracing::error!("Error sending now playing embed: {:?}", error);
+                            PlaybackError::InternalError("Error sending now playing embed".to_owned())
+                        });
+                }
+
+                let input = next_track
+                    .resolve_input(&self.req_client)
+                    .await;
 
                 // Play the next track
                 let mut guard: MutexGuard<Call> = self.manager
                     .lock()
                     .await;
 
-                let track_handle: TrackHandle = guard.play(next_track.build_input(&self.req_client).into());
+                let track_handle: TrackHandle = guard.play(input.into());
 
                 // Set volume
                 let _ = track_handle.set_volume(player.volume);
