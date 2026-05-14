@@ -13,7 +13,7 @@ const GHOST_PING_INTERVAL: Duration = Duration::from_secs(30);
 const MAX_GATHER_DURATION: Duration = Duration::from_secs(60 * 30);
 const GHOST_PING_LIFETIME: Duration = Duration::from_millis(700);
 const MIN_EDIT_INTERVAL: Duration = Duration::from_secs(5);
-const MAX_NAME_LEN: usize = 16;
+const MAX_NAME_LEN: usize = 22;
 
 const BTN_HERE: &str = "gather_im_here";
 const BTN_CANCEL: &str = "gather_cancel";
@@ -192,7 +192,7 @@ pub async fn start_gather(
                         let lateness = if now <= grace_ends_at {
                             Duration::ZERO
                         } else {
-                            now - grace_ends_at
+                            now - started_at
                         };
 
                         arrivals.insert(ic.user.id, lateness);
@@ -448,12 +448,14 @@ fn build_embed(
     let elapsed = now.saturating_duration_since(started_at);
     let header = if in_grace {
         format!(
-            "Grace period: **{}** remaining (counting starts at 02:00).",
-            format_mmss(grace_remaining)
+            "Grace period: **{}** remaining (counting starts at {}).",
+            format_mmss(grace_remaining),
+            format_mmss(GRACE_PERIOD)
         )
     } else {
         format!(
-            "Counting since grace ended — elapsed since start: **{}**.",
+            "Counting since gather started — elapsed: **{}**. Late arrivals \
+             are stamped with their time-from-start.",
             format_mmss(elapsed)
         )
     };
