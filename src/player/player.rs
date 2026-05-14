@@ -151,9 +151,9 @@ pub struct Player {
     /// Session-only "shh" mode — when on, the NowPlaying embed is suppressed.
     /// Resets to `false` on bot restart.
     pub silent: bool,
-    /// Session-only loudness normalization toggle. On by default and reset
-    /// to `true` on bot restart — the `!normalize` command flips it off when
-    /// desired. When on, it applies to every source (YouTube, Spotify, and
+    /// Session-only loudness normalization toggle. Off by default and reset
+    /// to `false` on bot restart — flip it on with `!normalize` for the
+    /// session. When on, it applies to every source (YouTube, Spotify, and
     /// local files) for every track that has a measurable file path.
     pub normalize: bool,
     guild_id: GuildId,
@@ -191,7 +191,7 @@ impl Player {
             current_source_path: None,
             inactivity_cancel: Arc::new(AtomicBool::new(false)),
             silent: false,
-            normalize: true,
+            normalize: false,
             guild_id,
             database
         }
