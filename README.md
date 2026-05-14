@@ -84,7 +84,7 @@ All commands are available as both **prefix commands** (default prefix `!`) and 
 - `stop` — stop playback and clear the active track
 - `playing` — show the currently playing track
 - `volume [1-100]` — set the playback volume; append `!` (e.g. `volume 200!`) to opt into the extended 1–500 overdrive range
-- `normalize [target] [on|off]` — toggle session-only loudness normalization per source (`youtube`, `spotify`, `local`, or `all`). On by default for every source, resets on restart
+- `normalize [on|off]` — toggle session-only cross-track loudness normalization. On by default, applies to every source, resets on restart
 - `silent [on|off]` — suppress NowPlaying announcements for the session
 - `join` / `leave` — manually summon or dismiss the bot from your voice channel
 
@@ -122,7 +122,7 @@ The `notify` command (alias `remind`) lets users schedule timed reminders persis
 - **Auto-leave**: bot automatically leaves the voice channel when it's left alone
 - **Auto-cleanup**: when the bot is kicked, dragged out, or otherwise loses its voice connection, playback state and the queue are cleaned up automatically
 - **Per-guild volume persistence**: the last-set volume is remembered between sessions in SQLite
-- **Cross-track loudness normalization**: each cached track's integrated loudness is measured once (EBU R128 via ffmpeg) and a static gain is applied so songs sit at roughly the same perceived loudness without crushing in-song dynamics. On by default for YouTube, Spotify, and local sources; toggle per source with `!normalize`
+- **Cross-track loudness normalization**: each cached track's integrated loudness is measured once (EBU R128 via ffmpeg) and a static gain is applied so songs sit at roughly the same perceived loudness without crushing in-song dynamics. On by default for every source; flip it for the session with `!normalize`
 - **Per-source cache layout**: downloaded audio is filed under `cache/youtube/` or `cache/spotify/` (legacy flat-cached files still play)
 - **Slash + prefix parity**: every command works both ways
 - **Graceful shutdown**: handles SIGINT/SIGTERM (and Ctrl+C on Windows) to disconnect cleanly

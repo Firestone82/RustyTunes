@@ -69,12 +69,11 @@ impl EventHandler for QueueHandler {
                 player.current_gain = 1.0;
                 let _ = track_handle.set_volume(player.volume);
 
-                if player.should_normalize(&next_track.source) {
+                if player.should_normalize() {
                     if let Some(path) = source_path {
                         let player_arc = self.player.clone();
                         let handle = track_handle.clone();
                         let track_id = next_track.id.clone();
-                        let track_source = next_track.source.clone();
                         tokio::spawn(async move {
                             let multiplier = normalize_service::multiplier_for(&path).await;
                             let mut player = player_arc.write().await;
@@ -83,7 +82,7 @@ impl EventHandler for QueueHandler {
                                 .as_ref()
                                 .map(|t| t.id == track_id)
                                 .unwrap_or(false);
-                            if !still_current || !player.should_normalize(&track_source) {
+                            if !still_current || !player.should_normalize() {
                                 return;
                             }
                             player.current_gain = multiplier;

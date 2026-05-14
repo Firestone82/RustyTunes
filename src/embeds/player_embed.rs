@@ -25,7 +25,7 @@ pub enum PlayerEmbed<'a> {
     Volume(f32),
     VolumeChanged(f32),
     SilentState(bool),
-    NormalizeState { youtube: bool, spotify: bool, local: bool, changed: Option<&'a str> },
+    NormalizeState(bool),
     Skipped(usize),
     Shuffled,
     Search(&'a [Track]),
@@ -115,25 +115,22 @@ impl<'a> PlayerEmbed<'a> {
                     .title("🔊  Volume changed")
                     .description(format!("Volume set to {}%.", volume))
             },
-            PlayerEmbed::NormalizeState { youtube, spotify, local, changed } => {
-                let title = match changed {
-                    Some(label) => format!("🎚️  Normalization updated · {label}"),
-                    None => "🎚️  Volume normalization".to_string(),
+            PlayerEmbed::NormalizeState(on) => {
+                let (title, body) = if *on {
+                    (
+                        "🎚️  Normalization on",
+                        "Cross-track loudness normalization is **on** — every upcoming track gets its measured gain applied so songs sit at roughly the same perceived loudness.",
+                    )
+                } else {
+                    (
+                        "🎚️  Normalization off",
+                        "Cross-track loudness normalization is **off** — upcoming tracks play at their original loudness.",
+                    )
                 };
-                let line = |label: &str, on: bool| {
-                    let mark = if on { "on" } else { "off" };
-                    format!("**{label}**: `{mark}`")
-                };
-                let description = format!(
-                    "{}\n{}\n{}\n\n_Applies to upcoming tracks. Resets on bot restart._",
-                    line("YouTube", *youtube),
-                    line("Spotify", *spotify),
-                    line("Local", *local),
-                );
                 CreateEmbed::new()
                     .color(Color::DARK_BLUE)
                     .title(title)
-                    .description(description)
+                    .description(body)
             },
             PlayerEmbed::SilentState(on) => {
                 let (title, body) = if *on {

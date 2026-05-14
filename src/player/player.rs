@@ -147,12 +147,11 @@ pub struct Player {
     /// Session-only "shh" mode — when on, the NowPlaying embed is suppressed.
     /// Resets to `false` on bot restart.
     pub silent: bool,
-    /// Session-only loudness normalization toggles, one per source. On by
-    /// default for every source and reset to `true` on bot restart — the
-    /// `!normalize` command flips them off when desired.
-    pub normalize_youtube: bool,
-    pub normalize_spotify: bool,
-    pub normalize_local: bool,
+    /// Session-only loudness normalization toggle. On by default and reset
+    /// to `true` on bot restart — the `!normalize` command flips it off when
+    /// desired. When on, it applies to every source (YouTube, Spotify, and
+    /// local files) for every track that has a measurable file path.
+    pub normalize: bool,
     guild_id: GuildId,
     database: Arc<Database>,
 }
@@ -187,21 +186,15 @@ impl Player {
             current_gain: 1.0,
             inactivity_cancel: Arc::new(AtomicBool::new(false)),
             silent: false,
-            normalize_youtube: true,
-            normalize_spotify: true,
-            normalize_local: true,
+            normalize: true,
             guild_id,
             database
         }
     }
 
-    /// Whether loudness normalization should apply to `source` this session.
-    pub fn should_normalize(&self, source: &TrackSource) -> bool {
-        match source {
-            TrackSource::YouTube => self.normalize_youtube,
-            TrackSource::Spotify => self.normalize_spotify,
-            TrackSource::Local(_) => self.normalize_local,
-        }
+    /// Whether loudness normalization should apply this session.
+    pub fn should_normalize(&self) -> bool {
+        self.normalize
     }
 
     pub fn push_to_history(&mut self, track: Track) {
@@ -354,12 +347,11 @@ impl Player {
                 self.current_gain = 1.0;
                 let _ = track_handle.set_volume(self.volume);
 
-                if self.should_normalize(&next_track.source) {
+                if self.should_normalize() {
                     if let Some(path) = source_path {
                         let player_arc = ctx.data().player.clone();
                         let handle = track_handle.clone();
                         let track_id = next_track.id.clone();
-                        let track_source = next_track.source.clone();
                         tokio::spawn(async move {
                             let multiplier = normalize_service::multiplier_for(&path).await;
                             let mut player = player_arc.write().await;
@@ -370,7 +362,7 @@ impl Player {
                                 .as_ref()
                                 .map(|t| t.id == track_id)
                                 .unwrap_or(false);
-                            if !still_current || !player.should_normalize(&track_source) {
+                            if !still_current || !player.should_normalize() {
                                 return;
                             }
                             player.current_gain = multiplier;
