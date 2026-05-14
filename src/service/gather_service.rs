@@ -8,13 +8,15 @@ use serenity::prelude::Context as SerenityContext;
 use std::collections::{HashMap, HashSet};
 use std::time::{Duration, Instant};
 
-const GRACE_PERIOD: Duration = Duration::from_secs(120);
+const GRACE_PERIOD: Duration = Duration::from_secs(60);
 const GHOST_PING_INTERVAL: Duration = Duration::from_secs(30);
 const MAX_GATHER_DURATION: Duration = Duration::from_secs(60 * 30);
 const GHOST_PING_LIFETIME: Duration = Duration::from_millis(700);
+const MIN_EDIT_INTERVAL: Duration = Duration::from_secs(5);
 
 const BTN_HERE: &str = "gather_im_here";
 const BTN_CANCEL: &str = "gather_cancel";
+const BTN_FORCE_START: &str = "gather_force_start";
 
 pub async fn start_gather(
     serenity_ctx: &SerenityContext,
@@ -34,7 +36,7 @@ pub async fn start_gather(
     }
 
     let started_at = Instant::now();
-    let grace_ends_at = started_at + GRACE_PERIOD;
+    let mut grace_ends_at = started_at + GRACE_PERIOD;
     let deadline = started_at + MAX_GATHER_DURATION;
 
     let mut arrivals: HashMap<UserId, Duration> = HashMap::new();
@@ -62,6 +64,7 @@ pub async fn start_gather(
         .map_err(|e| MusicBotError::InternalError(e.to_string()))?;
 
     let mut last_ghost_ping = started_at;
+    let mut last_edit = Instant::now();
     let mut cancelled = false;
     let shard = serenity_ctx.shard.clone();
 
@@ -115,6 +118,41 @@ pub async fn start_gather(
                             .await
                             .ok();
                         cancelled = true;
+                    }
+                    BTN_FORCE_START => {
+                        if ic.user.id != author_id {
+                            ic.create_response(
+                                &serenity_ctx.http,
+                                CreateInteractionResponse::Message(
+                                    CreateInteractionResponseMessage::new()
+                                        .content("Only the person who started the gathering can force-start it.")
+                                        .ephemeral(true),
+                                ),
+                            )
+                            .await
+                            .ok();
+                            continue;
+                        }
+                        grace_ends_at = Instant::now();
+                        ic.create_response(
+                            &serenity_ctx.http,
+                            CreateInteractionResponse::UpdateMessage(
+                                CreateInteractionResponseMessage::new()
+                                    .embed(build_embed(
+                                        serenity_ctx,
+                                        guild_id,
+                                        &expected,
+                                        &arrivals,
+                                        started_at,
+                                        grace_ends_at,
+                                        None,
+                                    ))
+                                    .components(buttons(false)),
+                            ),
+                        )
+                        .await
+                        .ok();
+                        last_edit = Instant::now();
                     }
                     BTN_HERE => {
                         // Must be in the voice channel.
@@ -179,6 +217,7 @@ pub async fn start_gather(
                         )
                         .await
                         .ok();
+                        last_edit = Instant::now();
                     }
                     _ => {
                         ic.create_response(&serenity_ctx.http, CreateInteractionResponse::Acknowledge)
@@ -213,6 +252,11 @@ pub async fn start_gather(
         }
 
         // Refresh embed (clock-driven changes like grace expiring should be visible).
+        // Throttled to avoid hitting Discord's per-message edit rate limit.
+        if Instant::now() < last_edit + MIN_EDIT_INTERVAL {
+            continue;
+        }
+        last_edit = Instant::now();
         let _ = msg
             .edit(
                 &serenity_ctx.http,
@@ -299,6 +343,10 @@ fn buttons(disabled: bool) -> Vec<CreateActionRow> {
         CreateButton::new(BTN_HERE)
             .label("I'm here!")
             .style(ButtonStyle::Success)
+            .disabled(disabled),
+        CreateButton::new(BTN_FORCE_START)
+            .label("Force start")
+            .style(ButtonStyle::Primary)
             .disabled(disabled),
         CreateButton::new(BTN_CANCEL)
             .label("Cancel")

@@ -8,12 +8,13 @@ use crate::service::gather_service;
 use serenity::all::{
     ButtonStyle, ChannelId, Color, CreateActionRow, CreateButton, CreateEmbed,
     CreateInteractionResponse, CreateInteractionResponseMessage, CreateMessage, EditMessage,
-    GuildId, Message, UserId,
+    GuildId, Mentionable, Message, UserId,
 };
 use std::time::{Duration, Instant};
 
 const BTN_BREAK_CANCEL: &str = "break_cancel";
 const MAX_BREAK_DURATION: Duration = Duration::from_secs(60 * 60 * 4);
+const MIN_EDIT_INTERVAL: Duration = Duration::from_secs(5);
 
 /// Take a break — when the timer runs out, everyone in voice is auto-gathered.
 #[poise::command(slash_command, prefix_command, check = "check_author_in_voice_channel")]
@@ -80,13 +81,18 @@ pub async fn r#break(
     let text_channel_id: ChannelId = ctx.channel_id();
     let started_at = Instant::now();
     let ends_at = started_at + duration;
+    let author_mention = ctx.author().mention().to_string();
 
     let mut msg: Message = text_channel_id
         .send_message(
             &ctx.http(),
             CreateMessage::new()
+                .content(format!(
+                    "@here  ⏸️  {} started a break.",
+                    author_mention
+                ))
                 .embed(build_break_embed(
-                    &ctx.author().name,
+                    &author_mention,
                     duration,
                     Instant::now(),
                     ends_at,
@@ -98,6 +104,7 @@ pub async fn r#break(
         .map_err(|e| MusicBotError::InternalError(e.to_string()))?;
 
     let mut cancelled = false;
+    let mut last_edit = Instant::now();
     let shard = ctx.serenity_context().shard.clone();
 
     loop {
@@ -107,9 +114,7 @@ pub async fn r#break(
         }
 
         let remaining = ends_at.saturating_duration_since(now);
-        // Refresh roughly once per second so the countdown ticks, but no more
-        // often than that to avoid hammering the API.
-        let wait = remaining.min(Duration::from_secs(5));
+        let wait = remaining.min(MIN_EDIT_INTERVAL);
 
         let interaction = msg
             .await_component_interaction(shard.clone())
@@ -139,12 +144,16 @@ pub async fn r#break(
             }
         }
 
+        if Instant::now() < last_edit + MIN_EDIT_INTERVAL {
+            continue;
+        }
+        last_edit = Instant::now();
         let _ = msg
             .edit(
                 ctx.http(),
                 EditMessage::new()
                     .embed(build_break_embed(
-                        &ctx.author().name,
+                        &author_mention,
                         duration,
                         Instant::now(),
                         ends_at,
@@ -166,7 +175,7 @@ pub async fn r#break(
             ctx.http(),
             EditMessage::new()
                 .embed(build_break_embed(
-                    &ctx.author().name,
+                    &author_mention,
                     duration,
                     Instant::now(),
                     ends_at,
@@ -212,7 +221,7 @@ fn break_buttons(disabled: bool) -> Vec<CreateActionRow> {
 }
 
 fn build_break_embed(
-    author_name: &str,
+    author_mention: &str,
     total: Duration,
     now: Instant,
     ends_at: Instant,
@@ -229,10 +238,10 @@ fn build_break_embed(
         .color(color)
         .title("⏸️  Break in progress")
         .description(format!(
-            "**{}** started a break of `{}`.\n\nTime remaining: **{}**\n\n\
+            "{} started a break of `{}`.\n\nTime remaining: **{}**\n\n\
              When the timer ends, everyone still in voice will be gathered \
              automatically — late arrivals will be tracked.",
-            author_name,
+            author_mention,
             format_hhmmss(total),
             format_hhmmss(remaining),
         ));
