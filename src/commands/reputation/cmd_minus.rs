@@ -1,4 +1,5 @@
 use crate::bot::{Context, MusicBotError};
+use crate::commands::reputation::spam_protection;
 use crate::embeds::rep_embed::{RepEmbed, ReputationEmbed};
 use crate::service::embed_service::SendEmbed;
 use serenity::all::User;
@@ -13,13 +14,25 @@ pub async fn remove_rep(
     reason: String,
 ) -> Result<(), MusicBotError> {
     if user.id == ctx.author().id {
-        ctx.say("You cannot remove reputation from yourself.")
-            .await?;
+        ReputationEmbed::SelfError
+            .to_embed()
+            .send_context(ctx, true, None)
+            .await
+            .map_err(|e| MusicBotError::InternalError(e.to_string()))?;
         return Ok(());
     }
 
     let giver_id = ctx.author().id.to_string();
     let receiver_id = user.id.to_string();
+
+    if spam_protection(ctx, receiver_id.clone()).await? {
+        ReputationEmbed::SpamError
+            .to_embed()
+            .send_context(ctx, true, None)
+            .await
+            .map_err(|e| MusicBotError::InternalError(e.to_string()))?;
+        return Ok(());
+    }
 
     sqlx::query!(
         "

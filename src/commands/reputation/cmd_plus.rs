@@ -1,4 +1,5 @@
 use crate::bot::{Context, MusicBotError};
+use crate::commands::reputation::spam_protection;
 use crate::embeds::rep_embed::{RepEmbed, ReputationEmbed};
 use crate::service::embed_service::SendEmbed;
 use serenity::all::User;
@@ -15,7 +16,7 @@ pub async fn add_rep(
     if user.id == ctx.author().id {
         ReputationEmbed::SelfError
             .to_embed()
-            .send_context(ctx, false, None)
+            .send_context(ctx, true, None)
             .await
             .map_err(|e| MusicBotError::InternalError(e.to_string()))?;
         return Ok(());
@@ -23,6 +24,15 @@ pub async fn add_rep(
 
     let giver_id = ctx.author().id.to_string();
     let receiver_id = user.id.to_string();
+
+    if spam_protection(ctx, receiver_id.clone()).await? {
+        ReputationEmbed::SpamError
+            .to_embed()
+            .send_context(ctx, true, None)
+            .await
+            .map_err(|e| MusicBotError::InternalError(e.to_string()))?;
+        return Ok(());
+    }
 
     sqlx::query!(
         "

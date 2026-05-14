@@ -18,7 +18,7 @@ pub async fn list_rep(
 ) -> Result<(), MusicBotError> {
     let target_user = user.as_ref().unwrap_or_else(|| ctx.author());
     let target_id = target_user.id.to_string();
-
+    
     let total_rep: i64 = sqlx::query_scalar!(
         "
 SELECT COALESCE(SUM(rep_value), 0)
@@ -49,7 +49,6 @@ ORDER BY created_at DESC
     let total_pages = logs.len().div_ceil(items_per_page).max(1);
     let mut current_page = 0;
 
-
     let get_page_slice = |page: usize| -> &[Rep] {
         let start = page * items_per_page;
         let end = (start + items_per_page).min(logs.len());
@@ -60,7 +59,7 @@ ORDER BY created_at DESC
         .send(
             poise::CreateReply::default()
                 .embed(
-                    ReputationEmbed::List(get_page_slice(current_page), &target_id, &total_rep)
+                    ReputationEmbed::List(get_page_slice(current_page), &target_id, total_rep, logs.len())
                         .to_embed(),
                 )
                 .components(get_nav_components(current_page, total_pages))
@@ -72,14 +71,17 @@ ORDER BY created_at DESC
         .await
         .map_err(|error| MusicBotError::InternalError(error.to_string()))?;
 
-    let mut collector = ComponentInteractionCollector::new(ctx.serenity_context())
-        .message_id(message.id)
-        .stream();
-
-    let inactivity_timeout = Duration::from_mins(2);
 
     loop {
-        match tokio::time::timeout(inactivity_timeout, collector.next()).await {
+        match tokio::time::timeout(
+            Duration::from_mins(2),
+            ComponentInteractionCollector::new(ctx.serenity_context())
+                .message_id(message.id)
+                .stream()
+                .next(),
+        )
+            .await
+        {
             Ok(Some(interaction)) => {
                 if interaction.user.id != ctx.author().id {
                     interaction
@@ -87,7 +89,9 @@ ORDER BY created_at DESC
                             ctx.http(),
                             CreateInteractionResponse::Message(
                                 CreateInteractionResponseMessage::new()
-                                    .content("Only the person who ran this command can select a track.")
+                                    .content(
+                                        "Only the person who ran this command can select a track.",
+                                    )
                                     .ephemeral(true),
                             ),
                         )
@@ -95,7 +99,6 @@ ORDER BY created_at DESC
                         .ok();
                     continue;
                 }
-
 
                 match interaction.data.custom_id.as_str() {
                     "page_next" => {
@@ -119,7 +122,8 @@ ORDER BY created_at DESC
                                     ReputationEmbed::List(
                                         get_page_slice(current_page),
                                         &target_id,
-                                        &total_rep,
+                                        total_rep,
+                                        logs.len(),
                                     )
                                         .to_embed(),
                                 )
@@ -130,10 +134,9 @@ ORDER BY created_at DESC
                     .map_err(|e| MusicBotError::InternalError(e.to_string()))?;
             }
             Ok(None) => break,
-            Err(_) => break
+            Err(_) => break,
         }
     }
-
 
     message
         .edit(
@@ -145,7 +148,6 @@ ORDER BY created_at DESC
 
     Ok(())
 }
-
 
 fn get_nav_components(page: usize, total_pages: usize) -> Vec<CreateActionRow> {
     let prev_btn = CreateButton::new("page_prev")
