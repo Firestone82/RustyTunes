@@ -377,12 +377,12 @@ pub fn convert_time_date_from_string(text: String) -> Option<OffsetDateTime> {
     None
 }
 
-pub fn convert_time_offset_from_string(text: String) -> Option<OffsetDateTime> {
+fn parse_offset_secs(text: &str) -> Option<u64> {
     let re: Regex = Regex::new(
         r"^(?:(\d+)mo(?:nths?)?)?\s*(?:(\d+)\s*d(?:ays?)?)?\s*(?:(\d+)\s*h(?:ours?)?)?\s*(?:(\d+)\s*m(?:inutes?)?)?\s*(?:(\d+)\s*s(?:econds?)?)?$"
     ).unwrap();
 
-    let captures = re.captures(text.as_str())?;
+    let captures = re.captures(text)?;
 
     let mut total_secs: u64 = 0;
     let mut matched_any = false;
@@ -407,7 +407,20 @@ pub fn convert_time_offset_from_string(text: String) -> Option<OffsetDateTime> {
         return None;
     }
 
-    Some(get_current_time().add(Duration::from_secs(total_secs)))
+    Some(total_secs)
+}
+
+pub fn convert_time_offset_from_string(text: String) -> Option<OffsetDateTime> {
+    let secs = parse_offset_secs(text.as_str())?;
+    Some(get_current_time().add(Duration::from_secs(secs)))
+}
+
+/// Parse a relative duration string (e.g. `"5m"`, `"1h 30s"`) into a `Duration`.
+/// Unlike [`convert_time_offset_from_string`], this never touches the wall clock,
+/// so the returned value is always exact.
+pub fn parse_duration_from_string(text: &str) -> Option<Duration> {
+    let secs = parse_offset_secs(text)?;
+    Some(Duration::from_secs(secs))
 }
 
 pub fn format_time(offset_date_time: OffsetDateTime) -> String {
