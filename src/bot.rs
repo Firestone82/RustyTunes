@@ -1,5 +1,5 @@
 use crate::commands;
-use crate::commands::{music, utility};
+use crate::commands::{music, reputation, utility};
 use crate::embeds::bot_embeds::BotEmbed;
 use crate::handlers::error_handler;
 use crate::player::notifier::{Notifier, NotifierError};
@@ -9,12 +9,13 @@ use crate::sources::spotify::spotify_client::{SpotifyClient, SpotifyError};
 use crate::sources::youtube::youtube_client::{SearchError, YoutubeClient};
 use dotenv::var;
 use poise::serenity_prelude;
-use serenity::all::audit_log::Action;
-use serenity::all::{ChannelId, FullEvent, GatewayIntents, GuildChannel, GuildId, MemberAction, Mentionable};
+
+use serenity::all::{
+    ChannelId, FullEvent, GatewayIntents, GuildId, MemberAction, Mentionable,
+};
 use songbird::SerenityInit;
 use sqlx::sqlite::SqlitePoolOptions;
 use sqlx::{Pool, Sqlite};
-use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::{RwLock, RwLockWriteGuard};
 
@@ -24,7 +25,7 @@ pub struct MusicBotData {
     pub spotify_client: SpotifyClient,
     pub database_pool: Arc<Database>,
     pub player: Arc<RwLock<Player>>,
-    pub notifier: Arc<RwLock<Notifier>>
+    pub notifier: Arc<RwLock<Notifier>>,
 }
 
 pub type Database = Pool<Sqlite>;
@@ -97,11 +98,11 @@ impl MusicBotClient {
             | GatewayIntents::GUILD_MEMBERS
             | GatewayIntents::GUILD_PRESENCES;
 
-        let discord_token = var("DISCORD_TOKEN")
-            .expect("Expected a valid discord token set in the configuration.");
+        let discord_token =
+            var("DISCORD_TOKEN").expect("Expected a valid discord token set in the configuration.");
 
-        let database_url = var("DATABASE_URL")
-            .expect("Expected a valid database url set in the configuration.");
+        let database_url =
+            var("DATABASE_URL").expect("Expected a valid database url set in the configuration.");
 
         let framework = poise::Framework::<MusicBotData, MusicBotError>::builder()
             .options(poise::FrameworkOptions {
@@ -132,6 +133,9 @@ impl MusicBotClient {
                     utility::cmd_wakeup::wakeup(),
                     utility::cmd_wakeup::wakeup_context(),
                     utility::cmd_rename::rename(),
+                    reputation::cmd_plus::add_rep(),
+                    reputation::cmd_minus::remove_rep(),
+                    reputation::cmd_list::list_rep(),
                     utility::cmd_rename::rename_context(),
                 ],
                 pre_command: |ctx| Box::pin(async move {
@@ -202,53 +206,7 @@ impl MusicBotClient {
 
                     Ok(())
                 }),
-                // TODO: Unable to receive targeted member of DisconnectEvent. :( Since revenge is not possible to make in current state.
-                // event_handler_old: |ctx, event, a, _| Box::pin(async move {
-                    // match event {
-                        // TODO: Move this somewhere else
-                        // FullEvent::GuildAuditLogEntryCreate { entry, guild_id } => {
-                        //     match entry.action {
-                        //         Action::Member(MemberAction::MemberDisconnect) => {
-                        //             // Ignore if the one that's disconnecting is the bot
-                        //             if entry.user_id == a.bot_id {
-                        //                 return Ok(());
-                        //             }
-                        //             
-                        //             // Ignore if the target is not the bot
-                        //             if let Some(target) = entry.target_id {
-                        //                 if target.get() != a.bot_id.get() {
-                        //                     return Ok(());
-                        //                 }
-                        //             } else {
-                        //                 return Ok(());
-                        //             };
-                        // 
-                        //             println!("User {} disconnected me, taking revenge!", entry.user_id);
-                        //             guild_id.disconnect_member(ctx.http.clone(), entry.user_id).await?;
-                        // 
-                        //             let music_channel_id: ChannelId = ChannelId::new(829704972122718268);
-                        //             let guild_channels: HashMap<ChannelId, GuildChannel> = guild_id.channels(ctx.http.clone()).await?;
-                        // 
-                        //             let target_channel: Option<(&ChannelId, &GuildChannel)> = guild_channels
-                        //                 .iter()
-                        //                 .find(|(c, _): &(&ChannelId, &GuildChannel) | **c == music_channel_id);
-                        //             
-                        //             if let Some((_, guild_channel)) = target_channel {
-                        //                 BotEmbed::YouShallNotKickMe
-                        //                     .to_embed()
-                        //                     .send_channel(ctx.http.clone(), guild_channel, None, Some(format!("{}", entry.user_id.mention())))
-                        //                     .await?;
-                        //             }
-                        //         }
-                        // 
-                        //         _ => {}
-                        //     };
-                        // }
-                        // _ => {}
-                    // }
-                    // 
-                    // Ok(())
-                // }),
+
                 prefix_options: poise::PrefixFrameworkOptions {
                     prefix: Some(String::from("!")),
                     ..Default::default()
@@ -266,7 +224,7 @@ impl MusicBotClient {
                     crate::player::player::set_idle(ctx);
 
                     tracing::info!("Registering commands in guild");
-                    poise::builtins::register_in_guild(ctx, &fw.options().commands, ready.guilds[0].id, )
+                    poise::builtins::register_in_guild(ctx, &fw.options().commands, ready.guilds[0].id)
                         .await
                         .map_err(|e| {
                             tracing::error!("Failed to register commands in guild: {:?}", e);
@@ -389,14 +347,14 @@ impl MusicBotClient {
                             tokio::time::sleep(tokio::time::Duration::from_secs(10)).await;
                         }
                     });
-                    
+
                     Ok(MusicBotData {
                         request_client: reqwest::Client::new(),
                         youtube_client: YoutubeClient::new(),
                         spotify_client: SpotifyClient::new(),
                         database_pool: database,
                         player: player_handle,
-                        notifier: notifier_handle
+                        notifier: notifier_handle,
                     })
                 })
             })
@@ -408,14 +366,16 @@ impl MusicBotClient {
             .await
             .expect("Failed to build serenity client.");
 
-        Self {
-            serenity_client
-        }
+        Self { serenity_client }
     }
 
     pub async fn start(&mut self) -> Result<(), MusicBotError> {
         tracing::info!("Starting bot client");
 
+        self.serenity_client.start().await.map_err(|e| {
+            tracing::error!("Failed to start server: {:?}", e);
+            MusicBotError::InternalError(e.to_string())
+        })?;
         let shard_manager = self.serenity_client.shard_manager.clone();
         tokio::spawn(async move {
             wait_for_signal().await;
@@ -435,7 +395,7 @@ impl MusicBotClient {
 async fn wait_for_signal() {
     use tokio::signal::unix::{signal, SignalKind};
     let mut sigterm = signal(SignalKind::terminate()).expect("Failed to listen for SIGTERM");
-    let mut sigint  = signal(SignalKind::interrupt()).expect("Failed to listen for SIGINT");
+    let mut sigint = signal(SignalKind::interrupt()).expect("Failed to listen for SIGINT");
     tokio::select! {
         _ = sigterm.recv() => tracing::info!("Received SIGTERM"),
         _ = sigint.recv()  => tracing::info!("Received SIGINT"),
@@ -449,12 +409,11 @@ async fn wait_for_signal() {
 }
 
 async fn table_exists(database: &Arc<Database>, name: &str) -> Result<bool, MusicBotError> {
-    let row: Option<i64> = sqlx::query_scalar(
-        "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?"
-    )
-        .bind(name)
-        .fetch_optional(&**database)
-        .await
-        .map_err(|e| MusicBotError::InternalError(format!("Catalog probe failed: {e}")))?;
+    let row: Option<i64> =
+        sqlx::query_scalar("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?")
+            .bind(name)
+            .fetch_optional(&**database)
+            .await
+            .map_err(|e| MusicBotError::InternalError(format!("Catalog probe failed: {e}")))?;
     Ok(row.is_some())
 }
