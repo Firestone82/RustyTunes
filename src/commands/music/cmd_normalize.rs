@@ -1,7 +1,7 @@
 use crate::bot::{Context, MusicBotError};
 use crate::checks::channel_checks::check_author_in_same_voice_channel;
 use crate::embeds::player_embed::PlayerEmbed;
-use crate::player::player::Player;
+use crate::player::player::{self, Player};
 use crate::service::embed_service::SendEmbed;
 use tokio::sync::RwLockWriteGuard;
 
@@ -12,7 +12,8 @@ use tokio::sync::RwLockWriteGuard;
     aliases("norm", "loudnorm"),
 )]
 pub async fn normalize(ctx: Context<'_>, state: Option<String>) -> Result<(), MusicBotError> {
-    let mut player: RwLockWriteGuard<Player> = ctx.data().player.write().await;
+    let player_arc = ctx.data().player.clone();
+    let mut player: RwLockWriteGuard<Player> = player_arc.write().await;
 
     let desired = match state.as_deref().map(str::trim).map(str::to_ascii_lowercase) {
         None => !player.normalize,
@@ -28,6 +29,29 @@ pub async fn normalize(ctx: Context<'_>, state: Option<String>) -> Result<(), Mu
     };
 
     player.normalize = desired;
+
+    // Re-apply (or undo) gain on the currently playing track so the toggle
+    // takes effect immediately instead of waiting for the next track.
+    if desired {
+        // Turning on: schedule a measurement if we have a path and a handle.
+        // The async helper bails if the track changes or the toggle flips
+        // back off before the measurement returns.
+        if let (Some(handle), Some(path), Some(track_id)) = (
+            player.track_handle.clone(),
+            player.current_source_path.clone(),
+            player.current_track.as_ref().map(|t| t.id.clone()),
+        ) {
+            player::schedule_normalization_apply(player_arc.clone(), handle, path, track_id);
+        }
+    } else {
+        // Turning off: drop the active gain back to unity so the user's
+        // volume setting plays through directly.
+        player.current_gain = 1.0;
+        if let Some(handle) = &player.track_handle {
+            let _ = handle.set_volume(player.volume);
+        }
+    }
+
     drop(player);
 
     PlayerEmbed::NormalizeState(desired)

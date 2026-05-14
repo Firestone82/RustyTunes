@@ -1,7 +1,6 @@
 use crate::embeds::player_embed::PlayerEmbed;
 use crate::player::player::{self, PlaybackError, Player};
 use crate::service::embed_service::SendEmbed;
-use crate::service::normalize_service;
 use async_trait::async_trait;
 use lombok::AllArgsConstructor;
 use poise::serenity_prelude;
@@ -63,31 +62,21 @@ impl EventHandler for QueueHandler {
 
                 let track_handle: TrackHandle = guard.play(input.into());
 
-                // Reset gain for the new track; if normalization is on for
-                // this source we kick off an async loudness measurement and
-                // apply the resulting multiplier once it lands.
+                // Reset gain for the new track; if normalization is on and
+                // we have a file path, kick off an async loudness
+                // measurement and apply the multiplier once it lands.
                 player.current_gain = 1.0;
+                player.current_source_path = source_path.clone();
                 let _ = track_handle.set_volume(player.volume);
 
                 if player.should_normalize() {
                     if let Some(path) = source_path {
-                        let player_arc = self.player.clone();
-                        let handle = track_handle.clone();
-                        let track_id = next_track.id.clone();
-                        tokio::spawn(async move {
-                            let multiplier = normalize_service::multiplier_for(&path).await;
-                            let mut player = player_arc.write().await;
-                            let still_current = player
-                                .current_track
-                                .as_ref()
-                                .map(|t| t.id == track_id)
-                                .unwrap_or(false);
-                            if !still_current || !player.should_normalize() {
-                                return;
-                            }
-                            player.current_gain = multiplier;
-                            let _ = handle.set_volume(player.volume * multiplier);
-                        });
+                        player::schedule_normalization_apply(
+                            self.player.clone(),
+                            track_handle.clone(),
+                            path,
+                            next_track.id.clone(),
+                        );
                     }
                 }
 

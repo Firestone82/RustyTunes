@@ -143,6 +143,10 @@ pub struct Player {
     /// or no measurement is available yet. Updated asynchronously when a
     /// fresh measurement comes back from ffmpeg.
     pub current_gain: f32,
+    /// On-disk path of the currently playing track (cached file or local
+    /// file). Used by `!normalize` to re-measure and apply gain mid-track.
+    /// `None` for streamed inputs that have no analyzable file yet.
+    pub current_source_path: Option<PathBuf>,
     pub inactivity_cancel: Arc<AtomicBool>,
     /// Session-only "shh" mode — when on, the NowPlaying embed is suppressed.
     /// Resets to `false` on bot restart.
@@ -184,6 +188,7 @@ impl Player {
             history: VecDeque::new(),
             volume,
             current_gain: 1.0,
+            current_source_path: None,
             inactivity_cancel: Arc::new(AtomicBool::new(false)),
             silent: false,
             normalize: true,
@@ -341,33 +346,21 @@ impl Player {
 
                 let track_handle: TrackHandle = guard.play(input.into());
 
-                // Reset per-track gain. If normalization is enabled for this
-                // source and we have a file path, kick off an async loudness
-                // measurement and apply it once it lands.
+                // Reset per-track gain. If normalization is on and we have
+                // a file path, kick off an async loudness measurement and
+                // apply it once it lands.
                 self.current_gain = 1.0;
+                self.current_source_path = source_path.clone();
                 let _ = track_handle.set_volume(self.volume);
 
                 if self.should_normalize() {
                     if let Some(path) = source_path {
-                        let player_arc = ctx.data().player.clone();
-                        let handle = track_handle.clone();
-                        let track_id = next_track.id.clone();
-                        tokio::spawn(async move {
-                            let multiplier = normalize_service::multiplier_for(&path).await;
-                            let mut player = player_arc.write().await;
-                            // Bail if a new track has started or the toggle
-                            // was flipped off while we were measuring.
-                            let still_current = player
-                                .current_track
-                                .as_ref()
-                                .map(|t| t.id == track_id)
-                                .unwrap_or(false);
-                            if !still_current || !player.should_normalize() {
-                                return;
-                            }
-                            player.current_gain = multiplier;
-                            let _ = handle.set_volume(player.volume * multiplier);
-                        });
+                        schedule_normalization_apply(
+                            ctx.data().player.clone(),
+                            track_handle.clone(),
+                            path,
+                            next_track.id.clone(),
+                        );
                     }
                 }
 
@@ -494,6 +487,8 @@ impl Player {
         self.is_paused = false;
         self.track_handle = None;
         self.current_track = None;
+        self.current_source_path = None;
+        self.current_gain = 1.0;
 
         Ok(())
     }
@@ -504,6 +499,32 @@ impl Player {
 
         Ok(())
     }
+}
+
+/// Spawn a task that measures `path`'s loudness, then applies the resulting
+/// multiplier to `handle` provided the player is still on `track_id` and the
+/// normalize toggle is still on by the time the measurement returns. Used
+/// both when a track starts and when `!normalize` is flipped mid-track.
+pub fn schedule_normalization_apply(
+    player_arc: Arc<tokio::sync::RwLock<Player>>,
+    handle: TrackHandle,
+    path: PathBuf,
+    track_id: String,
+) {
+    tokio::spawn(async move {
+        let multiplier = normalize_service::multiplier_for(&path).await;
+        let mut player = player_arc.write().await;
+        let still_current = player
+            .current_track
+            .as_ref()
+            .map(|t| t.id == track_id)
+            .unwrap_or(false);
+        if !still_current || !player.should_normalize() {
+            return;
+        }
+        player.current_gain = multiplier;
+        let _ = handle.set_volume(player.volume * multiplier);
+    });
 }
 
 /// Set the bot's Discord activity. We bake the "Playing " word into the label
