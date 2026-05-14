@@ -239,82 +239,14 @@ impl MusicBotClient {
                             })?
                     );
 
-                    // Schema patch: relax notify_me.message_id NOT NULL so slash commands
-                    // (which have no source message) can store NULL.
-                    //
-                    // The whole patch runs in one transaction on one connection. Done that
-                    // way for two reasons: (1) SQLite's per-connection schema cache can lag
-                    // on Windows when statements hop between pool connections, which made
-                    // an earlier autocommit version blow up at the final ALTER TABLE
-                    // RENAME; (2) it lets us recover cleanly if a prior run failed half-way
-                    // and left `notify_me_new` behind without `notify_me`.
-                    let new_table_present = table_exists(&database, "notify_me_new").await?;
-                    let old_table_present = table_exists(&database, "notify_me").await?;
-
-                    let message_id_notnull: Option<i64> = if old_table_present {
-                        sqlx::query_scalar(
-                            "SELECT \"notnull\" FROM pragma_table_info('notify_me') WHERE name = 'message_id'"
-                        ).fetch_optional(&*database)
-                            .await
-                            .map_err(|e| MusicBotError::InternalError(format!("Schema probe failed: {e}")))?
-                    } else {
-                        None
-                    };
-
-                    let needs_full_migration = matches!(message_id_notnull, Some(1));
-
-                    if new_table_present || needs_full_migration {
-                        tracing::info!(
-                            "Migrating notify_me.message_id to NULL-able (recovery={})",
-                            new_table_present && !needs_full_migration
-                        );
-
-                        let mut tx = database.begin().await
-                            .map_err(|e| MusicBotError::InternalError(format!("Begin migration tx failed: {e}")))?;
-
-                        // Recovery path: a previous run already produced notify_me_new.
-                        // Just drop whatever notify_me exists and rename.
-                        if new_table_present {
-                            if old_table_present {
-                                sqlx::query("DROP TABLE notify_me").execute(&mut *tx).await
-                                    .map_err(|e| MusicBotError::InternalError(format!("DROP notify_me failed: {e}")))?;
-                            }
-                            sqlx::query("ALTER TABLE notify_me_new RENAME TO notify_me")
-                                .execute(&mut *tx).await
-                                .map_err(|e| MusicBotError::InternalError(format!("RENAME notify_me_new failed: {e}")))?;
-                        } else {
-                            // Full migration.
-                            sqlx::query(
-                                "CREATE TABLE notify_me_new (\
-                                    id INTEGER PRIMARY KEY AUTOINCREMENT,\
-                                    guild_id INTEGER NOT NULL,\
-                                    channel_id INTEGER NOT NULL,\
-                                    user_id INTEGER NOT NULL,\
-                                    message_id INTEGER,\
-                                    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,\
-                                    notify_at DATETIME,\
-                                    note TEXT DEFAULT NULL\
-                                )"
-                            ).execute(&mut *tx).await
-                                .map_err(|e| MusicBotError::InternalError(format!("CREATE notify_me_new failed: {e}")))?;
-
-                            sqlx::query(
-                                "INSERT INTO notify_me_new (id, guild_id, channel_id, user_id, message_id, created_at, notify_at, note) \
-                                    SELECT id, guild_id, channel_id, user_id, message_id, created_at, notify_at, note FROM notify_me"
-                            ).execute(&mut *tx).await
-                                .map_err(|e| MusicBotError::InternalError(format!("Copy into notify_me_new failed: {e}")))?;
-
-                            sqlx::query("DROP TABLE notify_me").execute(&mut *tx).await
-                                .map_err(|e| MusicBotError::InternalError(format!("DROP notify_me failed: {e}")))?;
-
-                            sqlx::query("ALTER TABLE notify_me_new RENAME TO notify_me")
-                                .execute(&mut *tx).await
-                                .map_err(|e| MusicBotError::InternalError(format!("RENAME notify_me_new failed: {e}")))?;
-                        }
-
-                        tx.commit().await
-                            .map_err(|e| MusicBotError::InternalError(format!("Commit migration tx failed: {e}")))?;
-                    }
+                    tracing::info!("Running database migrations");
+                    sqlx::migrate!("./migrations")
+                        .run(&*database)
+                        .await
+                        .map_err(|e| {
+                            tracing::error!("Failed to run migrations: {:?}", e);
+                            MusicBotError::InternalError(e.to_string())
+                        })?;
 
                     // Insert guild into database if it doesn't exist
                     let _ = sqlx::query!(
@@ -404,14 +336,4 @@ async fn wait_for_signal() {
         .await
         .expect("Failed to listen for Ctrl+C");
     tracing::info!("Received Ctrl+C");
-}
-
-async fn table_exists(database: &Arc<Database>, name: &str) -> Result<bool, MusicBotError> {
-    let row: Option<i64> =
-        sqlx::query_scalar("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?")
-            .bind(name)
-            .fetch_optional(&**database)
-            .await
-            .map_err(|e| MusicBotError::InternalError(format!("Catalog probe failed: {e}")))?;
-    Ok(row.is_some())
 }

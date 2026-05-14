@@ -6,7 +6,6 @@ use serenity::all::{
     UserId,
 };
 use sqlx::types::time::OffsetDateTime;
-use sqlx::Row;
 use std::ops::Add;
 use std::sync::Arc;
 use std::time::Duration;
@@ -36,6 +35,33 @@ pub struct MessageNotify {
     pub created_at: OffsetDateTime,
     pub notify_at: OffsetDateTime,
     pub note: Option<String>,
+}
+
+#[derive(Debug, sqlx::FromRow)]
+struct MessageNotifyRow {
+    id: i64,
+    guild_id: i64,
+    channel_id: i64,
+    user_id: i64,
+    message_id: Option<i64>,
+    created_at: OffsetDateTime,
+    notify_at: OffsetDateTime,
+    note: Option<String>,
+}
+
+impl From<MessageNotifyRow> for MessageNotify {
+    fn from(r: MessageNotifyRow) -> Self {
+        MessageNotify {
+            id: r.id,
+            guild_id: GuildId::new(r.guild_id as u64),
+            channel_id: ChannelId::new(r.channel_id as u64),
+            user_id: UserId::new(r.user_id as u64),
+            message_id: r.message_id.map(|m| MessageId::new(m as u64)),
+            created_at: r.created_at,
+            notify_at: r.notify_at,
+            note: r.note,
+        }
+    }
 }
 
 impl MessageNotify {
@@ -96,30 +122,13 @@ impl Notifier {
         serenity_context: serenity::prelude::Context,
         database: Arc<Database>,
     ) -> Self {
-        // Runtime-checked (not query!) because the bot's startup migration
-        // recreates this table; if the live DB is mid-migration when sqlx
-        // does its compile-time verification, query! would fail to compile.
-        let rows = sqlx::query(
+        let rows: Vec<MessageNotifyRow> = sqlx::query_as(
             "SELECT id, guild_id, channel_id, user_id, message_id, created_at, notify_at, note FROM notify_me"
         ).fetch_all(&*database)
             .await
             .expect("Failed to fetch all messages from database");
 
-        let messages: Vec<MessageNotify> = rows
-            .into_iter()
-            .map(|r| MessageNotify {
-                id: r.get("id"),
-                guild_id: GuildId::new(r.get::<i64, _>("guild_id") as u64),
-                channel_id: ChannelId::new(r.get::<i64, _>("channel_id") as u64),
-                user_id: UserId::new(r.get::<i64, _>("user_id") as u64),
-                message_id: r
-                    .get::<Option<i64>, _>("message_id")
-                    .map(|m| MessageId::new(m as u64)),
-                created_at: r.get("created_at"),
-                notify_at: r.get("notify_at"),
-                note: r.get("note"),
-            })
-            .collect();
+        let messages: Vec<MessageNotify> = rows.into_iter().map(MessageNotify::from).collect();
 
         Notifier {
             messages,

@@ -63,7 +63,7 @@ pub async fn queue(ctx: Context<'_>, page: Option<usize>) -> Result<(), MusicBot
         return Ok(());
     }
 
-    let total_pages = ((player.queue.len() + ITEMS_PER_PAGE - 1) / ITEMS_PER_PAGE).max(1);
+    let total_pages = player.queue.len().div_ceil(ITEMS_PER_PAGE).max(1);
     let mut page = page.unwrap_or(1).max(1).min(total_pages);
 
     let embeds = build_embeds(&player, page);
@@ -143,8 +143,7 @@ pub async fn queue(ctx: Context<'_>, page: Option<usize>) -> Result<(), MusicBot
                     break;
                 }
 
-                let total_pages =
-                    ((player.queue.len() + ITEMS_PER_PAGE - 1) / ITEMS_PER_PAGE).max(1);
+                let total_pages = player.queue.len().div_ceil(ITEMS_PER_PAGE).max(1);
 
                 match interaction.data.custom_id.as_str() {
                     "queue_prev" => page = page.saturating_sub(1).max(1),

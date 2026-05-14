@@ -3,6 +3,7 @@ name: Release
 on:
   push:
     branches: [ "master" ]
+    tags: [ "release" ]
   workflow_dispatch:
     inputs:
       tag:
@@ -13,6 +14,9 @@ on:
 env:
   CARGO_TERM_COLOR: always
   RUST_BACKTRACE: 1
+
+permissions:
+  contents: write
 
 jobs:
   prepare:
@@ -26,19 +30,56 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          ref: master
+          token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Resolve release tag
+      - name: Configure git identity
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+      - name: Resolve release tag and bump version
         id: tag
         run: |
+          set -euo pipefail
+
+          CURRENT=$(grep -m1 '^version' Cargo.toml | sed -E 's/.*"([^"]+)".*/\1/')
+          IFS='.' read -r MAJOR MINOR PATCH <<<"${CURRENT}"
+
+          BUMP=""
+          if [ "${{ github.event_name }}" = "push" ]; then
+            if [ "${{ github.ref }}" = "refs/heads/master" ]; then
+              BUMP="minor"
+            elif [ "${{ github.ref }}" = "refs/tags/release" ]; then
+              BUMP="major"
+            fi
+          fi
+
           if [ -n "${{ github.event.inputs.tag }}" ]; then
             TAG="${{ github.event.inputs.tag }}"
+            VERSION="${TAG#v}"
+            BUMP=""
           else
-            VERSION=$(grep -m1 '^version' Cargo.toml | sed -E 's/.*"([^"]+)".*/\1/')
+            case "${BUMP}" in
+              major) MAJOR=$((MAJOR+1)); MINOR=0; PATCH=0 ;;
+              minor) MINOR=$((MINOR+1)); PATCH=0 ;;
+            esac
+            VERSION="${MAJOR}.${MINOR}.${PATCH}"
             TAG="v${VERSION}"
           fi
-          VERSION="${TAG#v}"
-          echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
+
           echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+          echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
+
+          if [ -n "${BUMP}" ] && [ "${VERSION}" != "${CURRENT}" ]; then
+            echo "Bumping version: ${CURRENT} -> ${VERSION} (${BUMP})"
+            sed -i -E "0,/^version = \"[^\"]+\"/s//version = \"${VERSION}\"/" Cargo.toml
+            perl -i -pe 'BEGIN{undef $/;} s/(name = "RustTunes"\nversion = ")[^"]+(")/${1}'"${VERSION}"'${2}/' Cargo.lock
+
+            git add Cargo.toml Cargo.lock
+            git commit -m "chore(release): bump version to ${VERSION}"
+            git push origin master
+          fi
 
           if git rev-parse "refs/tags/${TAG}" >/dev/null 2>&1; then
             echo "Tag ${TAG} already exists — skipping release."
@@ -46,6 +87,10 @@ jobs:
           else
             echo "should_release=true" >> "$GITHUB_OUTPUT"
           fi
+
+      - name: Delete trigger tag
+        if: github.ref == 'refs/tags/release'
+        run: git push --delete origin release || true
 
   build:
     name: Build ${{ matrix.name }}
@@ -73,6 +118,8 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: master
 
       - name: Install Linux system dependencies
         if: runner.os == 'Linux'
@@ -152,6 +199,8 @@ jobs:
       contents: write
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: master
 
       - name: Download all build artifacts
         uses: actions/download-artifact@v4
@@ -169,5 +218,6 @@ jobs:
         with:
           tag_name: ${{ needs.prepare.outputs.tag }}
           name: ${{ needs.prepare.outputs.tag }}
+          target_commitish: master
           generate_release_notes: true
           files: release-assets/*

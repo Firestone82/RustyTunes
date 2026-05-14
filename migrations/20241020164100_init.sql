@@ -11,4 +11,4 @@ CREATE TABLE IF NOT EXISTS notify_me (
 CREATE TABLE IF NOT EXISTS guilds (
     guild_id TEXT NOT NULL PRIMARY KEY,
     volume FLOAT DEFAULT 1
-)
+);
