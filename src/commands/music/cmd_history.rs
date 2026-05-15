@@ -1,13 +1,11 @@
 use crate::bot::{Context, MusicBotError};
 use crate::checks::channel_checks::check_author_in_same_voice_channel;
-use crate::embeds::player_embed::PlayerEmbed;
-use crate::player::player::{Player, Track};
+use crate::embeds::music::player_embed::PlayerEmbed;
+use crate::player::player::Player;
+use crate::player::track::Track;
 use crate::service::channel_service;
 use crate::service::embed_service::SendEmbed;
-use serenity::all::{
-    ButtonStyle, CreateActionRow, CreateButton, CreateInteractionResponse,
-    CreateInteractionResponseMessage, Message,
-};
+use serenity::all::{ButtonStyle, CreateActionRow, CreateButton, CreateInteractionResponse, CreateInteractionResponseMessage, Message};
 use std::collections::{HashMap, VecDeque};
 use std::time::{Duration, Instant};
 use tokio::sync::RwLockWriteGuard;
@@ -93,11 +91,17 @@ pub async fn history(ctx: Context<'_>) -> Result<(), MusicBotError> {
                         interaction.defer(ctx.http()).await.ok();
                     } else {
                         cooldowns.insert(interaction.user.id, now);
-                        interaction.create_response(ctx.http(), CreateInteractionResponse::Message(
-                            CreateInteractionResponseMessage::new()
-                                .content("Only the person who ran this command can select a track.")
-                                .ephemeral(true)
-                        )).await.ok();
+                        interaction
+                            .create_response(
+                                ctx.http(),
+                                CreateInteractionResponse::Message(
+                                    CreateInteractionResponseMessage::new()
+                                        .content("Only the person who ran this command can select a track.")
+                                        .ephemeral(true),
+                                ),
+                            )
+                            .await
+                            .ok();
                     }
                     continue;
                 }

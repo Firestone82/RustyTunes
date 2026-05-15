@@ -1,8 +1,9 @@
 use crate::bot::{Context, MusicBotError};
 use crate::checks::channel_checks::check_author_in_same_voice_channel;
 use crate::checks::player_checks::check_if_queue_is_not_empty;
-use crate::embeds::queue_embed::QueueEmbed;
-use crate::player::player::{PlaybackError, Player};
+use crate::embeds::music::queue_embed::QueueEmbed;
+use crate::player::player::Player;
+use crate::player::track::PlaybackError;
 use crate::service::embed_service::SendEmbed;
 use tokio::sync::RwLockWriteGuard;
 
@@ -13,7 +14,10 @@ use tokio::sync::RwLockWriteGuard;
     check = "check_author_in_same_voice_channel",
     check = "check_if_queue_is_not_empty"
 )]
-pub async fn remove(ctx: Context<'_>, index: usize) -> Result<(), MusicBotError> {
+pub async fn remove(
+    ctx: Context<'_>,
+    index: usize,
+) -> Result<(), MusicBotError> {
     let mut player: RwLockWriteGuard<Player> = ctx.data().player.write().await;
 
     match player.remove_from_queue(index).await {

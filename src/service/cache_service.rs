@@ -10,7 +10,7 @@
 //! discovered on read, so an existing cache survives the upgrade — only new
 //! downloads land in the per-source folders.
 
-use crate::player::player::{Track, TrackSource};
+use crate::player::track::{Track, TrackSource};
 use crate::service::normalize_service;
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
@@ -103,7 +103,10 @@ pub async fn find_cached(track: &Track) -> Option<PathBuf> {
     find_in_dir(&cache_dir(), &stem).await
 }
 
-async fn find_in_dir(dir: &Path, stem: &str) -> Option<PathBuf> {
+async fn find_in_dir(
+    dir: &Path,
+    stem: &str,
+) -> Option<PathBuf> {
     let mut read_dir = tokio::fs::read_dir(dir).await.ok()?;
     let prefix = format!("{stem}.");
     while let Ok(Some(entry)) = read_dir.next_entry().await {
@@ -134,9 +137,7 @@ async fn find_in_dir(dir: &Path, stem: &str) -> Option<PathBuf> {
 /// Download `track` through yt-dlp into the cache, returning the final path.
 /// No-op (returns existing path) if a cached copy already exists.
 pub async fn cache_track(track: &Track) -> std::io::Result<PathBuf> {
-    let stem = cache_stem_for(track).ok_or_else(|| {
-        std::io::Error::new(std::io::ErrorKind::InvalidInput, "track is not cacheable")
-    })?;
+    let stem = cache_stem_for(track).ok_or_else(|| std::io::Error::new(std::io::ErrorKind::InvalidInput, "track is not cacheable"))?;
 
     if let Some(existing) = find_cached(track).await {
         return Ok(existing);
@@ -161,13 +162,7 @@ pub async fn cache_track(track: &Track) -> std::io::Result<PathBuf> {
     let output_template = dir.join(format!("{stem}.part.%(ext)s"));
 
     let output = Command::new("yt-dlp")
-        .args([
-            "--no-warnings",
-            "--no-playlist",
-            "-f",
-            "bestaudio/best",
-            "-o",
-        ])
+        .args(["--no-warnings", "--no-playlist", "-f", "bestaudio/best", "-o"])
         .arg(&output_template)
         .arg(&input_url)
         .stdout(Stdio::null())
@@ -223,7 +218,10 @@ pub async fn cache_track(track: &Track) -> std::io::Result<PathBuf> {
 
 /// Delete any leftover `<stem>.part.*` files in `dir`. Called when yt-dlp
 /// fails so we don't accumulate partials on retry.
-async fn cleanup_part_files(dir: &Path, stem: &str) {
+async fn cleanup_part_files(
+    dir: &Path,
+    stem: &str,
+) {
     let part_prefix = format!("{stem}.part.");
     let mut read_dir = match tokio::fs::read_dir(dir).await {
         Ok(rd) => rd,

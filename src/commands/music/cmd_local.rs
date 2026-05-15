@@ -1,19 +1,16 @@
 use crate::bot::{Context, MusicBotError};
 use crate::checks::channel_checks::check_author_in_same_voice_channel;
 use crate::commands::music::cmd_download::{build_local_track, save_to_library, DownloadSource};
-use crate::embeds::player_embed::PlayerEmbed;
-use crate::embeds::queue_embed::QueueEmbed;
-use crate::player::player::{Player, Track};
+use crate::embeds::music::player_embed::PlayerEmbed;
+use crate::embeds::music::queue_embed::QueueEmbed;
+use crate::player::player::Player;
+use crate::player::track::Track;
 use crate::service::channel_service;
 use crate::service::embed_service::SendEmbed;
-use crate::service::local_service;
-use serenity::all::{
-    Attachment, ButtonStyle, CreateActionRow, CreateButton, CreateInteractionResponse,
-    CreateInteractionResponseMessage, Message,
-};
-use std::collections::HashMap;
+use crate::service::picker_service::{self, PickerOutcome};
+use crate::sources::local_player;
+use serenity::all::Attachment;
 use std::path::PathBuf;
-use std::time::{Duration, Instant};
 use tokio::sync::RwLockWriteGuard;
 
 const PICKER_LIMIT: usize = 25;
@@ -22,7 +19,14 @@ const PICKER_LIMIT: usize = 25;
 #[poise::command(
     prefix_command,
     slash_command,
-    subcommands("download", "upload", "list", "remove", "play", "rename_track"),
+    subcommands(
+        "download",
+        "upload",
+        "list",
+        "remove",
+        "play",
+        "rename_track"
+    ),
     check = "check_author_in_same_voice_channel"
 )]
 pub async fn local(ctx: Context<'_>) -> Result<(), MusicBotError> {
@@ -31,12 +35,15 @@ pub async fn local(ctx: Context<'_>) -> Result<(), MusicBotError> {
 }
 
 /// Autocomplete from the current local library — used by `play` and `rename`.
-async fn autocomplete_local_track(_ctx: Context<'_>, partial: &str) -> Vec<String> {
+async fn autocomplete_local_track(
+    _ctx: Context<'_>,
+    partial: &str,
+) -> Vec<String> {
     let needle = partial.trim().to_ascii_lowercase();
-    let files = local_service::list_local_files().await.unwrap_or_default();
+    let files = local_player::list_local_files().await.unwrap_or_default();
     files
         .into_iter()
-        .map(|p| local_service::track_title(&p))
+        .map(|p| local_player::track_title(&p))
         .filter(|title| needle.is_empty() || title.to_ascii_lowercase().contains(&needle))
         .take(25)
         .collect()
@@ -125,7 +132,10 @@ async fn save_and_play(
     enqueue_path(ctx, path).await
 }
 
-async fn reply_failure(ctx: Context<'_>, msg: &str) -> Result<(), MusicBotError> {
+async fn reply_failure(
+    ctx: Context<'_>,
+    msg: &str,
+) -> Result<(), MusicBotError> {
     PlayerEmbed::DownloadFailed(msg.to_string())
         .to_embed()
         .send_context(ctx, true, Some(30))
@@ -154,10 +164,10 @@ pub async fn play(
         .filter(|n| !n.is_empty());
 
     let matches: Vec<PathBuf> = match needle.as_deref() {
-        Some(q) => local_service::search_local(q)
+        Some(q) => local_player::search_local(q)
             .await
             .map_err(|e| MusicBotError::InternalError(format!("Could not read downloads: {e}")))?,
-        None => local_service::list_local_files()
+        None => local_player::list_local_files()
             .await
             .map_err(|e| MusicBotError::InternalError(format!("Could not read downloads: {e}")))?,
     };
@@ -185,7 +195,7 @@ pub async fn play(
     }
 
     let display: Vec<PathBuf> = matches.into_iter().take(PICKER_LIMIT).collect();
-    let picked = match show_picker(
+    let picked = match pick_path(
         ctx,
         &display,
         "play",
@@ -216,7 +226,7 @@ pub async fn remove(
         return Ok(());
     }
 
-    let matches: Vec<PathBuf> = local_service::search_local(needle)
+    let matches: Vec<PathBuf> = local_player::search_local(needle)
         .await
         .map_err(|e| MusicBotError::InternalError(format!("Could not read downloads: {e}")))?;
 
@@ -232,7 +242,7 @@ pub async fn remove(
         matches.into_iter().next().unwrap()
     } else {
         let display: Vec<PathBuf> = matches.into_iter().take(PICKER_LIMIT).collect();
-        match show_picker(
+        match pick_path(
             ctx,
             &display,
             "remove",
@@ -251,7 +261,7 @@ pub async fn remove(
         .unwrap_or("?")
         .to_string();
 
-    if let Err(e) = local_service::delete_local(&target).await {
+    if let Err(e) = local_player::delete_local(&target).await {
         PlayerEmbed::DownloadFailed(format!("Could not delete `{display_name}`: {e}"))
             .to_embed()
             .send_context(ctx, true, Some(30))
@@ -294,8 +304,8 @@ pub async fn rename_track(
 
     let current_ext = target.extension().and_then(|e| e.to_str()).unwrap_or("mp3");
 
-    let cleaned = local_service::sanitize_filename(new_name);
-    let new_filename = if local_service::has_audio_extension(&cleaned) {
+    let cleaned = local_player::sanitize_filename(new_name);
+    let new_filename = if local_player::has_audio_extension(&cleaned) {
         cleaned
     } else {
         format!("{cleaned}.{current_ext}")
@@ -304,9 +314,9 @@ pub async fn rename_track(
     let parent = target
         .parent()
         .map(|p| p.to_path_buf())
-        .unwrap_or_else(local_service::downloads_dir);
+        .unwrap_or_else(local_player::downloads_dir);
 
-    let new_path = local_service::unique_path(&parent, &new_filename).await;
+    let new_path = local_player::unique_path(&parent, &new_filename).await;
 
     if let Err(e) = tokio::fs::rename(&target, &new_path).await {
         PlayerEmbed::DownloadFailed(format!("Rename failed: {e}"))
@@ -327,13 +337,10 @@ pub async fn rename_track(
         .unwrap_or("?")
         .to_string();
 
-    PlayerEmbed::LocalRenamed {
-        old: &old_display,
-        new: &new_display,
-    }
-    .to_embed()
-    .send_context(ctx, true, Some(30))
-    .await?;
+    PlayerEmbed::LocalRenamed { old: &old_display, new: &new_display }
+        .to_embed()
+        .send_context(ctx, true, Some(30))
+        .await?;
     Ok(())
 }
 
@@ -341,8 +348,11 @@ pub async fn rename_track(
 /// title match — autocomplete-picked names will hit this path. Falls back to
 /// substring search; if substring is ambiguous, shows the candidates and
 /// returns `None`.
-async fn resolve_unique(ctx: Context<'_>, query: &str) -> Result<Option<PathBuf>, MusicBotError> {
-    let matches: Vec<PathBuf> = local_service::search_local(query)
+async fn resolve_unique(
+    ctx: Context<'_>,
+    query: &str,
+) -> Result<Option<PathBuf>, MusicBotError> {
+    let matches: Vec<PathBuf> = local_player::search_local(query)
         .await
         .map_err(|e| MusicBotError::InternalError(format!("Could not read downloads: {e}")))?;
 
@@ -357,7 +367,7 @@ async fn resolve_unique(ctx: Context<'_>, query: &str) -> Result<Option<PathBuf>
     let needle_lower = query.trim().to_ascii_lowercase();
     if let Some(exact) = matches
         .iter()
-        .find(|p| local_service::track_title(p).to_ascii_lowercase() == needle_lower)
+        .find(|p| local_player::track_title(p).to_ascii_lowercase() == needle_lower)
     {
         return Ok(Some(exact.clone()));
     }
@@ -375,7 +385,7 @@ async fn resolve_unique(ctx: Context<'_>, query: &str) -> Result<Option<PathBuf>
 }
 
 async fn list_inner(ctx: Context<'_>) -> Result<(), MusicBotError> {
-    let files: Vec<PathBuf> = local_service::list_local_files()
+    let files: Vec<PathBuf> = local_player::list_local_files()
         .await
         .map_err(|e| MusicBotError::InternalError(format!("Could not read downloads: {e}")))?;
 
@@ -394,7 +404,10 @@ async fn list_inner(ctx: Context<'_>) -> Result<(), MusicBotError> {
     Ok(())
 }
 
-async fn enqueue_path(ctx: Context<'_>, path: PathBuf) -> Result<(), MusicBotError> {
+async fn enqueue_path(
+    ctx: Context<'_>,
+    path: PathBuf,
+) -> Result<(), MusicBotError> {
     let track: Track = build_local_track(path, ctx.author().name.clone());
     let mut player: RwLockWriteGuard<Player> = ctx.data().player.write().await;
 
@@ -419,118 +432,31 @@ async fn enqueue_path(ctx: Context<'_>, path: PathBuf) -> Result<(), MusicBotErr
     Ok(())
 }
 
-/// Render numbered buttons for the supplied paths and wait for the user's
-/// choice. Returns the picked path, or None if the user cancelled or the
-/// selection timed out.
-async fn show_picker(
+/// Show the path picker and return the chosen path. `None` on cancel/timeout.
+async fn pick_path(
     ctx: Context<'_>,
     files: &[PathBuf],
     id_prefix: &str,
     embed: PlayerEmbed<'_>,
 ) -> Result<Option<PathBuf>, MusicBotError> {
-    let mut buttons: Vec<CreateButton> = (0..files.len())
-        .map(|i| {
-            CreateButton::new(format!("{id_prefix}_{i}"))
-                .label((i + 1).to_string())
-                .style(ButtonStyle::Secondary)
-        })
-        .collect();
-    buttons.push(
-        CreateButton::new(format!("{id_prefix}_cancel"))
-            .label("✖ Cancel")
-            .style(ButtonStyle::Danger),
-    );
+    let outcome = picker_service::show_picker(
+        ctx,
+        files.len(),
+        id_prefix,
+        embed.to_embed(),
+        "Only the person who ran this command can make a selection.",
+    )
+    .await?;
 
-    let row_count = buttons.len().div_ceil(5);
-    let per_row = buttons.len().div_ceil(row_count.max(1));
-    let rows: Vec<CreateActionRow> = buttons
-        .chunks(per_row.max(1))
-        .map(|chunk| CreateActionRow::Buttons(chunk.to_vec()))
-        .collect();
-
-    let reply_handle = ctx
-        .send(
-            poise::CreateReply::default()
-                .embed(embed.to_embed())
-                .components(rows)
-                .reply(true),
-        )
-        .await
-        .map_err(|e| MusicBotError::InternalError(e.to_string()))?;
-
-    let message: Message = reply_handle
-        .into_message()
-        .await
-        .map_err(|e| MusicBotError::InternalError(e.to_string()))?;
-
-    let deadline = Instant::now() + Duration::from_secs(60 * 2);
-    let mut cooldowns: HashMap<serenity::all::UserId, Instant> = HashMap::new();
-    loop {
-        let remaining = deadline.saturating_duration_since(Instant::now());
-        if remaining.is_zero() {
-            message.delete(ctx.http()).await?;
-            PlayerEmbed::SearchExpired
+    match outcome {
+        PickerOutcome::Selected(i) => Ok(files.get(i).cloned()),
+        PickerOutcome::Cancelled => {
+            PlayerEmbed::SearchCancelled
                 .to_embed()
                 .send_context(ctx, true, Some(15))
                 .await?;
-            return Ok(None);
+            Ok(None)
         }
-
-        let interaction = message
-            .await_component_interaction(ctx.serenity_context().shard.clone())
-            .timeout(remaining)
-            .await;
-
-        match interaction {
-            Some(interaction) => {
-                if interaction.user.id != ctx.author().id {
-                    let now = Instant::now();
-                    let on_cooldown = cooldowns
-                        .get(&interaction.user.id)
-                        .map(|&last| now.duration_since(last) < Duration::from_secs(5))
-                        .unwrap_or(false);
-                    if on_cooldown {
-                        interaction.defer(ctx.http()).await.ok();
-                    } else {
-                        cooldowns.insert(interaction.user.id, now);
-                        interaction.create_response(ctx.http(), CreateInteractionResponse::Message(
-                            CreateInteractionResponseMessage::new()
-                                .content("Only the person who ran this command can make a selection.")
-                                .ephemeral(true)
-                        )).await.ok();
-                    }
-                    continue;
-                }
-
-                interaction.defer(ctx.http()).await?;
-                message.delete(ctx.http()).await?;
-
-                if interaction.data.custom_id == format!("{id_prefix}_cancel") {
-                    PlayerEmbed::SearchCancelled
-                        .to_embed()
-                        .send_context(ctx, true, Some(15))
-                        .await?;
-                    return Ok(None);
-                }
-
-                let prefix = format!("{id_prefix}_");
-                let index: usize = interaction
-                    .data
-                    .custom_id
-                    .strip_prefix(&prefix)
-                    .and_then(|s| s.parse().ok())
-                    .ok_or_else(|| MusicBotError::InternalError("Bad picker id".into()))?;
-
-                return Ok(files.get(index).cloned());
-            }
-            None => {
-                message.delete(ctx.http()).await?;
-                PlayerEmbed::SearchExpired
-                    .to_embed()
-                    .send_context(ctx, true, Some(15))
-                    .await?;
-                return Ok(None);
-            }
-        }
+        PickerOutcome::Expired => Ok(None),
     }
 }

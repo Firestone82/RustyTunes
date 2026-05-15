@@ -1,8 +1,10 @@
 use crate::bot::{MusicBotData, MusicBotError};
-use crate::embeds::bot_embeds::BotEmbed;
+use crate::embeds::bot::bot_embeds::BotEmbed;
 use async_trait::async_trait;
 use songbird::{Event, EventContext, EventHandler};
 
+/// Delete the user's prefix-command invocation after 30s so the channel
+/// doesn't get cluttered. Slash commands clean themselves up.
 pub fn schedule_prefix_delete(ctx: poise::Context<'_, MusicBotData, MusicBotError>) {
     if let poise::Context::Prefix(prefix_ctx) = ctx {
         let http = ctx.serenity_context().http.clone();
@@ -15,11 +17,15 @@ pub fn schedule_prefix_delete(ctx: poise::Context<'_, MusicBotData, MusicBotErro
     }
 }
 
+/// Songbird event handler for `TrackEvent::Error` — logs and continues.
 pub struct ErrorHandler;
 
 #[async_trait]
 impl EventHandler for ErrorHandler {
-    async fn act(&self, _e: &EventContext<'_>) -> Option<Event> {
+    async fn act(
+        &self,
+        _e: &EventContext<'_>,
+    ) -> Option<Event> {
         tracing::error!("Track error event: {:?}", _e);
         None
     }
@@ -27,14 +33,12 @@ impl EventHandler for ErrorHandler {
 
 pub async fn handle(error: poise::FrameworkError<'_, MusicBotData, MusicBotError>) {
     match error {
-        // Bot failed to start
         poise::FrameworkError::Setup { error, .. } => {
             panic!("Failed to start bot: {:?}", error)
         }
 
-        // Command failed to execute. `error` is already a MusicBotError whose
-        // Display impl carries the user-facing prefix — wrapping it again would
-        // produce nested "Whoops, an internal error occurred:" prefixes.
+        // `error` already carries the "Whoops…" prefix in its Display impl,
+        // so render it raw — wrapping it again would nest the prefix.
         poise::FrameworkError::Command { error, ctx, .. } => {
             tracing::error!("Error in command `{}`: {:?}", ctx.command().name, error);
             let embed = BotEmbed::Error(error).to_embed();
@@ -44,7 +48,6 @@ pub async fn handle(error: poise::FrameworkError<'_, MusicBotData, MusicBotError
             schedule_prefix_delete(ctx);
         }
 
-        // Command check failed
         poise::FrameworkError::CommandCheckFailed { error, ctx, .. } => {
             if let Some(error) = error {
                 let _ = ctx.reply(error.to_string()).await;
@@ -52,7 +55,6 @@ pub async fn handle(error: poise::FrameworkError<'_, MusicBotData, MusicBotError
             schedule_prefix_delete(ctx);
         }
 
-        // Unmatched errors
         error => {
             if let Err(e) = poise::builtins::on_error(error).await {
                 tracing::error!("Error while handling error: {}", e);

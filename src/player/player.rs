@@ -1,13 +1,13 @@
-use crate::bot::{Context, Database, MusicBotError};
-use crate::embeds::player_embed::PlayerEmbed;
+use crate::bot::{Context, Database};
+use crate::embeds::music::player_embed::PlayerEmbed;
 use crate::handlers::queue_handler::QueueHandler;
+use crate::player::track::{PlaybackError, Playlist, Track};
 use crate::service::cache_service;
 use crate::service::embed_service::SendEmbed;
 use crate::service::normalize_service;
 use poise::serenity_prelude;
 use rand::seq::SliceRandom;
 use serenity::all::{ActivityData, GuildId};
-use songbird::input::{File, Input, YoutubeDl};
 use songbird::tracks::TrackHandle;
 use songbird::{Call, Event, TrackEvent};
 use std::collections::VecDeque;
@@ -15,121 +15,6 @@ use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use tokio::sync::{Mutex, MutexGuard};
-
-#[derive(Debug, thiserror::Error)]
-pub enum PlaybackError {
-    // Bare display string — `MusicBotError::InternalError` already adds the
-    // user-facing "Whoops…" prefix when this is converted at the boundary.
-    #[error("{0}")]
-    InternalError(String),
-
-    #[error("No tracks in queue")]
-    NoTracksInQueue,
-
-    #[error("Playback is not active")]
-    PlaybackNotActive,
-
-    #[error("Playback is already active")]
-    PlaybackAlreadyActive,
-
-    #[error("Playback is already paused")]
-    PlaybackAlreadyPaused,
-
-    #[error("Playback is not paused")]
-    PlaybackNotPaused,
-
-    #[error("Invalid queue index: {0}")]
-    InvalidQueueIndex(usize),
-}
-
-#[derive(Debug, Clone)]
-pub struct Playlist {
-    pub id: String,
-    pub title: String,
-    pub description: String,
-    pub playlist_url: String,
-    pub tracks: Vec<Track>,
-}
-
-#[derive(Debug, Clone)]
-pub struct Track {
-    pub id: String,
-    pub metadata: TrackMetadata,
-    pub added_by: String,
-    pub source: TrackSource,
-}
-
-#[derive(Debug, Clone)]
-pub enum TrackSource {
-    /// Streamed via yt-dlp from a YouTube URL.
-    YouTube,
-    /// Resolved from Spotify, played via yt-dlp's `ytsearch1:` prefix.
-    Spotify,
-    /// A previously downloaded file on the local filesystem.
-    Local(PathBuf),
-}
-
-impl TrackSource {
-    pub fn label(&self) -> &'static str {
-        match self {
-            TrackSource::YouTube => "YouTube",
-            TrackSource::Spotify => "Spotify",
-            TrackSource::Local(_) => "Local file",
-        }
-    }
-
-    pub fn emoji(&self) -> &'static str {
-        match self {
-            TrackSource::YouTube => "🎬",
-            TrackSource::Spotify => "🟢",
-            TrackSource::Local(_) => "📁",
-        }
-    }
-}
-
-impl Track {
-    /// Pick the best input for this track:
-    ///   1. If a raw cache exists, play that.
-    ///   2. Else stream through yt-dlp; the caller is expected to kick off
-    ///      a background cache-and-normalize pass via
-    ///      `spawn_cache_and_apply` so the gain can be applied mid-track
-    ///      as soon as the cache is ready.
-    ///
-    /// Returns the chosen `Input` along with the on-disk path it was built
-    /// from (when available). The path is what loudness normalization needs;
-    /// streamed inputs return `None`.
-    pub async fn resolve_input(&self, req_client: &reqwest::Client) -> (Input, Option<PathBuf>) {
-        if let TrackSource::Local(path) = &self.source {
-            return (File::new(path.clone()).into(), Some(path.clone()));
-        }
-
-        if let Some(raw) = cache_service::find_cached(self).await {
-            let path = raw.clone();
-            return (File::new(raw).into(), Some(path));
-        }
-
-        // Cache miss: stream now. The caller fires off the cache write.
-        // `play_url` lets sources (like Spotify) ship a yt-dlp-friendly input
-        // string while keeping `track_url` set to the user-facing permalink.
-        let input_url = self
-            .metadata
-            .play_url
-            .clone()
-            .unwrap_or_else(|| self.metadata.track_url.clone());
-        (YoutubeDl::new(req_client.clone(), input_url).into(), None)
-    }
-}
-
-#[derive(Debug, Clone)]
-pub struct TrackMetadata {
-    pub id: String,
-    pub title: String,
-    pub channel: String,
-    pub track_url: String,
-    /// Optional override used by `build_input`. For Spotify this is the
-    /// `ytsearch1:` query, while `track_url` stays the Spotify permalink.
-    pub play_url: Option<String>,
-}
 
 pub struct Player {
     pub is_playing: bool,
@@ -162,7 +47,10 @@ pub struct Player {
 }
 
 impl Player {
-    pub async fn new(guild_id: GuildId, database: Arc<Database>) -> Self {
+    pub async fn new(
+        guild_id: GuildId,
+        database: Arc<Database>,
+    ) -> Self {
         let guild_id_map: i64 = guild_id.get() as i64;
 
         let volume = sqlx::query!("SELECT * FROM guilds WHERE guild_id = $1", guild_id_map)
@@ -170,7 +58,7 @@ impl Player {
             .await
             .map_err(|e| {
                 tracing::error!("Failed to fetch volume from database: {:?}", e);
-                MusicBotError::InternalError(e.to_string())
+                crate::bot::MusicBotError::InternalError(e.to_string())
             });
 
         let volume: f32 = match volume {
@@ -201,7 +89,10 @@ impl Player {
         self.normalize
     }
 
-    pub fn push_to_history(&mut self, track: Track) {
+    pub fn push_to_history(
+        &mut self,
+        track: Track,
+    ) {
         self.history.push_back(track);
         if self.history.len() > 10 {
             self.history.pop_front();
@@ -277,7 +168,10 @@ impl Player {
         Ok(())
     }
 
-    pub async fn skip(&mut self, mut amount: usize) -> Result<usize, PlaybackError> {
+    pub async fn skip(
+        &mut self,
+        mut amount: usize,
+    ) -> Result<usize, PlaybackError> {
         tracing::info!("Skipping {} track(s)", amount);
 
         if !self.is_playing {
@@ -309,7 +203,10 @@ impl Player {
         Ok(amount)
     }
 
-    pub async fn start_playback(&mut self, ctx: Context<'_>) -> Result<(), PlaybackError> {
+    pub async fn start_playback(
+        &mut self,
+        ctx: Context<'_>,
+    ) -> Result<(), PlaybackError> {
         if self.is_playing {
             return Err(PlaybackError::PlaybackAlreadyActive);
         }
@@ -324,23 +221,22 @@ impl Player {
         Ok(())
     }
 
-    pub async fn next_track(&mut self, ctx: Context<'_>) -> Result<Option<&Track>, PlaybackError> {
+    pub async fn next_track(
+        &mut self,
+        ctx: Context<'_>,
+    ) -> Result<Option<&Track>, PlaybackError> {
         tracing::info!("Requesting next track to play");
 
         let guild_id: GuildId = ctx.guild_id().ok_or_else(|| {
             tracing::error!("Could not locate voice channel: guild ID is none");
-            PlaybackError::InternalError(
-                "Could not locate voice channel. Guild ID is none".to_owned(),
-            )
+            PlaybackError::InternalError("Could not locate voice channel. Guild ID is none".to_owned())
         })?;
 
         let manager: Arc<Mutex<Call>> = songbird::get(ctx.serenity_context())
             .await
             .ok_or_else(|| {
                 tracing::error!("Could not locate voice channel: guild ID is none");
-                PlaybackError::InternalError(
-                    "Could not locate voice channel. Guild ID is none".to_owned(),
-                )
+                PlaybackError::InternalError("Could not locate voice channel. Guild ID is none".to_owned())
             })?
             .get_or_insert(guild_id);
 
@@ -348,16 +244,11 @@ impl Player {
             self.stop_track().await?;
         }
 
-        let next = if self.queue.is_empty() {
-            None
-        } else {
-            Some(self.queue.remove(0))
-        };
+        let next = if self.queue.is_empty() { None } else { Some(self.queue.remove(0)) };
         match next {
             Some(next_track) => {
                 tracing::info!("Found: {}", next_track.metadata.title);
 
-                // Send "Now playing message" unless the guild has session-only silent mode on.
                 if !self.silent {
                     PlayerEmbed::NowPlaying(&next_track)
                         .to_embed()
@@ -365,25 +256,18 @@ impl Player {
                         .await?;
                 }
 
-                let (input, source_path) =
-                    next_track.resolve_input(&ctx.data().request_client).await;
+                let (input, source_path) = next_track.resolve_input(&ctx.data().request_client).await;
 
-                // Play the next track
                 let mut guard: MutexGuard<Call> = manager.lock().await;
-
                 let track_handle: TrackHandle = guard.play(input.into());
 
-                // Reset per-track gain. There are two cases:
-                //   - File on disk (cache hit or local): measure & apply (if
-                //     normalize is on) using the existing path.
-                //   - Streaming (cache miss): spawn the cache download; the
-                //     helper records the path on the player and applies the
-                //     gain to the live track handle as soon as ffmpeg
-                //     finishes, so first plays get normalized too.
                 self.current_gain = 1.0;
                 self.current_source_path = source_path.clone();
                 let _ = track_handle.set_volume(self.volume);
 
+                // Cache hit / local file → measure now. Cache miss → fetch
+                // in the background; spawn_cache_and_apply will record the
+                // path and apply the gain mid-track when ffmpeg returns.
                 match source_path {
                     Some(path) => {
                         if self.should_normalize() {
@@ -404,7 +288,6 @@ impl Player {
                     }
                 }
 
-                // Add event to handle the track end
                 let _ = track_handle.add_event(
                     Event::Track(TrackEvent::End),
                     QueueHandler::new(
@@ -443,7 +326,10 @@ impl Player {
         cleared
     }
 
-    pub async fn remove_from_queue(&mut self, index: usize) -> Result<Track, PlaybackError> {
+    pub async fn remove_from_queue(
+        &mut self,
+        index: usize,
+    ) -> Result<Track, PlaybackError> {
         tracing::info!("Removing track at queue index {}", index);
 
         if index == 0 || index > self.queue.len() {
@@ -464,10 +350,13 @@ impl Player {
         Ok(())
     }
 
-    pub async fn set_volume(&mut self, mut volume: f32) -> Result<(), PlaybackError> {
+    /// `volume` is taken as a percentage (`0..=100+`) and stored as a 0..1 multiplier.
+    pub async fn set_volume(
+        &mut self,
+        mut volume: f32,
+    ) -> Result<(), PlaybackError> {
         tracing::info!("Setting volume to: {:?}", volume);
 
-        // Normalize volume
         volume /= 100.0;
         volume = volume.max(0.0);
 
@@ -615,9 +504,8 @@ pub fn spawn_cache_and_apply(
             Ok(path) => {
                 tracing::info!("Cached '{}' to {}", track.metadata.title, path.display());
 
-                // Stash the path on the player so future `!normalize` toggles
-                // can find the file — but only if the user hasn't already
-                // skipped to a different track.
+                // Record the path so a mid-track `!normalize` can find it,
+                // but only if the user hasn't already skipped to another track.
                 {
                     let mut player = player_arc.write().await;
                     let still_current = player
@@ -630,8 +518,6 @@ pub fn spawn_cache_and_apply(
                     }
                 }
 
-                // Measure (result is cached for next play) and apply if the
-                // user has normalization on and the track is still current.
                 schedule_normalization_apply(player_arc, handle, path, track.id);
             }
             Err(e) => tracing::warn!("Failed to cache '{}': {}", track.metadata.title, e),
@@ -641,7 +527,10 @@ pub fn spawn_cache_and_apply(
 
 /// Set the bot's Discord activity. We bake the "Playing " word into the label
 /// itself because some Discord clients hide the activity-type prefix on bots.
-pub fn set_now_playing(ctx: &serenity_prelude::Context, track: &Track) {
+pub fn set_now_playing(
+    ctx: &serenity_prelude::Context,
+    track: &Track,
+) {
     let label = format!(
         "Playing {} · {}",
         track.metadata.title,

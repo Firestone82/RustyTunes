@@ -18,8 +18,7 @@ pub async fn help(
         ctx,
         command.as_deref(),
         poise::builtins::HelpConfiguration {
-            extra_text_at_bottom:
-                "RustyTunes (Rusty) created by Pavel Mikula as VŠB-TUO project. :)",
+            extra_text_at_bottom: "RustyTunes (Rusty) created by Pavel Mikula as VŠB-TUO project. :)",
             ..Default::default()
         },
     )

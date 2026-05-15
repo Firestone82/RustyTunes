@@ -1,5 +1,5 @@
 use crate::bot::{Context, MusicBotError};
-use crate::embeds::bot_embeds::BotEmbed;
+use crate::embeds::bot::bot_embeds::BotEmbed;
 use crate::service::channel_service;
 use crate::service::embed_service::SendEmbed;
 use serenity::all::ChannelId;
@@ -29,10 +29,8 @@ pub async fn check_author_in_voice_channel(ctx: Context<'_>) -> Result<bool, Mus
 }
 
 pub async fn check_author_in_same_voice_channel(ctx: Context<'_>) -> Result<bool, MusicBotError> {
-    let user_channel_id: Option<ChannelId> =
-        channel_service::get_user_voice_channel(ctx, &ctx.author().id);
-    let bot_channel_id: Option<ChannelId> =
-        channel_service::get_user_voice_channel(ctx, &ctx.framework().bot_id);
+    let user_channel_id: Option<ChannelId> = channel_service::get_user_voice_channel(ctx, &ctx.author().id);
+    let bot_channel_id: Option<ChannelId> = channel_service::get_user_voice_channel(ctx, &ctx.framework().bot_id);
 
     match (user_channel_id, bot_channel_id) {
         (Some(user_channel), Some(bot_channel)) => {

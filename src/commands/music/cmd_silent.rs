@@ -1,6 +1,6 @@
 use crate::bot::{Context, MusicBotError};
 use crate::checks::channel_checks::check_author_in_same_voice_channel;
-use crate::embeds::player_embed::PlayerEmbed;
+use crate::embeds::music::player_embed::PlayerEmbed;
 use crate::player::player::Player;
 use crate::service::embed_service::SendEmbed;
 use tokio::sync::RwLockWriteGuard;
@@ -12,7 +12,10 @@ use tokio::sync::RwLockWriteGuard;
     check = "check_author_in_same_voice_channel",
     aliases("shh", "quiet")
 )]
-pub async fn silent(ctx: Context<'_>, state: Option<String>) -> Result<(), MusicBotError> {
+pub async fn silent(
+    ctx: Context<'_>,
+    state: Option<String>,
+) -> Result<(), MusicBotError> {
     let mut player: RwLockWriteGuard<Player> = ctx.data().player.write().await;
 
     let desired = match state.as_deref().map(str::trim).map(str::to_ascii_lowercase) {

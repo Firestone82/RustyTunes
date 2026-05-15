@@ -1,0 +1,9 @@
+max_width = 200
+edition = "2021"
+# Pin the small-heuristic widths so a wider max_width doesn't scale
+# them up: builder chains and call arguments that were laid out per
+# line stay that way instead of collapsing onto one long line.
+chain_width = 60
+fn_call_width = 60
+attr_fn_like_width = 60
+fn_params_layout = "Vertical"

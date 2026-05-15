@@ -5,7 +5,11 @@ use crate::service::embed_service::SendEmbed;
 use serenity::all::{Color, CreateEmbed};
 
 /// Force the bot to leave the voice channel and clear the queue.
-#[poise::command(prefix_command, slash_command, check = "check_author_in_voice_channel")]
+#[poise::command(
+    prefix_command,
+    slash_command,
+    check = "check_author_in_voice_channel"
+)]
 pub async fn leave(ctx: Context<'_>) -> Result<(), MusicBotError> {
     channel_service::leave_channel(ctx).await?;
     crate::player::player::set_idle(ctx.serenity_context());

@@ -10,6 +10,7 @@ pub mod handlers;
 pub mod player;
 pub mod service;
 pub mod sources;
+pub mod utils;
 
 #[tokio::main]
 async fn main() -> Result<(), MusicBotError> {
@@ -23,8 +24,7 @@ async fn main() -> Result<(), MusicBotError> {
 
     let (file_writer, _guard) = tracing_appender::non_blocking(file_appender);
 
-    let env_filter = EnvFilter::try_from_default_env()
-        .unwrap_or_else(|_| EnvFilter::new("warn,rust_tunes=debug,RustTunes=debug"));
+    let env_filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("warn,rust_tunes=debug,RustTunes=debug"));
 
     tracing_subscriber::registry()
         .with(env_filter)

@@ -1,8 +1,6 @@
 use crate::bot::{Context, MusicBotData, MusicBotError};
 use crate::service::embed_service::SendEmbed;
-use serenity::all::{
-    Color, CreateEmbed, EditMember, GuildId, Member, Mentionable, PartialGuild, User,
-};
+use serenity::all::{Color, CreateEmbed, EditMember, GuildId, Member, Mentionable, PartialGuild, User};
 
 #[derive(Debug, poise::Modal)]
 #[name = "Rename"]
@@ -43,9 +41,9 @@ async fn do_rename(
     user: User,
     new_name: Option<String>,
 ) -> Result<(), MusicBotError> {
-    let guild_id: GuildId = ctx.guild_id().ok_or_else(|| {
-        MusicBotError::InternalError("Rename is only available in guilds".to_string())
-    })?;
+    let guild_id: GuildId = ctx
+        .guild_id()
+        .ok_or_else(|| MusicBotError::InternalError("Rename is only available in guilds".to_string()))?;
 
     let guild: PartialGuild = ctx
         .http()
@@ -139,7 +137,10 @@ async fn do_rename(
     Ok(())
 }
 
-fn highest_role_position(guild: &PartialGuild, member: &Member) -> u16 {
+fn highest_role_position(
+    guild: &PartialGuild,
+    member: &Member,
+) -> u16 {
     member
         .roles
         .iter()

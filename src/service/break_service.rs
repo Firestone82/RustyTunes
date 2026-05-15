@@ -1,12 +1,7 @@
 use crate::bot::MusicBotError;
-use crate::embeds::break_embed::{
-    break_buttons, BreakEmbed, BTN_BREAK_CANCEL, BTN_BREAK_SKIP,
-};
-use crate::player::notifier::{get_current_time, parse_duration_from_string};
-use serenity::all::{
-    ChannelId, CreateInteractionResponse, CreateInteractionResponseMessage, CreateMessage,
-    EditMessage, GuildId, Mentionable, Message, UserId,
-};
+use crate::embeds::activity::break_embed::{break_buttons, BreakEmbed, BTN_BREAK_CANCEL, BTN_BREAK_SKIP};
+use crate::utils::time_utils::{get_current_time, parse_duration_from_string};
+use serenity::all::{ChannelId, CreateInteractionResponse, CreateInteractionResponseMessage, CreateMessage, EditMessage, GuildId, Mentionable, Message, UserId};
 use serenity::prelude::Context as SerenityContext;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
@@ -75,7 +70,10 @@ pub async fn run_break(
         .unwrap_or_default();
     if !voice_mentions.is_empty() {
         let _ = text_channel_id
-            .send_message(&serenity_ctx.http, CreateMessage::new().content(voice_mentions))
+            .send_message(
+                &serenity_ctx.http,
+                CreateMessage::new().content(voice_mentions),
+            )
             .await;
     }
 
@@ -150,11 +148,7 @@ pub async fn run_break(
             .await;
     }
 
-    let footer = if cancelled {
-        "Break cancelled."
-    } else {
-        "Break is over — starting gathering."
-    };
+    let footer = if cancelled { "Break cancelled." } else { "Break is over — starting gathering." };
 
     let _ = msg
         .edit(
@@ -168,7 +162,10 @@ pub async fn run_break(
     Ok(cancelled)
 }
 
-fn progress_embed(state: &BreakState, footer: Option<&str>) -> serenity::all::CreateEmbed {
+fn progress_embed(
+    state: &BreakState,
+    footer: Option<&str>,
+) -> serenity::all::CreateEmbed {
     let now = Instant::now();
     let ends_at = state.ends_at_instant();
     let remaining = ends_at.saturating_duration_since(now);
@@ -213,11 +210,7 @@ pub fn parse_break_start_time(text: &str) -> Option<(Duration, Option<String>)> 
     let now_secs = now.hour() as u64 * 3600 + now.minute() as u64 * 60 + now.second() as u64;
     let target_secs = hour as u64 * 3600 + minute as u64 * 60;
 
-    let until_secs = if target_secs > now_secs {
-        target_secs - now_secs
-    } else {
-        86400 - now_secs + target_secs
-    };
+    let until_secs = if target_secs > now_secs { target_secs - now_secs } else { 86400 - now_secs + target_secs };
 
     if until_secs == 0 {
         return None;

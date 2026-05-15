@@ -1,11 +1,9 @@
 use crate::bot::{Context, MusicBotError};
 use crate::checks::channel_checks::check_author_in_same_voice_channel;
-use crate::embeds::bot_embeds::BotEmbed;
+use crate::embeds::bot::bot_embeds::BotEmbed;
 use crate::service::channel_service;
 use crate::service::embed_service::SendEmbed;
-use serenity::all::{
-    Channel, ChannelId, GuildId, Member, Mention, Mentionable, PartialGuild, User,
-};
+use serenity::all::{Channel, ChannelId, GuildId, Member, Mention, Mentionable, PartialGuild, User};
 
 /// Wake up a user in the same voice channel.
 #[poise::command(slash_command, check = "check_author_in_same_voice_channel")]
@@ -23,7 +21,10 @@ pub async fn wakeup(
     context_menu_command = "WakeUp!",
     check = "check_author_in_same_voice_channel"
 )]
-pub async fn wakeup_context(ctx: Context<'_>, user: User) -> Result<(), MusicBotError> {
+pub async fn wakeup_context(
+    ctx: Context<'_>,
+    user: User,
+) -> Result<(), MusicBotError> {
     let guild_id: GuildId = ctx.guild().unwrap().id;
     let guild: PartialGuild = ctx.http().get_guild(guild_id).await?;
 
@@ -41,8 +42,7 @@ async fn wakeup_target(
     let afk_channel_id: ChannelId = ChannelId::new(829712736052707380);
     let afk_channel: Channel = ctx.http().get_channel(afk_channel_id).await?;
 
-    let current_channel: Option<ChannelId> =
-        channel_service::get_user_voice_channel(ctx, &ctx.author().id);
+    let current_channel: Option<ChannelId> = channel_service::get_user_voice_channel(ctx, &ctx.author().id);
     let count: usize = count.unwrap_or(2).clamp(1, 5);
 
     if let Some(user_channel) = current_channel {

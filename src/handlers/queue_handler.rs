@@ -1,5 +1,6 @@
-use crate::embeds::player_embed::PlayerEmbed;
-use crate::player::player::{self, PlaybackError, Player};
+use crate::embeds::music::player_embed::PlayerEmbed;
+use crate::player::player::{self, Player};
+use crate::player::track::PlaybackError;
 use crate::service::embed_service::SendEmbed;
 use async_trait::async_trait;
 use lombok::AllArgsConstructor;
@@ -13,6 +14,9 @@ use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use tokio::sync::{Mutex, MutexGuard, RwLock, RwLockWriteGuard};
 
+/// Songbird `TrackEvent::End` handler that advances the queue: pulls the next
+/// track, plays it, and re-attaches itself. When the queue empties it kicks
+/// off the 5-minute inactivity timer that disconnects the bot.
 #[derive(AllArgsConstructor, Clone)]
 pub struct QueueHandler {
     serenity_ctx: serenity_prelude::Context,
@@ -25,7 +29,10 @@ pub struct QueueHandler {
 
 #[async_trait]
 impl EventHandler for QueueHandler {
-    async fn act(&self, _e: &EventContext<'_>) -> Option<Event> {
+    async fn act(
+        &self,
+        _e: &EventContext<'_>,
+    ) -> Option<Event> {
         let mut player: RwLockWriteGuard<Player> = self.player.write().await;
 
         if !player.is_playing {
@@ -34,16 +41,11 @@ impl EventHandler for QueueHandler {
 
         tracing::info!("Track ended; advancing queue");
 
-        let next = if player.queue.is_empty() {
-            None
-        } else {
-            Some(player.queue.remove(0))
-        };
+        let next = if player.queue.is_empty() { None } else { Some(player.queue.remove(0)) };
         match next {
             Some(next_track) => {
                 tracing::info!("Playing next track: {}", next_track.metadata.title);
 
-                // Send "Now playing message" unless the guild has session-only silent mode on.
                 if !player.silent {
                     let _ = PlayerEmbed::NowPlaying(&next_track)
                         .to_embed()
@@ -56,23 +58,17 @@ impl EventHandler for QueueHandler {
                         .await
                         .map_err(|error| {
                             tracing::error!("Error sending now playing embed: {:?}", error);
-                            PlaybackError::InternalError(
-                                "Error sending now playing embed".to_owned(),
-                            )
+                            PlaybackError::InternalError("Error sending now playing embed".to_owned())
                         });
                 }
 
                 let (input, source_path) = next_track.resolve_input(&self.req_client).await;
 
-                // Play the next track
                 let mut guard: MutexGuard<Call> = self.manager.lock().await;
-
                 let track_handle: TrackHandle = guard.play(input.into());
 
-                // Reset gain for the new track. Streamed inputs get cached
-                // in the background and the cache helper applies the gain
-                // to the live handle once ffmpeg returns — see
-                // `spawn_cache_and_apply`.
+                // Streamed inputs have no path yet; spawn_cache_and_apply
+                // fills it in and applies gain once ffmpeg returns.
                 player.current_gain = 1.0;
                 player.current_source_path = source_path.clone();
                 let _ = track_handle.set_volume(player.volume);
@@ -97,9 +93,7 @@ impl EventHandler for QueueHandler {
                     }
                 }
 
-                // Add event to handle the track end
-                let _ =
-                    track_handle.add_event(Event::Track(songbird::TrackEvent::End), self.clone());
+                let _ = track_handle.add_event(Event::Track(songbird::TrackEvent::End), self.clone());
 
                 player::set_now_playing(&self.serenity_ctx, &next_track);
 
@@ -118,7 +112,6 @@ impl EventHandler for QueueHandler {
                 player.current_track = None;
                 player.is_playing = false;
 
-                // Begin 5-minute inactivity countdown
                 player.inactivity_cancel.store(false, Ordering::SeqCst);
                 let cancel = Arc::clone(&player.inactivity_cancel);
                 let serenity_ctx = self.serenity_ctx.clone();

@@ -1,7 +1,8 @@
 use crate::bot::{Context, MusicBotError};
-use crate::embeds::notify_embeds::NotifyEmbed;
-use crate::player::notifier::{encode_targets, parse_text, MessageNotify, Notifier, NotifierError};
+use crate::embeds::utility::notify_embeds::NotifyEmbed;
 use crate::service::embed_service::SendEmbed;
+use crate::service::notifier_service::{encode_targets, MessageNotify, Notifier, NotifierError};
+use crate::utils::time_utils::{parse_text, TimeParseError};
 use serenity::all::{Mentionable, User, UserId};
 use tokio::sync::{RwLockReadGuard, RwLockWriteGuard};
 
@@ -45,13 +46,12 @@ pub async fn me(
                 .send_context(ctx, true, None)
                 .await?;
         }
-        Err(NotifierError::InvalidTimeFormat) => {
+        Err(TimeParseError::InvalidTimeFormat) => {
             NotifyEmbed::InvalidNotifyFormat
                 .to_embed()
                 .send_context(ctx, true, None)
                 .await?;
         }
-        Err(other) => return Err(other.into()),
     }
 
     Ok(())
@@ -69,20 +69,19 @@ pub async fn you(
     #[description = "Message to include in the reminder"]
     note: Option<String>,
 ) -> Result<(), MusicBotError> {
-    let guild_id = ctx.guild_id().ok_or_else(|| {
-        MusicBotError::InternalError("notify you is only available in guilds".to_string())
-    })?;
+    let guild_id = ctx
+        .guild_id()
+        .ok_or_else(|| MusicBotError::InternalError("notify you is only available in guilds".to_string()))?;
 
     let notify_at = match parse_text(time) {
         Ok(t) => t,
-        Err(NotifierError::InvalidTimeFormat) => {
+        Err(TimeParseError::InvalidTimeFormat) => {
             return NotifyEmbed::InvalidNotifyFormat
                 .to_embed()
                 .send_context(ctx, true, None)
                 .await
                 .map(|_| ());
         }
-        Err(other) => return Err(other.into()),
     };
 
     let targets: Vec<&User> = [Some(&user1), user2.as_ref(), user3.as_ref()]
@@ -130,9 +129,9 @@ pub async fn you(
 /// List your pending notifications in this guild.
 #[poise::command(prefix_command, slash_command)]
 pub async fn list(ctx: Context<'_>) -> Result<(), MusicBotError> {
-    let guild_id = ctx.guild_id().ok_or_else(|| {
-        MusicBotError::InternalError("Notify is only available in guilds".to_string())
-    })?;
+    let guild_id = ctx
+        .guild_id()
+        .ok_or_else(|| MusicBotError::InternalError("Notify is only available in guilds".to_string()))?;
 
     let notifier: RwLockReadGuard<Notifier> = ctx.data().notifier.read().await;
     let items = notifier.list_for_user(ctx.author().id, guild_id);
@@ -147,10 +146,13 @@ pub async fn list(ctx: Context<'_>) -> Result<(), MusicBotError> {
 
 /// Remove one of your notifications by id.
 #[poise::command(prefix_command, slash_command)]
-pub async fn remove(ctx: Context<'_>, id: i64) -> Result<(), MusicBotError> {
-    let guild_id = ctx.guild_id().ok_or_else(|| {
-        MusicBotError::InternalError("Notify is only available in guilds".to_string())
-    })?;
+pub async fn remove(
+    ctx: Context<'_>,
+    id: i64,
+) -> Result<(), MusicBotError> {
+    let guild_id = ctx
+        .guild_id()
+        .ok_or_else(|| MusicBotError::InternalError("Notify is only available in guilds".to_string()))?;
 
     let mut notifier: RwLockWriteGuard<Notifier> = ctx.data().notifier.write().await;
     match notifier

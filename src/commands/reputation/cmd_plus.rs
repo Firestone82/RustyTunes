@@ -1,6 +1,6 @@
 use crate::bot::{Context, MusicBotError};
 use crate::commands::reputation::process_rep;
-use crate::embeds::rep_embed::{RepEmbed, ReputationEmbed};
+use crate::embeds::reputation::rep_embed::{RepEmbed, ReputationEmbed};
 use crate::service::embed_service::SendEmbed;
 use serenity::all::User;
 
@@ -20,10 +20,10 @@ pub async fn add_rep(
             reason,
             overall_rep,
         })
-            .to_embed()
-            .send_context(ctx, false, None)
-            .await
-            .map_err(|e| MusicBotError::InternalError(e.to_string()))?;
+        .to_embed()
+        .send_context(ctx, false, None)
+        .await
+        .map_err(|e| MusicBotError::InternalError(e.to_string()))?;
     }
 
     Ok(())

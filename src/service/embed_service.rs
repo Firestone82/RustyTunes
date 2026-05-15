@@ -1,14 +1,12 @@
 use crate::bot::{Context, MusicBotError};
-use serenity::all::{
-    ChannelId, Color, CreateEmbed, CreateMessage, GuildChannel, Http, Message, MessageId,
-};
+use serenity::all::{ChannelId, Color, CreateEmbed, CreateMessage, GuildChannel, Http, Message, MessageId};
 use std::sync::Arc;
 
-/*
- * Send embeds
- */
-
-pub fn create_embed(color: Color, title: &str, description: &str) -> CreateEmbed {
+pub fn create_embed(
+    color: Color,
+    title: &str,
+    description: &str,
+) -> CreateEmbed {
     CreateEmbed::default()
         .color(color)
         .title(title)
@@ -60,7 +58,11 @@ pub async fn send_context_embed(
     Ok(message)
 }
 
-async fn process_message(http: Arc<Http>, message: &Message, delete_after: Option<u64>) {
+async fn process_message(
+    http: Arc<Http>,
+    message: &Message,
+    delete_after: Option<u64>,
+) {
     let channel_id: ChannelId = message.channel_id;
     let message_id: MessageId = message.id;
 
@@ -74,7 +76,8 @@ async fn process_message(http: Arc<Http>, message: &Message, delete_after: Optio
     }
 }
 
-// Implement send method for CreateEmbed
+/// Send a `CreateEmbed` via either a poise `Context` or a raw `GuildChannel`,
+/// with optional auto-delete after N seconds.
 pub trait SendEmbed {
     fn send_context(
         &self,
@@ -110,8 +113,7 @@ impl SendEmbed for CreateEmbed {
         delete_after: Option<u64>,
         message: Option<String>,
     ) -> Result<Message, MusicBotError> {
-        let message: Message =
-            send_channel_embed(http, channel, self.clone(), delete_after, message).await?;
+        let message: Message = send_channel_embed(http, channel, self.clone(), delete_after, message).await?;
         Ok(message)
     }
 }

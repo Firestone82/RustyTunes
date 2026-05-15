@@ -1,16 +1,17 @@
 use crate::commands;
-use crate::commands::{music, reputation, utility};
+use crate::commands::{activity, music, reputation, utility};
+use crate::handlers::{error_handler, voice_handler};
+use crate::player::player::Player;
+use crate::player::track::PlaybackError;
 use crate::service::break_service::BreakState;
 use crate::service::gather_service::GatherState;
-use crate::handlers::error_handler;
-use crate::player::notifier::{Notifier, NotifierError};
-use crate::player::player::{PlaybackError, Player};
-use crate::sources::spotify::spotify_client::{SpotifyClient, SpotifyError};
-use crate::sources::youtube::youtube_client::{SearchError, YoutubeClient};
+use crate::service::notifier_service::{Notifier, NotifierError};
+use crate::sources::spotify_player::{SpotifyClient, SpotifyError};
+use crate::sources::youtube_player::{SearchError, YoutubeClient};
 use dotenv::var;
 use poise::serenity_prelude;
 
-use serenity::all::{ChannelId, FullEvent, GatewayIntents, GuildId};
+use serenity::all::{GatewayIntents, GuildId};
 use songbird::SerenityInit;
 use sqlx::sqlite::SqlitePoolOptions;
 use sqlx::{Pool, Sqlite};
@@ -93,17 +94,11 @@ pub struct MusicBotClient {
 
 impl MusicBotClient {
     pub async fn new() -> Self {
-        let intents = GatewayIntents::non_privileged()
-            | GatewayIntents::MESSAGE_CONTENT
-            | GatewayIntents::GUILD_VOICE_STATES
-            | GatewayIntents::GUILD_MEMBERS
-            | GatewayIntents::GUILD_PRESENCES;
+        let intents = GatewayIntents::non_privileged() | GatewayIntents::MESSAGE_CONTENT | GatewayIntents::GUILD_VOICE_STATES | GatewayIntents::GUILD_MEMBERS | GatewayIntents::GUILD_PRESENCES;
 
-        let discord_token =
-            var("DISCORD_TOKEN").expect("Expected a valid discord token set in the configuration.");
+        let discord_token = var("DISCORD_TOKEN").expect("Expected a valid discord token set in the configuration.");
 
-        let database_url =
-            var("DATABASE_URL").expect("Expected a valid database url set in the configuration.");
+        let database_url = var("DATABASE_URL").expect("Expected a valid database url set in the configuration.");
 
         let framework = poise::Framework::<MusicBotData, MusicBotError>::builder()
             .options(poise::FrameworkOptions {
@@ -130,8 +125,8 @@ impl MusicBotClient {
                     music::cmd_normalize::normalize(),
                     utility::cmd_uwu::uwu(),
                     utility::cmd_uwu::uwu_me(),
-                    utility::cmd_gather::gather(),
-                    utility::cmd_break::r#break(),
+                    activity::cmd_gather::gather(),
+                    activity::cmd_break::r#break(),
                     utility::cmd_notify::notify(),
                     utility::cmd_notify::remind(),
                     utility::cmd_wakeup::wakeup(),
@@ -142,87 +137,22 @@ impl MusicBotClient {
                     reputation::cmd_list::list_rep(),
                     utility::cmd_rename::rename_context(),
                 ],
-                pre_command: |ctx| Box::pin(async move {
-                    tracing::info!("CMD: {} is executing {} ({})", ctx.author().name, ctx.command().name, ctx.invocation_string());
-                }),
-                post_command: |ctx| Box::pin(async move {
-                    error_handler::schedule_prefix_delete(ctx);
-                }),
-                event_handler: |ctx, event, _fw, data| Box::pin(async move {
-                    if let FullEvent::VoiceStateUpdate { new, .. } = event {
-                        let guild_id = match new.guild_id {
-                            Some(g) => g,
-                            None => return Ok(()),
-                        };
-
-                        // Auto-arrive expected gathering users when they join the gathering voice channel.
-                        if let Some(joined_channel) = new.channel_id {
-                            let gatherings = data.gatherings.read().await;
-                            if let Some(gather_state) = gatherings.get(&guild_id) {
-                                if gather_state.voice_channel_id == joined_channel {
-                                    let is_expected = gather_state.extra_expected.lock().unwrap().contains(&new.user_id);
-                                    if is_expected {
-                                        gather_state.auto_arrived.lock().unwrap().insert(new.user_id);
-                                    }
-                                }
-                            }
-                        }
-
-                        let bot_id = ctx.cache.current_user().id;
-
-                        let bot_channel: Option<ChannelId> = ctx.cache
-                            .guild(guild_id)
-                            .as_ref()
-                            .and_then(|g| g.voice_states.get(&bot_id))
-                            .and_then(|vs| vs.channel_id);
-
-                        // Bot lost its voice channel (kicked, dragged out, server-mute disconnect).
-                        // Treat it the same as a normal disconnect: stop playback (also covers a
-                        // paused track, which still holds queue state), wipe the queue, and drop
-                        // the songbird call.
-                        if bot_channel.is_none() {
-                            let mut player = data.player.write().await;
-                            let needs_cleanup = player.is_playing
-                                || player.is_paused
-                                || !player.queue.is_empty();
-
-                            if needs_cleanup {
-                                tracing::info!("Bot is no longer in a voice channel. Cleaning up playback state.");
-                                let _ = player.stop_playback().await;
-                                drop(player);
-                                crate::player::player::set_idle(ctx);
-
-                                if let Some(manager) = songbird::get(ctx).await {
-                                    let _ = manager.remove(guild_id).await;
-                                }
-                            }
-                            return Ok(());
-                        }
-
-                        let bot_channel = bot_channel.unwrap();
-
-                        let humans = ctx.cache
-                            .guild(guild_id)
-                            .as_ref()
-                            .map(|g| g.voice_states.values()
-                                .filter(|vs| vs.channel_id == Some(bot_channel) && vs.user_id != bot_id)
-                                .count())
-                            .unwrap_or(0);
-
-                        if humans == 0 {
-                            tracing::info!("Bot is alone in voice channel. Leaving.");
-
-                            let _ = data.player.write().await.stop_playback().await;
-                            crate::player::player::set_idle(ctx);
-
-                            if let Some(manager) = songbird::get(ctx).await {
-                                let _ = manager.remove(guild_id).await;
-                            }
-                        }
-                    }
-
-                    Ok(())
-                }),
+                pre_command: |ctx| {
+                    Box::pin(async move {
+                        tracing::info!(
+                            "CMD: {} is executing {} ({})",
+                            ctx.author().name,
+                            ctx.command().name,
+                            ctx.invocation_string()
+                        );
+                    })
+                },
+                post_command: |ctx| {
+                    Box::pin(async move {
+                        error_handler::schedule_prefix_delete(ctx);
+                    })
+                },
+                event_handler: |ctx, event, _fw, data| Box::pin(async move { voice_handler::handle(ctx, event, data).await }),
 
                 prefix_options: poise::PrefixFrameworkOptions {
                     prefix: Some(String::from("!")),
@@ -256,7 +186,7 @@ impl MusicBotClient {
                             .map_err(|e| {
                                 tracing::error!("Failed to connect to database: {:?}", e);
                                 MusicBotError::InternalError(e.to_string())
-                            })?
+                            })?,
                     );
 
                     tracing::info!("Running database migrations");
@@ -268,16 +198,17 @@ impl MusicBotClient {
                             MusicBotError::InternalError(e.to_string())
                         })?;
 
-                    // Insert guild into database if it doesn't exist
                     let _ = sqlx::query!(
                         "INSERT OR IGNORE INTO guilds (guild_id, volume) VALUES ($1, $2)",
-                        guild_id_map, 0.5
-                    ).execute(&*database)
-                        .await
-                        .map_err(|e| {
-                            tracing::error!("Failed to insert guild into database: {:?}", e);
-                            MusicBotError::InternalError(e.to_string())
-                        })?;
+                        guild_id_map,
+                        0.5
+                    )
+                    .execute(&*database)
+                    .await
+                    .map_err(|e| {
+                        tracing::error!("Failed to insert guild into database: {:?}", e);
+                        MusicBotError::InternalError(e.to_string())
+                    })?;
 
                     let player: Player = Player::new(guild_id, database.clone()).await;
                     let player_handle: Arc<RwLock<Player>> = Arc::new(RwLock::new(player));
@@ -286,7 +217,6 @@ impl MusicBotClient {
                     let notifier_handle: Arc<RwLock<Notifier>> = Arc::new(RwLock::new(notifier));
                     let notifier_handle_clone: Arc<RwLock<Notifier>> = Arc::clone(&notifier_handle);
 
-                    // Start notifier scheduler
                     tokio::spawn(async move {
                         loop {
                             let mut notifier: RwLockWriteGuard<Notifier> = notifier_handle_clone.write().await;

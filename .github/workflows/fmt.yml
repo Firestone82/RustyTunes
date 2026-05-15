@@ -1,0 +1,42 @@
+name: Auto-format
+
+on:
+  push:
+    branches: [master]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  rustfmt:
+    name: cargo fmt
+    runs-on: ubuntu-latest
+    # Skip the run we kicked off ourselves, otherwise this loops forever.
+    if: github.actor != 'github-actions[bot]'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          # Need a real ref (not detached HEAD) so we can push back.
+          ref: ${{ github.ref_name }}
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+
+      - name: Run cargo fmt
+        run: cargo fmt --all
+
+      - name: Commit and push if changed
+        run: |
+          if [[ -z "$(git status --porcelain)" ]]; then
+            echo "Already formatted; nothing to commit."
+            exit 0
+          fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -A
+          git commit -m "style: cargo fmt"
+          git push origin HEAD:${{ github.ref_name }}

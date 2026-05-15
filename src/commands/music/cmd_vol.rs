@@ -1,6 +1,6 @@
 use crate::bot::{Context, MusicBotError};
 use crate::checks::channel_checks::check_author_in_same_voice_channel;
-use crate::embeds::player_embed::PlayerEmbed;
+use crate::embeds::music::player_embed::PlayerEmbed;
 use crate::player::player::Player;
 use crate::service::embed_service::SendEmbed;
 use tokio::sync::{RwLockReadGuard, RwLockWriteGuard};
@@ -17,7 +17,10 @@ const EXTENDED_MAX_VOLUME: f32 = 500.0;
     check = "check_author_in_same_voice_channel",
     aliases("vol")
 )]
-pub async fn volume(ctx: Context<'_>, volume: Option<String>) -> Result<(), MusicBotError> {
+pub async fn volume(
+    ctx: Context<'_>,
+    volume: Option<String>,
+) -> Result<(), MusicBotError> {
     if let Some(raw) = volume {
         let trimmed = raw.trim();
         let (number_part, extended) = match trimmed.strip_suffix('!') {
@@ -29,11 +32,7 @@ pub async fn volume(ctx: Context<'_>, volume: Option<String>) -> Result<(), Musi
             .parse()
             .map_err(|_| MusicBotError::InternalError(format!("Invalid volume value: {raw}")))?;
 
-        let max = if extended {
-            EXTENDED_MAX_VOLUME
-        } else {
-            DEFAULT_MAX_VOLUME
-        };
+        let max = if extended { EXTENDED_MAX_VOLUME } else { DEFAULT_MAX_VOLUME };
         let clamped = parsed.clamp(1.0, max);
 
         let mut player: RwLockWriteGuard<Player> = ctx.data().player.write().await;

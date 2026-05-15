@@ -1,19 +1,19 @@
 use crate::bot::{Context, MusicBotError};
-use crate::embeds::player_embed::PlayerEmbed;
-use crate::embeds::queue_embed::QueueEmbed;
+use crate::embeds::music::player_embed::PlayerEmbed;
+use crate::embeds::music::queue_embed::QueueEmbed;
 use crate::player::player::Player;
 use crate::service::embed_service::SendEmbed;
-use serenity::all::{
-    ButtonStyle, CreateActionRow, CreateButton, CreateEmbed, CreateInteractionResponse,
-    CreateInteractionResponseMessage, EditMessage,
-};
+use serenity::all::{ButtonStyle, CreateActionRow, CreateButton, CreateEmbed, CreateInteractionResponse, CreateInteractionResponseMessage, EditMessage};
 use std::collections::HashMap;
 use std::time::{Duration, Instant};
 use tokio::sync::RwLockReadGuard;
 
 const ITEMS_PER_PAGE: usize = 10;
 
-fn nav_buttons(page: usize, total_pages: usize) -> Vec<CreateActionRow> {
+fn nav_buttons(
+    page: usize,
+    total_pages: usize,
+) -> Vec<CreateActionRow> {
     vec![CreateActionRow::Buttons(vec![
         CreateButton::new("queue_prev")
             .label("◀")
@@ -29,7 +29,10 @@ fn nav_buttons(page: usize, total_pages: usize) -> Vec<CreateActionRow> {
 /// Build the embed list rendered for `!queue`: a Now Playing embed (when a
 /// track is active) followed by the standard queue listing. Returns an empty
 /// vec when there is nothing to show — callers fall back to `IsEmpty`.
-fn build_embeds(player: &Player, page: usize) -> Vec<CreateEmbed> {
+fn build_embeds(
+    player: &Player,
+    page: usize,
+) -> Vec<CreateEmbed> {
     let mut embeds: Vec<CreateEmbed> = Vec::new();
 
     if let Some(track) = player.current_track.as_ref() {
@@ -37,13 +40,7 @@ fn build_embeds(player: &Player, page: usize) -> Vec<CreateEmbed> {
     }
 
     if !player.queue.is_empty() {
-        embeds.push(
-            QueueEmbed::Current {
-                queue: &player.queue,
-                page,
-            }
-            .to_embed(),
-        );
+        embeds.push(QueueEmbed::Current { queue: &player.queue, page }.to_embed());
     }
 
     embeds
@@ -51,7 +48,10 @@ fn build_embeds(player: &Player, page: usize) -> Vec<CreateEmbed> {
 
 /// List upcoming tracks in the queue.
 #[poise::command(prefix_command, slash_command)]
-pub async fn queue(ctx: Context<'_>, page: Option<usize>) -> Result<(), MusicBotError> {
+pub async fn queue(
+    ctx: Context<'_>,
+    page: Option<usize>,
+) -> Result<(), MusicBotError> {
     let player: RwLockReadGuard<Player> = ctx.data().player.read().await;
 
     if player.queue.is_empty() && player.current_track.is_none() {
@@ -114,11 +114,17 @@ pub async fn queue(ctx: Context<'_>, page: Option<usize>) -> Result<(), MusicBot
                         interaction.defer(&http).await.ok();
                     } else {
                         cooldowns.insert(interaction.user.id, now);
-                        interaction.create_response(&http, CreateInteractionResponse::Message(
-                            CreateInteractionResponseMessage::new()
-                                .content("Only the person who ran this command can navigate the queue.")
-                                .ephemeral(true)
-                        )).await.ok();
+                        interaction
+                            .create_response(
+                                &http,
+                                CreateInteractionResponse::Message(
+                                    CreateInteractionResponseMessage::new()
+                                        .content("Only the person who ran this command can navigate the queue.")
+                                        .ephemeral(true),
+                                ),
+                            )
+                            .await
+                            .ok();
                     }
                     continue;
                 }

@@ -5,9 +5,11 @@ use serenity::all::{Mention, Mentionable};
 use uwu_rs::uwuify;
 
 /// Convert provided text to UwU format.
-// Requested by adaxiik.
 #[poise::command(prefix_command, slash_command)]
-pub async fn uwu(ctx: Context<'_>, text: Vec<String>) -> Result<(), MusicBotError> {
+pub async fn uwu(
+    ctx: Context<'_>,
+    text: Vec<String>,
+) -> Result<(), MusicBotError> {
     let embed: CreateEmbed = CreateEmbed::new()
         .color(Color::from(0x36393F))
         .title("Converted message to UwU format:")
@@ -18,9 +20,11 @@ pub async fn uwu(ctx: Context<'_>, text: Vec<String>) -> Result<(), MusicBotErro
 }
 
 /// Convert provided text to UwU format and send it as the author.
-// Requested by adaxiik.
 #[poise::command(prefix_command, slash_command)]
-pub async fn uwu_me(ctx: Context<'_>, text: Vec<String>) -> Result<(), MusicBotError> {
+pub async fn uwu_me(
+    ctx: Context<'_>,
+    text: Vec<String>,
+) -> Result<(), MusicBotError> {
     if let Context::Prefix(ctx) = ctx {
         ctx.msg.delete(&ctx.http()).await?;
     }
