@@ -242,7 +242,6 @@ impl Player {
             Some(next_track) => {
                 tracing::info!("Found: {}", next_track.metadata.title);
 
-                // Send "Now playing message" unless the guild has session-only silent mode on.
                 if !self.silent {
                     PlayerEmbed::NowPlaying(&next_track)
                         .to_embed()
@@ -253,22 +252,16 @@ impl Player {
                 let (input, source_path) =
                     next_track.resolve_input(&ctx.data().request_client).await;
 
-                // Play the next track
                 let mut guard: MutexGuard<Call> = manager.lock().await;
-
                 let track_handle: TrackHandle = guard.play(input.into());
 
-                // Reset per-track gain. There are two cases:
-                //   - File on disk (cache hit or local): measure & apply (if
-                //     normalize is on) using the existing path.
-                //   - Streaming (cache miss): spawn the cache download; the
-                //     helper records the path on the player and applies the
-                //     gain to the live track handle as soon as ffmpeg
-                //     finishes, so first plays get normalized too.
                 self.current_gain = 1.0;
                 self.current_source_path = source_path.clone();
                 let _ = track_handle.set_volume(self.volume);
 
+                // Cache hit / local file → measure now. Cache miss → fetch
+                // in the background; spawn_cache_and_apply will record the
+                // path and apply the gain mid-track when ffmpeg returns.
                 match source_path {
                     Some(path) => {
                         if self.should_normalize() {
@@ -289,7 +282,6 @@ impl Player {
                     }
                 }
 
-                // Add event to handle the track end
                 let _ = track_handle.add_event(
                     Event::Track(TrackEvent::End),
                     QueueHandler::new(
@@ -349,10 +341,10 @@ impl Player {
         Ok(())
     }
 
+    /// `volume` is taken as a percentage (`0..=100+`) and stored as a 0..1 multiplier.
     pub async fn set_volume(&mut self, mut volume: f32) -> Result<(), PlaybackError> {
         tracing::info!("Setting volume to: {:?}", volume);
 
-        // Normalize volume
         volume /= 100.0;
         volume = volume.max(0.0);
 
@@ -500,9 +492,8 @@ pub fn spawn_cache_and_apply(
             Ok(path) => {
                 tracing::info!("Cached '{}' to {}", track.metadata.title, path.display());
 
-                // Stash the path on the player so future `!normalize` toggles
-                // can find the file — but only if the user hasn't already
-                // skipped to a different track.
+                // Record the path so a mid-track `!normalize` can find it,
+                // but only if the user hasn't already skipped to another track.
                 {
                     let mut player = player_arc.write().await;
                     let still_current = player
@@ -515,8 +506,6 @@ pub fn spawn_cache_and_apply(
                     }
                 }
 
-                // Measure (result is cached for next play) and apply if the
-                // user has normalization on and the track is still current.
                 schedule_normalization_apply(player_arc, handle, path, track.id);
             }
             Err(e) => tracing::warn!("Failed to cache '{}': {}", track.metadata.title, e),

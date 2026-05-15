@@ -126,10 +126,14 @@ impl Notifier {
         database: Arc<Database>,
     ) -> Self {
         let rows: Vec<MessageNotifyRow> = sqlx::query_as(
-            "SELECT id, guild_id, channel_id, user_id, message_id, created_at, notify_at, note FROM notify_me"
-        ).fetch_all(&*database)
-            .await
-            .expect("Failed to fetch all messages from database");
+            "
+            SELECT id, guild_id, channel_id, user_id, message_id, created_at, notify_at, note
+            FROM notify_me
+            ",
+        )
+        .fetch_all(&*database)
+        .await
+        .expect("Failed to fetch all messages from database");
 
         let messages: Vec<MessageNotify> = rows.into_iter().map(MessageNotify::from).collect();
 
@@ -182,19 +186,22 @@ impl Notifier {
         let created_at = get_current_time();
 
         let id = sqlx::query(
-            "INSERT INTO notify_me (guild_id, channel_id, user_id, message_id, created_at, notify_at, note) VALUES (?, ?, ?, ?, ?, ?, ?)"
+            "
+            INSERT INTO notify_me (guild_id, channel_id, user_id, message_id, created_at, notify_at, note)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+            ",
         )
-            .bind(guild_id_db)
-            .bind(channel_id_db)
-            .bind(user_id_db)
-            .bind(message_id_db)
-            .bind(created_at)
-            .bind(notify_at)
-            .bind(&note)
-            .execute(&*self.database)
-            .await
-            .map_err(|e| NotifierError::InternalError(format!("DB insert failed: {e}")))?
-            .last_insert_rowid();
+        .bind(guild_id_db)
+        .bind(channel_id_db)
+        .bind(user_id_db)
+        .bind(message_id_db)
+        .bind(created_at)
+        .bind(notify_at)
+        .bind(&note)
+        .execute(&*self.database)
+        .await
+        .map_err(|e| NotifierError::InternalError(format!("DB insert failed: {e}")))?
+        .last_insert_rowid();
 
         let notify = MessageNotify {
             id,

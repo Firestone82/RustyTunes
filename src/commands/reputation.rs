@@ -25,18 +25,18 @@ async fn spam_protection(ctx: Context<'_>, receiver_id: String) -> Result<bool, 
     let giver_id = ctx.author().id.to_string();
     let last_insert = sqlx::query_scalar!(
         "
-SELECT created_at
-FROM reputation_logs
-WHERE giver_id == ? AND receiver_id == ?
-ORDER BY created_at DESC
-LIMIT 1
-         ",
+        SELECT created_at
+        FROM reputation_logs
+        WHERE giver_id == ? AND receiver_id == ?
+        ORDER BY created_at DESC
+        LIMIT 1
+        ",
         giver_id,
         receiver_id
     )
-        .fetch_optional(&*ctx.data().database_pool)
-        .await
-        .map_err(|e| MusicBotError::InternalError(e.to_string()))?;
+    .fetch_optional(&*ctx.data().database_pool)
+    .await
+    .map_err(|e| MusicBotError::InternalError(e.to_string()))?;
 
     let now = OffsetDateTime::now_utc();
 
@@ -59,27 +59,27 @@ async fn apply_rep_db(
 ) -> Result<i64, sqlx::Error> {
     sqlx::query!(
         "
-INSERT INTO reputation_logs (giver_id, receiver_id, rep_value, reason)
-VALUES (?, ?, ?, ?)
-",
+        INSERT INTO reputation_logs (giver_id, receiver_id, rep_value, reason)
+        VALUES (?, ?, ?, ?)
+        ",
         giver_id,
         receiver_id,
         rep_value,
         reason,
     )
-        .execute(pool)
-        .await?;
+    .execute(pool)
+    .await?;
 
     let overall_rep: i64 = sqlx::query_scalar!(
         "
-SELECT COALESCE(SUM(rep_value), 0)
-FROM reputation_logs
-WHERE receiver_id == ?
-",
+        SELECT COALESCE(SUM(rep_value), 0)
+        FROM reputation_logs
+        WHERE receiver_id == ?
+        ",
         receiver_id,
     )
-        .fetch_one(pool)
-        .await?;
+    .fetch_one(pool)
+    .await?;
 
     Ok(overall_rep)
 }

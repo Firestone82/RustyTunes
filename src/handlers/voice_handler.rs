@@ -19,7 +19,6 @@ pub async fn handle(
         None => return Ok(()),
     };
 
-    // Auto-arrive expected gathering users when they join the gathering voice channel.
     if let Some(joined_channel) = new.channel_id {
         let gatherings = data.gatherings.read().await;
         if let Some(gather_state) = gatherings.get(&guild_id) {
@@ -49,10 +48,8 @@ pub async fn handle(
         .and_then(|g| g.voice_states.get(&bot_id))
         .and_then(|vs| vs.channel_id);
 
-    // Bot lost its voice channel (kicked, dragged out, server-mute disconnect).
-    // Treat it the same as a normal disconnect: stop playback (also covers a
-    // paused track, which still holds queue state), wipe the queue, and drop
-    // the songbird call.
+    // Bot is no longer in voice (kicked, dragged out, force-disconnected).
+    // A paused track still holds queue state, so always wipe both.
     if bot_channel.is_none() {
         let mut player = data.player.write().await;
         let needs_cleanup = player.is_playing || player.is_paused || !player.queue.is_empty();

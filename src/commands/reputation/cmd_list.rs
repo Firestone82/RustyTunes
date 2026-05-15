@@ -21,10 +21,10 @@ pub async fn list_rep(
 
     let total_rep: i64 = sqlx::query_scalar!(
         "
-SELECT COALESCE(SUM(rep_value), 0)
-FROM reputation_logs
-WHERE receiver_id == ?
-",
+        SELECT COALESCE(SUM(rep_value), 0)
+        FROM reputation_logs
+        WHERE receiver_id == ?
+        ",
         target_id
     )
     .fetch_one(&*ctx.data().database_pool)
@@ -34,11 +34,11 @@ WHERE receiver_id == ?
     let logs = sqlx::query_as!(
         Rep,
         "
-SELECT id, giver_id, receiver_id, rep_value, reason, created_at
-FROM reputation_logs
-WHERE receiver_id == ?
-ORDER BY created_at DESC
-         ",
+        SELECT id, giver_id, receiver_id, rep_value, reason, created_at
+        FROM reputation_logs
+        WHERE receiver_id == ?
+        ORDER BY created_at DESC
+        ",
         target_id
     )
     .fetch_all(&*ctx.data().database_pool)
@@ -116,7 +116,6 @@ ORDER BY created_at DESC
                     _ => continue,
                 }
 
-                // update pagination
                 interaction
                     .create_response(
                         ctx.serenity_context(),

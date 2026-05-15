@@ -4,10 +4,6 @@ use serenity::all::{
 };
 use std::sync::Arc;
 
-/*
- * Send embeds
- */
-
 pub fn create_embed(color: Color, title: &str, description: &str) -> CreateEmbed {
     CreateEmbed::default()
         .color(color)
@@ -74,7 +70,8 @@ async fn process_message(http: Arc<Http>, message: &Message, delete_after: Optio
     }
 }
 
-// Implement send method for CreateEmbed
+/// Send a `CreateEmbed` via either a poise `Context` or a raw `GuildChannel`,
+/// with optional auto-delete after N seconds.
 pub trait SendEmbed {
     fn send_context(
         &self,

@@ -197,7 +197,6 @@ impl MusicBotClient {
                             MusicBotError::InternalError(e.to_string())
                         })?;
 
-                    // Insert guild into database if it doesn't exist
                     let _ = sqlx::query!(
                         "INSERT OR IGNORE INTO guilds (guild_id, volume) VALUES ($1, $2)",
                         guild_id_map, 0.5
@@ -215,7 +214,6 @@ impl MusicBotClient {
                     let notifier_handle: Arc<RwLock<Notifier>> = Arc::new(RwLock::new(notifier));
                     let notifier_handle_clone: Arc<RwLock<Notifier>> = Arc::clone(&notifier_handle);
 
-                    // Start notifier scheduler
                     tokio::spawn(async move {
                         loop {
                             let mut notifier: RwLockWriteGuard<Notifier> = notifier_handle_clone.write().await;

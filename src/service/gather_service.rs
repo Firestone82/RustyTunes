@@ -62,7 +62,6 @@ pub async fn start_gather(
     let bot_id = serenity_ctx.cache.current_user().id;
     let shard = serenity_ctx.shard.clone();
 
-    // Fail fast if nobody is in voice yet.
     let initial_voice_ids: Vec<UserId> =
         current_voice_members(serenity_ctx, guild_id, voice_channel_id, bot_id);
     if initial_voice_ids.is_empty() {
@@ -71,13 +70,12 @@ pub async fn start_gather(
         ));
     }
 
-    // ── Phase 1: pre-gather countdown ──────────────────────────────────────
-    // Skipped when pregather_duration is zero (e.g. auto-gather after a break).
-
+    // ── Phase 1: pre-gather countdown (skipped when pregather_duration == 0,
+    // i.e. auto-gather right after a break).
     let mut msg: Message;
 
     if pregather_duration > Duration::ZERO {
-        // Ping all current voice members above the embed.
+        // Ping voice members in a separate message above the embed.
         let voice_mentions: String = initial_voice_ids
             .iter()
             .map(|id| id.mention().to_string())
@@ -226,8 +224,8 @@ pub async fn start_gather(
             return Ok(());
         }
     } else {
-        // No countdown: ping voice members so they're notified gathering is starting.
-        // Phase 2 will edit this message into the check-in embed.
+        // No countdown: ping voice members and seed a message Phase 2 will
+        // edit into the check-in embed.
         let voice_mentions: String = initial_voice_ids
             .iter()
             .map(|id| id.mention().to_string())
@@ -246,14 +244,13 @@ pub async fn start_gather(
             .map_err(|e| MusicBotError::InternalError(e.to_string()))?;
     }
 
-    // ── Phase 2: gathering check-in ────────────────────────────────────────
-    // Re-read voice members: people may have joined during the countdown.
+    // ── Phase 2: gathering check-in. Re-read voice members because people
+    // may have joined during the countdown.
     let mut expected: HashSet<UserId> =
         current_voice_members(serenity_ctx, guild_id, voice_channel_id, bot_id)
             .into_iter()
             .collect();
     expected.insert(author_id);
-    // Fold in anyone already added via /gather expect.
     {
         let extra = state.extra_expected.lock().unwrap();
         for id in extra.iter() {
@@ -304,7 +301,6 @@ pub async fn start_gather(
             break;
         }
 
-        // If everyone has arrived, end the grace period right now and exit.
         if expected.iter().all(|id| arrivals.contains_key(id)) {
             grace_ends_at = grace_ends_at.min(now);
             break;
@@ -345,7 +341,6 @@ pub async fn start_gather(
 
         let now = Instant::now();
 
-        // Merge users added via /gather expect.
         {
             let extra = state.extra_expected.lock().unwrap();
             for id in extra.iter() {
@@ -353,7 +348,7 @@ pub async fn start_gather(
             }
         }
 
-        // Auto-arrive expected users who joined voice (signalled by the event handler).
+        // voice_handler reports joins by inserting into auto_arrived.
         {
             let auto_ids: Vec<UserId> = state.auto_arrived.lock().unwrap().drain().collect();
             if !auto_ids.is_empty() {
@@ -393,7 +388,6 @@ pub async fn start_gather(
             }
         }
 
-        // Throttled periodic embed refresh.
         if Instant::now() >= last_edit + MIN_EDIT_INTERVAL {
             last_edit = Instant::now();
             let _ = msg
@@ -599,7 +593,6 @@ async fn handle_interaction(
             arrivals.insert(ic.user.id, lateness);
             expected.insert(ic.user.id);
 
-            // If everyone has now arrived during grace, end grace immediately.
             if expected.iter().all(|id| arrivals.contains_key(id)) {
                 *grace_ends_at = now;
             }
