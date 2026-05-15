@@ -28,7 +28,10 @@ pub async fn local(ctx: Context<'_>) -> Result<(), MusicBotError> {
 }
 
 /// Autocomplete from the current local library — used by `play` and `rename`.
-async fn autocomplete_local_track(_ctx: Context<'_>, partial: &str) -> Vec<String> {
+async fn autocomplete_local_track(
+    _ctx: Context<'_>,
+    partial: &str,
+) -> Vec<String> {
     let needle = partial.trim().to_ascii_lowercase();
     let files = local_client::list_local_files().await.unwrap_or_default();
     files
@@ -85,7 +88,11 @@ pub async fn upload(
     save_and_play(ctx, source, name).await
 }
 
-async fn save_and_play(ctx: Context<'_>, source: DownloadSource, name: Option<String>) -> Result<(), MusicBotError> {
+async fn save_and_play(
+    ctx: Context<'_>,
+    source: DownloadSource,
+    name: Option<String>,
+) -> Result<(), MusicBotError> {
     PlayerEmbed::Downloading(source.display_label())
         .to_embed()
         .send_context(ctx, true, Some(15))
@@ -118,7 +125,10 @@ async fn save_and_play(ctx: Context<'_>, source: DownloadSource, name: Option<St
     enqueue_path(ctx, path).await
 }
 
-async fn reply_failure(ctx: Context<'_>, msg: &str) -> Result<(), MusicBotError> {
+async fn reply_failure(
+    ctx: Context<'_>,
+    msg: &str,
+) -> Result<(), MusicBotError> {
     PlayerEmbed::DownloadFailed(msg.to_string())
         .to_embed()
         .send_context(ctx, true, Some(30))
@@ -331,7 +341,10 @@ pub async fn rename_track(
 /// title match — autocomplete-picked names will hit this path. Falls back to
 /// substring search; if substring is ambiguous, shows the candidates and
 /// returns `None`.
-async fn resolve_unique(ctx: Context<'_>, query: &str) -> Result<Option<PathBuf>, MusicBotError> {
+async fn resolve_unique(
+    ctx: Context<'_>,
+    query: &str,
+) -> Result<Option<PathBuf>, MusicBotError> {
     let matches: Vec<PathBuf> = local_client::search_local(query)
         .await
         .map_err(|e| MusicBotError::InternalError(format!("Could not read downloads: {e}")))?;
@@ -384,7 +397,10 @@ async fn list_inner(ctx: Context<'_>) -> Result<(), MusicBotError> {
     Ok(())
 }
 
-async fn enqueue_path(ctx: Context<'_>, path: PathBuf) -> Result<(), MusicBotError> {
+async fn enqueue_path(
+    ctx: Context<'_>,
+    path: PathBuf,
+) -> Result<(), MusicBotError> {
     let track: Track = build_local_track(path, ctx.author().name.clone());
     let mut player: RwLockWriteGuard<Player> = ctx.data().player.write().await;
 
@@ -410,7 +426,12 @@ async fn enqueue_path(ctx: Context<'_>, path: PathBuf) -> Result<(), MusicBotErr
 }
 
 /// Show the path picker and return the chosen path. `None` on cancel/timeout.
-async fn pick_path(ctx: Context<'_>, files: &[PathBuf], id_prefix: &str, embed: PlayerEmbed<'_>) -> Result<Option<PathBuf>, MusicBotError> {
+async fn pick_path(
+    ctx: Context<'_>,
+    files: &[PathBuf],
+    id_prefix: &str,
+    embed: PlayerEmbed<'_>,
+) -> Result<Option<PathBuf>, MusicBotError> {
     let outcome = picker_service::show_picker(
         ctx,
         files.len(),

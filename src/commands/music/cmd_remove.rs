@@ -9,7 +9,10 @@ use tokio::sync::RwLockWriteGuard;
 
 /// Remove a track from the queue by 1-based index.
 #[poise::command(prefix_command, slash_command, check = "check_author_in_same_voice_channel", check = "check_if_queue_is_not_empty")]
-pub async fn remove(ctx: Context<'_>, index: usize) -> Result<(), MusicBotError> {
+pub async fn remove(
+    ctx: Context<'_>,
+    index: usize,
+) -> Result<(), MusicBotError> {
     let mut player: RwLockWriteGuard<Player> = ctx.data().player.write().await;
 
     match player.remove_from_queue(index).await {

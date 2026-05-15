@@ -7,7 +7,10 @@ use tokio::sync::RwLockWriteGuard;
 
 /// Toggle session-only silent mode — suppresses NowPlaying (resets on restart).
 #[poise::command(prefix_command, slash_command, check = "check_author_in_same_voice_channel", aliases("shh", "quiet"))]
-pub async fn silent(ctx: Context<'_>, state: Option<String>) -> Result<(), MusicBotError> {
+pub async fn silent(
+    ctx: Context<'_>,
+    state: Option<String>,
+) -> Result<(), MusicBotError> {
     let mut player: RwLockWriteGuard<Player> = ctx.data().player.write().await;
 
     let desired = match state.as_deref().map(str::trim).map(str::to_ascii_lowercase) {

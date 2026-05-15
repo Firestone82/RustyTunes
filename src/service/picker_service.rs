@@ -22,7 +22,13 @@ pub enum PickerOutcome {
 /// `id_prefix` namespaces the button custom IDs so multiple pickers can run
 /// concurrently on the same message without clashing.
 /// `not_author_message` is shown to anyone else who clicks a button.
-pub async fn show_picker(ctx: Context<'_>, count: usize, id_prefix: &str, embed: CreateEmbed, not_author_message: &str) -> Result<PickerOutcome, MusicBotError> {
+pub async fn show_picker(
+    ctx: Context<'_>,
+    count: usize,
+    id_prefix: &str,
+    embed: CreateEmbed,
+    not_author_message: &str,
+) -> Result<PickerOutcome, MusicBotError> {
     let mut buttons: Vec<CreateButton> = (0..count)
         .map(|i| {
             CreateButton::new(format!("{id_prefix}_{i}"))

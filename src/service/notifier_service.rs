@@ -89,7 +89,10 @@ impl MessageNotify {
 
 /// Encode a list of recipient user IDs into the note as `[T:1,2,3]rest`.
 /// Used by /remindYou so a single notify_me row can ping multiple people.
-pub fn encode_targets(targets: &[UserId], note: &str) -> String {
+pub fn encode_targets(
+    targets: &[UserId],
+    note: &str,
+) -> String {
     if targets.is_empty() {
         return note.to_string();
     }
@@ -118,7 +121,10 @@ pub struct Notifier {
 }
 
 impl Notifier {
-    pub async fn new(serenity_context: serenity::prelude::Context, database: Arc<Database>) -> Self {
+    pub async fn new(
+        serenity_context: serenity::prelude::Context,
+        database: Arc<Database>,
+    ) -> Self {
         let rows: Vec<MessageNotifyRow> = sqlx::query_as(
             "
             SELECT id, guild_id, channel_id, user_id, message_id, created_at, notify_at, note
@@ -134,7 +140,12 @@ impl Notifier {
         Notifier { messages, database, serenity_context }
     }
 
-    pub async fn add_message(&mut self, ctx: Context<'_>, notify_at: OffsetDateTime, note: Option<String>) -> Result<MessageNotify, NotifierError> {
+    pub async fn add_message(
+        &mut self,
+        ctx: Context<'_>,
+        notify_at: OffsetDateTime,
+        note: Option<String>,
+    ) -> Result<MessageNotify, NotifierError> {
         let guild_id = ctx
             .guild_id()
             .ok_or_else(|| NotifierError::InternalError("Notify is only available in guilds".to_string()))?;
@@ -203,7 +214,12 @@ impl Notifier {
         Ok(notify)
     }
 
-    pub async fn remove_for_user(&mut self, user_id: UserId, guild_id: GuildId, id: i64) -> Result<MessageNotify, NotifierError> {
+    pub async fn remove_for_user(
+        &mut self,
+        user_id: UserId,
+        guild_id: GuildId,
+        id: i64,
+    ) -> Result<MessageNotify, NotifierError> {
         let position = self
             .messages
             .iter()
@@ -221,7 +237,11 @@ impl Notifier {
         Ok(removed)
     }
 
-    pub fn list_for_user(&self, user_id: UserId, guild_id: GuildId) -> Vec<MessageNotify> {
+    pub fn list_for_user(
+        &self,
+        user_id: UserId,
+        guild_id: GuildId,
+    ) -> Vec<MessageNotify> {
         let mut out: Vec<MessageNotify> = self
             .messages
             .iter()
@@ -302,7 +322,10 @@ impl Notifier {
         }
     }
 
-    async fn drop_notification(&mut self, id: i64) {
+    async fn drop_notification(
+        &mut self,
+        id: i64,
+    ) {
         let _ = sqlx::query("DELETE FROM notify_me WHERE id = ?")
             .bind(id)
             .execute(&*self.database)

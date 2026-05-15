@@ -102,7 +102,13 @@ impl<'a> GatherEmbed<'a> {
     }
 }
 
-fn build_check_in_embed(rows: &[CheckInRow], started_at: Instant, grace_ends_at: Instant, silent: bool, footer: Option<&str>) -> CreateEmbed {
+fn build_check_in_embed(
+    rows: &[CheckInRow],
+    started_at: Instant,
+    grace_ends_at: Instant,
+    silent: bool,
+    footer: Option<&str>,
+) -> CreateEmbed {
     let now = Instant::now();
     let in_grace = now < grace_ends_at;
     let grace_remaining = grace_ends_at.saturating_duration_since(now);
@@ -224,7 +230,10 @@ pub fn pregather_buttons(disabled: bool) -> Vec<CreateActionRow> {
     ])]
 }
 
-pub fn gather_buttons(disabled: bool, silent: bool) -> Vec<CreateActionRow> {
+pub fn gather_buttons(
+    disabled: bool,
+    silent: bool,
+) -> Vec<CreateActionRow> {
     vec![CreateActionRow::Buttons(vec![
         CreateButton::new(BTN_HERE)
             .label("I'm here!")

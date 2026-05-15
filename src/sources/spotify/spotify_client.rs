@@ -197,7 +197,10 @@ impl SpotifyClient {
         Ok(token.access_token)
     }
 
-    async fn fetch_track(&self, id: &str) -> Result<SpTrack, SpotifyError> {
+    async fn fetch_track(
+        &self,
+        id: &str,
+    ) -> Result<SpTrack, SpotifyError> {
         let token = self.access_token().await?;
         let response = self
             .http
@@ -220,7 +223,10 @@ impl SpotifyClient {
         Ok(response.json().await?)
     }
 
-    async fn fetch_playlist(&self, id: &str) -> Result<SpPlaylist, SpotifyError> {
+    async fn fetch_playlist(
+        &self,
+        id: &str,
+    ) -> Result<SpPlaylist, SpotifyError> {
         let token = self.access_token().await?;
         let response = self
             .http
@@ -250,7 +256,10 @@ impl SpotifyClient {
         })
     }
 
-    async fn fetch_playlist_page(&self, next_url: &str) -> Result<SpPagedTracks, SpotifyError> {
+    async fn fetch_playlist_page(
+        &self,
+        next_url: &str,
+    ) -> Result<SpPagedTracks, SpotifyError> {
         tracing::debug!("Fetching playlist page: {next_url}");
         let token = self.access_token().await?;
         let response = self.http.get(next_url).bearer_auth(token).send().await?;
@@ -270,7 +279,10 @@ impl SpotifyClient {
         })
     }
 
-    pub async fn search(&self, url: &str) -> Result<SpotifySearchResult, SpotifyError> {
+    pub async fn search(
+        &self,
+        url: &str,
+    ) -> Result<SpotifySearchResult, SpotifyError> {
         let (kind, id) = Self::parse_url(url).ok_or_else(|| SpotifyError::ApiError(format!("Unsupported Spotify URL: {url}")))?;
 
         match kind {

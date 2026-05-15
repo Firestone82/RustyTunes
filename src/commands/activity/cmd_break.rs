@@ -20,7 +20,10 @@ pub async fn r#break(_ctx: Context<'_>) -> Result<(), MusicBotError> {
 /// Start a break of the given length. When the timer ends, a gathering is
 /// kicked off automatically.
 #[poise::command(slash_command, prefix_command, check = "check_author_in_voice_channel")]
-pub async fn start(ctx: Context<'_>, #[description = "Break end time or duration, e.g. `5m`, `1h 30s`, `14:00`."] time: String) -> Result<(), MusicBotError> {
+pub async fn start(
+    ctx: Context<'_>,
+    #[description = "Break end time or duration, e.g. `5m`, `1h 30s`, `14:00`."] time: String,
+) -> Result<(), MusicBotError> {
     let (duration, clock_time_label) = match parse_break_start_time(&time) {
         Some((d, label)) if d > Duration::ZERO && d <= MAX_BREAK_DURATION => (d, label),
         Some(_) => {
@@ -142,7 +145,10 @@ pub async fn start(ctx: Context<'_>, #[description = "Break end time or duration
 
 /// Extend the current break by the given amount of time.
 #[poise::command(slash_command, prefix_command)]
-pub async fn extend(ctx: Context<'_>, #[description = "Extra time to add, e.g. `5m`, `30s`, `1h 30s`."] time: String) -> Result<(), MusicBotError> {
+pub async fn extend(
+    ctx: Context<'_>,
+    #[description = "Extra time to add, e.g. `5m`, `30s`, `1h 30s`."] time: String,
+) -> Result<(), MusicBotError> {
     let extra = match parse_break_duration(&time) {
         Some(d) if d > Duration::ZERO => d,
         _ => {

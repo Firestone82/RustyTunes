@@ -45,7 +45,13 @@ impl BreakState {
 /// Runs the break timer for an existing `BreakState`. Returns `Ok(true)` if the
 /// break was cancelled (so the caller should skip auto-gather), `Ok(false)` if
 /// it ran to completion.
-pub async fn run_break(serenity_ctx: &SerenityContext, guild_id: GuildId, text_channel_id: ChannelId, voice_channel_id: ChannelId, state: Arc<BreakState>) -> Result<bool, MusicBotError> {
+pub async fn run_break(
+    serenity_ctx: &SerenityContext,
+    guild_id: GuildId,
+    text_channel_id: ChannelId,
+    voice_channel_id: ChannelId,
+    state: Arc<BreakState>,
+) -> Result<bool, MusicBotError> {
     let bot_id = serenity_ctx.cache.current_user().id;
 
     // Ping all voice members in a separate message above the embed.
@@ -156,7 +162,10 @@ pub async fn run_break(serenity_ctx: &SerenityContext, guild_id: GuildId, text_c
     Ok(cancelled)
 }
 
-fn progress_embed(state: &BreakState, footer: Option<&str>) -> serenity::all::CreateEmbed {
+fn progress_embed(
+    state: &BreakState,
+    footer: Option<&str>,
+) -> serenity::all::CreateEmbed {
     let now = Instant::now();
     let ends_at = state.ends_at_instant();
     let remaining = ends_at.saturating_duration_since(now);

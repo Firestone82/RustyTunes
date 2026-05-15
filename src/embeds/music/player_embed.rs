@@ -265,7 +265,11 @@ impl<'a> PlayerEmbed<'a> {
     }
 }
 
-fn local_listing_embed(title: &str, description: &str, files: &[PathBuf]) -> CreateEmbed {
+fn local_listing_embed(
+    title: &str,
+    description: &str,
+    files: &[PathBuf],
+) -> CreateEmbed {
     let mut embed = CreateEmbed::new()
         .color(Color::DARK_BLUE)
         .title(title.to_string())

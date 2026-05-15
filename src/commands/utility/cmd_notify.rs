@@ -20,7 +20,11 @@ pub async fn remind(_ctx: Context<'_>) -> Result<(), MusicBotError> {
 
 /// Schedule a notification for yourself: `/notify me 10s drink water`.
 #[poise::command(prefix_command, slash_command)]
-pub async fn me(ctx: Context<'_>, time: String, #[rest] note: Option<String>) -> Result<(), MusicBotError> {
+pub async fn me(
+    ctx: Context<'_>,
+    time: String,
+    #[rest] note: Option<String>,
+) -> Result<(), MusicBotError> {
     match parse_text(time) {
         Ok(notify_at) => {
             let mut notifier: RwLockWriteGuard<Notifier> = ctx.data().notifier.write().await;
@@ -131,7 +135,10 @@ pub async fn list(ctx: Context<'_>) -> Result<(), MusicBotError> {
 
 /// Remove one of your notifications by id.
 #[poise::command(prefix_command, slash_command)]
-pub async fn remove(ctx: Context<'_>, id: i64) -> Result<(), MusicBotError> {
+pub async fn remove(
+    ctx: Context<'_>,
+    id: i64,
+) -> Result<(), MusicBotError> {
     let guild_id = ctx
         .guild_id()
         .ok_or_else(|| MusicBotError::InternalError("Notify is only available in guilds".to_string()))?;

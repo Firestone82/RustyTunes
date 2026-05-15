@@ -29,7 +29,10 @@ pub struct QueueHandler {
 
 #[async_trait]
 impl EventHandler for QueueHandler {
-    async fn act(&self, _e: &EventContext<'_>) -> Option<Event> {
+    async fn act(
+        &self,
+        _e: &EventContext<'_>,
+    ) -> Option<Event> {
         let mut player: RwLockWriteGuard<Player> = self.player.write().await;
 
         if !player.is_playing {

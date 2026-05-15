@@ -47,7 +47,10 @@ pub struct Player {
 }
 
 impl Player {
-    pub async fn new(guild_id: GuildId, database: Arc<Database>) -> Self {
+    pub async fn new(
+        guild_id: GuildId,
+        database: Arc<Database>,
+    ) -> Self {
         let guild_id_map: i64 = guild_id.get() as i64;
 
         let volume = sqlx::query!("SELECT * FROM guilds WHERE guild_id = $1", guild_id_map)
@@ -86,14 +89,22 @@ impl Player {
         self.normalize
     }
 
-    pub fn push_to_history(&mut self, track: Track) {
+    pub fn push_to_history(
+        &mut self,
+        track: Track,
+    ) {
         self.history.push_back(track);
         if self.history.len() > 10 {
             self.history.pop_front();
         }
     }
 
-    pub async fn add_playlist_to_queue(&mut self, ctx: Context<'_>, playlist: Playlist, top: bool) -> Result<(), PlaybackError> {
+    pub async fn add_playlist_to_queue(
+        &mut self,
+        ctx: Context<'_>,
+        playlist: Playlist,
+        top: bool,
+    ) -> Result<(), PlaybackError> {
         tracing::info!(
             "Adding playlist to queue (top={}), tracks: {}",
             top,
@@ -111,7 +122,12 @@ impl Player {
         self.kick_off_playback(ctx, top).await
     }
 
-    pub async fn add_track_to_queue(&mut self, ctx: Context<'_>, track: Track, top: bool) -> Result<(), PlaybackError> {
+    pub async fn add_track_to_queue(
+        &mut self,
+        ctx: Context<'_>,
+        track: Track,
+        top: bool,
+    ) -> Result<(), PlaybackError> {
         tracing::info!(
             "Adding track to queue (top={}): {}",
             top,
@@ -134,7 +150,11 @@ impl Player {
     /// - paused + !top:   resume the currently-paused track
     /// - idle:            start playback from the head of the queue
     /// - already playing: nothing to do
-    async fn kick_off_playback(&mut self, ctx: Context<'_>, top: bool) -> Result<(), PlaybackError> {
+    async fn kick_off_playback(
+        &mut self,
+        ctx: Context<'_>,
+        top: bool,
+    ) -> Result<(), PlaybackError> {
         if self.is_paused {
             if top {
                 self.is_paused = false;
@@ -148,7 +168,10 @@ impl Player {
         Ok(())
     }
 
-    pub async fn skip(&mut self, mut amount: usize) -> Result<usize, PlaybackError> {
+    pub async fn skip(
+        &mut self,
+        mut amount: usize,
+    ) -> Result<usize, PlaybackError> {
         tracing::info!("Skipping {} track(s)", amount);
 
         if !self.is_playing {
@@ -180,7 +203,10 @@ impl Player {
         Ok(amount)
     }
 
-    pub async fn start_playback(&mut self, ctx: Context<'_>) -> Result<(), PlaybackError> {
+    pub async fn start_playback(
+        &mut self,
+        ctx: Context<'_>,
+    ) -> Result<(), PlaybackError> {
         if self.is_playing {
             return Err(PlaybackError::PlaybackAlreadyActive);
         }
@@ -195,7 +221,10 @@ impl Player {
         Ok(())
     }
 
-    pub async fn next_track(&mut self, ctx: Context<'_>) -> Result<Option<&Track>, PlaybackError> {
+    pub async fn next_track(
+        &mut self,
+        ctx: Context<'_>,
+    ) -> Result<Option<&Track>, PlaybackError> {
         tracing::info!("Requesting next track to play");
 
         let guild_id: GuildId = ctx.guild_id().ok_or_else(|| {
@@ -297,7 +326,10 @@ impl Player {
         cleared
     }
 
-    pub async fn remove_from_queue(&mut self, index: usize) -> Result<Track, PlaybackError> {
+    pub async fn remove_from_queue(
+        &mut self,
+        index: usize,
+    ) -> Result<Track, PlaybackError> {
         tracing::info!("Removing track at queue index {}", index);
 
         if index == 0 || index > self.queue.len() {
@@ -319,7 +351,10 @@ impl Player {
     }
 
     /// `volume` is taken as a percentage (`0..=100+`) and stored as a 0..1 multiplier.
-    pub async fn set_volume(&mut self, mut volume: f32) -> Result<(), PlaybackError> {
+    pub async fn set_volume(
+        &mut self,
+        mut volume: f32,
+    ) -> Result<(), PlaybackError> {
         tracing::info!("Setting volume to: {:?}", volume);
 
         volume /= 100.0;
@@ -410,7 +445,12 @@ impl Player {
 /// multiplier to `handle` provided the player is still on `track_id` and the
 /// normalize toggle is still on by the time the measurement returns. Used
 /// both when a track starts and when `!normalize` is flipped mid-track.
-pub fn schedule_normalization_apply(player_arc: Arc<tokio::sync::RwLock<Player>>, handle: TrackHandle, path: PathBuf, track_id: String) {
+pub fn schedule_normalization_apply(
+    player_arc: Arc<tokio::sync::RwLock<Player>>,
+    handle: TrackHandle,
+    path: PathBuf,
+    track_id: String,
+) {
     tokio::spawn(async move {
         let measurement = normalize_service::measurement_for(&path).await;
         let mut player = player_arc.write().await;
@@ -451,7 +491,11 @@ pub fn schedule_normalization_apply(player_arc: Arc<tokio::sync::RwLock<Player>>
 /// measurement so normalization can apply to the currently playing track
 /// without having to wait for the next play. A no-op for tracks that aren't
 /// cacheable (local files, or anything missing an id).
-pub fn spawn_cache_and_apply(track: Track, player_arc: Arc<tokio::sync::RwLock<Player>>, handle: TrackHandle) {
+pub fn spawn_cache_and_apply(
+    track: Track,
+    player_arc: Arc<tokio::sync::RwLock<Player>>,
+    handle: TrackHandle,
+) {
     if !cache_service::is_cacheable(&track) {
         return;
     }
@@ -483,7 +527,10 @@ pub fn spawn_cache_and_apply(track: Track, player_arc: Arc<tokio::sync::RwLock<P
 
 /// Set the bot's Discord activity. We bake the "Playing " word into the label
 /// itself because some Discord clients hide the activity-type prefix on bots.
-pub fn set_now_playing(ctx: &serenity_prelude::Context, track: &Track) {
+pub fn set_now_playing(
+    ctx: &serenity_prelude::Context,
+    track: &Track,
+) {
     let label = format!(
         "Playing {} · {}",
         track.metadata.title,

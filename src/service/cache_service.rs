@@ -103,7 +103,10 @@ pub async fn find_cached(track: &Track) -> Option<PathBuf> {
     find_in_dir(&cache_dir(), &stem).await
 }
 
-async fn find_in_dir(dir: &Path, stem: &str) -> Option<PathBuf> {
+async fn find_in_dir(
+    dir: &Path,
+    stem: &str,
+) -> Option<PathBuf> {
     let mut read_dir = tokio::fs::read_dir(dir).await.ok()?;
     let prefix = format!("{stem}.");
     while let Ok(Some(entry)) = read_dir.next_entry().await {
@@ -215,7 +218,10 @@ pub async fn cache_track(track: &Track) -> std::io::Result<PathBuf> {
 
 /// Delete any leftover `<stem>.part.*` files in `dir`. Called when yt-dlp
 /// fails so we don't accumulate partials on retry.
-async fn cleanup_part_files(dir: &Path, stem: &str) {
+async fn cleanup_part_files(
+    dir: &Path,
+    stem: &str,
+) {
     let part_prefix = format!("{stem}.part.");
     let mut read_dir = match tokio::fs::read_dir(dir).await {
         Ok(rd) => rd,

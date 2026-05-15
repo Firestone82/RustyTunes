@@ -45,7 +45,10 @@ fn max_gain_db() -> f32 {
     *CACHED.get_or_init(|| env_f32("NORMALIZE_MAX_GAIN_DB", DEFAULT_MAX_GAIN_DB))
 }
 
-fn env_f32(key: &str, fallback: f32) -> f32 {
+fn env_f32(
+    key: &str,
+    fallback: f32,
+) -> f32 {
     match std::env::var(key) {
         Ok(raw) => match raw.trim().parse::<f32>() {
             Ok(v) => {
@@ -84,7 +87,10 @@ fn cache_get(key: &str) -> Option<f32> {
     cache_handle().lock().ok()?.get(key).copied()
 }
 
-fn cache_set(key: String, lufs: f32) {
+fn cache_set(
+    key: String,
+    lufs: f32,
+) {
     if let Ok(mut guard) = cache_handle().lock() {
         guard.insert(key, lufs);
     }
@@ -189,7 +195,10 @@ async fn read_sidecar(path: &Path) -> Option<f32> {
     contents.trim().parse::<f32>().ok()
 }
 
-async fn write_sidecar(path: &Path, lufs: f32) -> std::io::Result<()> {
+async fn write_sidecar(
+    path: &Path,
+    lufs: f32,
+) -> std::io::Result<()> {
     let sidecar = sidecar_path(path).ok_or_else(|| {
         std::io::Error::new(
             std::io::ErrorKind::InvalidInput,

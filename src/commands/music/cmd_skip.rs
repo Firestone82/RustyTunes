@@ -8,7 +8,10 @@ use tokio::sync::RwLockWriteGuard;
 
 /// Skip the current track. With an empty queue this stops playback instead of erroring.
 #[poise::command(prefix_command, slash_command, check = "check_author_in_same_voice_channel", check = "check_if_player_is_playing")]
-pub async fn skip(ctx: Context<'_>, amount: Option<usize>) -> Result<(), MusicBotError> {
+pub async fn skip(
+    ctx: Context<'_>,
+    amount: Option<usize>,
+) -> Result<(), MusicBotError> {
     let mut player: RwLockWriteGuard<Player> = ctx.data().player.write().await;
 
     let amount: usize = player.skip(amount.unwrap_or(1)).await?;

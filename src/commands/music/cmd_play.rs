@@ -16,17 +16,27 @@ const YOUTUBE_PLAYLIST_URL: &str = "https://www.youtube.com/playlist?list=";
 
 /// Play a track or playlist from YouTube or Spotify.
 #[poise::command(prefix_command, slash_command, check = "check_author_in_same_voice_channel")]
-pub async fn play(ctx: Context<'_>, track_source: Vec<String>) -> Result<(), MusicBotError> {
+pub async fn play(
+    ctx: Context<'_>,
+    track_source: Vec<String>,
+) -> Result<(), MusicBotError> {
     do_play(ctx, track_source.join(" "), false).await
 }
 
 /// Play a track or playlist immediately by inserting it at the front of the queue.
 #[poise::command(prefix_command, slash_command, rename = "playtop", check = "check_author_in_same_voice_channel")]
-pub async fn play_top(ctx: Context<'_>, track_source: Vec<String>) -> Result<(), MusicBotError> {
+pub async fn play_top(
+    ctx: Context<'_>,
+    track_source: Vec<String>,
+) -> Result<(), MusicBotError> {
     do_play(ctx, track_source.join(" "), true).await
 }
 
-async fn do_play(ctx: Context<'_>, track_source: String, top: bool) -> Result<(), MusicBotError> {
+async fn do_play(
+    ctx: Context<'_>,
+    track_source: String,
+    top: bool,
+) -> Result<(), MusicBotError> {
     let mut result: Result<YouTubeSearchResult, SearchError> = Err(SearchError::InternalError("No search result found".into()));
 
     // Search YouTube
@@ -180,7 +190,10 @@ async fn do_play(ctx: Context<'_>, track_source: String, top: bool) -> Result<()
     Ok(())
 }
 
-async fn report_playback_error(ctx: Context<'_>, error: crate::player::track::PlaybackError) -> Result<(), MusicBotError> {
+async fn report_playback_error(
+    ctx: Context<'_>,
+    error: crate::player::track::PlaybackError,
+) -> Result<(), MusicBotError> {
     PlayerEmbed::PlaybackErrorEmbed(error.to_string())
         .to_embed()
         .send_context(ctx, true, Some(30))

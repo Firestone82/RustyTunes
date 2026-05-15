@@ -18,7 +18,10 @@ pub async fn gather(_ctx: Context<'_>) -> Result<(), MusicBotError> {
 
 /// Gather everyone in your voice channel — they tap "I'm here!" to check in.
 #[poise::command(slash_command, prefix_command, check = "check_author_in_voice_channel")]
-pub async fn start(ctx: Context<'_>, #[description = "Pre-gather countdown length (e.g. 30s, 2m). Default: 1 minute."] time: Option<String>) -> Result<(), MusicBotError> {
+pub async fn start(
+    ctx: Context<'_>,
+    #[description = "Pre-gather countdown length (e.g. 30s, 2m). Default: 1 minute."] time: Option<String>,
+) -> Result<(), MusicBotError> {
     let guild_id: GuildId = ctx.guild_id().ok_or(MusicBotError::NoGuildIdError)?;
 
     let voice_channel_id: ChannelId = match channel_service::get_user_voice_channel(ctx, &ctx.author().id) {

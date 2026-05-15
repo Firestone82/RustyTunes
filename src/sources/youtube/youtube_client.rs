@@ -80,7 +80,11 @@ impl YoutubeClient {
         }
     }
 
-    pub async fn search_track_url(&self, url: String, max_tracks: u32) -> Result<YouTubeSearchResult, SearchError> {
+    pub async fn search_track_url(
+        &self,
+        url: String,
+        max_tracks: u32,
+    ) -> Result<YouTubeSearchResult, SearchError> {
         let request = self
             .youtube
             .search()
@@ -134,7 +138,10 @@ impl YoutubeClient {
         }
     }
 
-    pub async fn search_playlist_url(&self, url: String) -> Result<YouTubeSearchResult, SearchError> {
+    pub async fn search_playlist_url(
+        &self,
+        url: String,
+    ) -> Result<YouTubeSearchResult, SearchError> {
         let playlist_id: &str = url.trim_start_matches(PLAYLIST_URI);
 
         let playlist_request = self
@@ -224,7 +231,10 @@ impl YoutubeClient {
     /// Enumerate a YouTube playlist using yt-dlp's `--flat-playlist` mode.
     /// Streams results line-by-line so we get track titles immediately from
     /// yt-dlp scraping — zero YouTube Data API quota used.
-    pub async fn fetch_playlist_lazy(&self, url: String) -> Result<YouTubeSearchResult, SearchError> {
+    pub async fn fetch_playlist_lazy(
+        &self,
+        url: String,
+    ) -> Result<YouTubeSearchResult, SearchError> {
         let playlist_id = url.trim_start_matches(PLAYLIST_URI).to_string();
 
         let mut child = tokio::process::Command::new("yt-dlp")

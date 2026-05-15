@@ -7,7 +7,10 @@ use std::time::Duration;
 
 /// List the reputation of a user, including history.
 #[poise::command(prefix_command, slash_command, aliases("reps", "repinfo"))]
-pub async fn list_rep(ctx: Context<'_>, #[description = "User to check reputation for (optional, defaults to yourself)"] user: Option<User>) -> Result<(), MusicBotError> {
+pub async fn list_rep(
+    ctx: Context<'_>,
+    #[description = "User to check reputation for (optional, defaults to yourself)"] user: Option<User>,
+) -> Result<(), MusicBotError> {
     let target_user = user.as_ref().unwrap_or_else(|| ctx.author());
     let target_id = target_user.id.to_string();
 
@@ -142,7 +145,10 @@ pub async fn list_rep(ctx: Context<'_>, #[description = "User to check reputatio
     Ok(())
 }
 
-fn get_nav_components(page: usize, total_pages: usize) -> Vec<CreateActionRow> {
+fn get_nav_components(
+    page: usize,
+    total_pages: usize,
+) -> Vec<CreateActionRow> {
     let prev_btn = CreateButton::new("page_prev")
         .label("⬅️ Previews")
         .style(ButtonStyle::Primary)

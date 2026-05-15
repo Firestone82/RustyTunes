@@ -34,7 +34,11 @@ impl DownloadSource {
 /// If `name_override` is given, the file is saved under that name (with the
 /// extension preserved or inferred); otherwise we use the attachment filename
 /// or derive one from the response/URL.
-pub async fn save_to_library(ctx: Context<'_>, source: &DownloadSource, name_override: Option<&str>) -> Result<PathBuf, MusicBotError> {
+pub async fn save_to_library(
+    ctx: Context<'_>,
+    source: &DownloadSource,
+    name_override: Option<&str>,
+) -> Result<PathBuf, MusicBotError> {
     let url = source.url();
 
     if !(url.starts_with("http://") || url.starts_with("https://")) {
@@ -102,7 +106,10 @@ pub async fn save_to_library(ctx: Context<'_>, source: &DownloadSource, name_ove
 
 /// Apply a user-supplied save name. The user's name takes precedence; we only
 /// borrow the auto-detected extension if they didn't supply one of their own.
-fn apply_name_override(custom: &str, auto_name: &str) -> String {
+fn apply_name_override(
+    custom: &str,
+    auto_name: &str,
+) -> String {
     let cleaned = local_client::sanitize_filename(custom);
     if local_client::has_audio_extension(&cleaned) {
         return cleaned;
@@ -119,7 +126,10 @@ fn extension_of(name: &str) -> Option<&str> {
     Some(&name[idx + 1..])
 }
 
-fn is_audio(filename: &str, content_type: Option<&str>) -> bool {
+fn is_audio(
+    filename: &str,
+    content_type: Option<&str>,
+) -> bool {
     if local_client::has_audio_extension(filename) {
         return true;
     }
@@ -141,7 +151,10 @@ fn audio_ext_from_content_type(ct: Option<&str>) -> Option<&'static str> {
     })
 }
 
-fn filename_from_response(url: &str, response: &reqwest::Response) -> String {
+fn filename_from_response(
+    url: &str,
+    response: &reqwest::Response,
+) -> String {
     if let Some(disposition) = response.headers().get(reqwest::header::CONTENT_DISPOSITION) {
         if let Ok(value) = disposition.to_str() {
             if let Some(name) = parse_content_disposition_filename(value) {
@@ -190,7 +203,10 @@ fn percent_decode(input: &str) -> String {
     String::from_utf8_lossy(&out).into_owned()
 }
 
-pub fn build_local_track(path: PathBuf, added_by: String) -> Track {
+pub fn build_local_track(
+    path: PathBuf,
+    added_by: String,
+) -> Track {
     let title = local_client::track_title(&path);
     let id = path.to_string_lossy().to_string();
     let display_url = format!("file://{}", path.to_string_lossy());

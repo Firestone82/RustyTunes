@@ -56,7 +56,10 @@ pub fn has_audio_extension(name: &str) -> bool {
 }
 
 /// Avoid clobbering an existing file by appending " (n)" before the extension.
-pub async fn unique_path(dir: &Path, filename: &str) -> PathBuf {
+pub async fn unique_path(
+    dir: &Path,
+    filename: &str,
+) -> PathBuf {
     let candidate = dir.join(filename);
     if !path_exists(&candidate).await {
         return candidate;

@@ -84,7 +84,10 @@ impl Track {
     /// Returns the chosen `Input` along with the on-disk path it was built
     /// from (when available). The path is what loudness normalization needs;
     /// streamed inputs return `None`.
-    pub async fn resolve_input(&self, req_client: &reqwest::Client) -> (Input, Option<PathBuf>) {
+    pub async fn resolve_input(
+        &self,
+        req_client: &reqwest::Client,
+    ) -> (Input, Option<PathBuf>) {
         if let TrackSource::Local(path) = &self.source {
             return (File::new(path.clone()).into(), Some(path.clone()));
         }

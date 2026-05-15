@@ -7,14 +7,21 @@ use serenity::all::{Channel, ChannelId, GuildId, Member, Mention, Mentionable, P
 
 /// Wake up a user in the same voice channel.
 #[poise::command(slash_command, check = "check_author_in_same_voice_channel")]
-pub async fn wakeup(ctx: Context<'_>, target: Member, count: Option<usize>) -> Result<(), MusicBotError> {
+pub async fn wakeup(
+    ctx: Context<'_>,
+    target: Member,
+    count: Option<usize>,
+) -> Result<(), MusicBotError> {
     wakeup_target(ctx, target, count).await?;
     Ok(())
 }
 
 /// Wake up a user in the same voice channel.
 #[poise::command(context_menu_command = "WakeUp!", check = "check_author_in_same_voice_channel")]
-pub async fn wakeup_context(ctx: Context<'_>, user: User) -> Result<(), MusicBotError> {
+pub async fn wakeup_context(
+    ctx: Context<'_>,
+    user: User,
+) -> Result<(), MusicBotError> {
     let guild_id: GuildId = ctx.guild().unwrap().id;
     let guild: PartialGuild = ctx.http().get_guild(guild_id).await?;
 
@@ -24,7 +31,11 @@ pub async fn wakeup_context(ctx: Context<'_>, user: User) -> Result<(), MusicBot
     Ok(())
 }
 
-async fn wakeup_target(ctx: Context<'_>, target: Member, count: Option<usize>) -> Result<(), MusicBotError> {
+async fn wakeup_target(
+    ctx: Context<'_>,
+    target: Member,
+    count: Option<usize>,
+) -> Result<(), MusicBotError> {
     let afk_channel_id: ChannelId = ChannelId::new(829712736052707380);
     let afk_channel: Channel = ctx.http().get_channel(afk_channel_id).await?;
 

@@ -5,3 +5,4 @@ edition = "2021"
 # line stay that way instead of collapsing onto one long line.
 chain_width = 60
 fn_call_width = 60
+fn_params_layout = "Vertical"

@@ -5,7 +5,11 @@ use serenity::prelude::Context as SerenityContext;
 
 /// Handle `VoiceStateUpdate` events: auto-arrive expected gathering users
 /// and clean up playback when the bot is left alone or removed from voice.
-pub async fn handle(ctx: &SerenityContext, event: &FullEvent, data: &MusicBotData) -> Result<(), MusicBotError> {
+pub async fn handle(
+    ctx: &SerenityContext,
+    event: &FullEvent,
+    data: &MusicBotData,
+) -> Result<(), MusicBotError> {
     let FullEvent::VoiceStateUpdate { new, .. } = event else {
         return Ok(());
     };

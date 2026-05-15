@@ -10,7 +10,10 @@ use tokio::sync::RwLockReadGuard;
 
 const ITEMS_PER_PAGE: usize = 10;
 
-fn nav_buttons(page: usize, total_pages: usize) -> Vec<CreateActionRow> {
+fn nav_buttons(
+    page: usize,
+    total_pages: usize,
+) -> Vec<CreateActionRow> {
     vec![CreateActionRow::Buttons(vec![
         CreateButton::new("queue_prev")
             .label("◀")
@@ -26,7 +29,10 @@ fn nav_buttons(page: usize, total_pages: usize) -> Vec<CreateActionRow> {
 /// Build the embed list rendered for `!queue`: a Now Playing embed (when a
 /// track is active) followed by the standard queue listing. Returns an empty
 /// vec when there is nothing to show — callers fall back to `IsEmpty`.
-fn build_embeds(player: &Player, page: usize) -> Vec<CreateEmbed> {
+fn build_embeds(
+    player: &Player,
+    page: usize,
+) -> Vec<CreateEmbed> {
     let mut embeds: Vec<CreateEmbed> = Vec::new();
 
     if let Some(track) = player.current_track.as_ref() {
@@ -42,7 +48,10 @@ fn build_embeds(player: &Player, page: usize) -> Vec<CreateEmbed> {
 
 /// List upcoming tracks in the queue.
 #[poise::command(prefix_command, slash_command)]
-pub async fn queue(ctx: Context<'_>, page: Option<usize>) -> Result<(), MusicBotError> {
+pub async fn queue(
+    ctx: Context<'_>,
+    page: Option<usize>,
+) -> Result<(), MusicBotError> {
     let player: RwLockReadGuard<Player> = ctx.data().player.read().await;
 
     if player.queue.is_empty() && player.current_track.is_none() {

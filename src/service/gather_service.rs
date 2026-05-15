@@ -630,7 +630,12 @@ fn check_in_embed(
     .to_embed()
 }
 
-fn current_voice_members(serenity_ctx: &SerenityContext, guild_id: GuildId, voice_channel_id: ChannelId, bot_id: UserId) -> Vec<UserId> {
+fn current_voice_members(
+    serenity_ctx: &SerenityContext,
+    guild_id: GuildId,
+    voice_channel_id: ChannelId,
+    bot_id: UserId,
+) -> Vec<UserId> {
     serenity_ctx
         .cache
         .guild(guild_id)
@@ -645,7 +650,12 @@ fn current_voice_members(serenity_ctx: &SerenityContext, guild_id: GuildId, voic
         .unwrap_or_default()
 }
 
-fn user_in_voice(serenity_ctx: &SerenityContext, guild_id: GuildId, voice_channel_id: ChannelId, user_id: UserId) -> bool {
+fn user_in_voice(
+    serenity_ctx: &SerenityContext,
+    guild_id: GuildId,
+    voice_channel_id: ChannelId,
+    user_id: UserId,
+) -> bool {
     serenity_ctx
         .cache
         .guild(guild_id)
@@ -655,7 +665,11 @@ fn user_in_voice(serenity_ctx: &SerenityContext, guild_id: GuildId, voice_channe
         == Some(voice_channel_id)
 }
 
-async fn ghost_ping(http: Arc<Http>, text_channel_id: ChannelId, users: Vec<UserId>) {
+async fn ghost_ping(
+    http: Arc<Http>,
+    text_channel_id: ChannelId,
+    users: Vec<UserId>,
+) {
     let content = users
         .iter()
         .map(|u| u.mention().to_string())
