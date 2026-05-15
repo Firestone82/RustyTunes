@@ -1,4 +1,4 @@
-use crate::player::player::{Playlist, Track, TrackMetadata};
+use crate::player::track::{Playlist, Track, TrackMetadata};
 use dotenv::var;
 use google_youtube3::api::{PlaylistItem, PlaylistItemSnippet, SearchResult, SearchResultSnippet};
 use google_youtube3::client::NoToken;
@@ -122,7 +122,7 @@ impl YoutubeClient {
                     id: video_id,
                     metadata,
                     added_by: String::new(),
-                    source: crate::player::player::TrackSource::YouTube,
+                    source: crate::player::track::TrackSource::YouTube,
                 }))
             })
             .collect::<Result<Vec<Track>, SearchError>>()?;
@@ -209,7 +209,7 @@ impl YoutubeClient {
                         id: video_id,
                         metadata,
                         added_by: String::new(),
-                        source: crate::player::player::TrackSource::YouTube,
+                        source: crate::player::track::TrackSource::YouTube,
                     }))
                 })
                 .collect::<Result<Vec<Track>, SearchError>>()?;
@@ -295,7 +295,7 @@ impl YoutubeClient {
                     play_url: None,
                 },
                 added_by: String::new(),
-                source: crate::player::player::TrackSource::YouTube,
+                source: crate::player::track::TrackSource::YouTube,
             });
         }
 

@@ -1,4 +1,4 @@
-use crate::player::player::{Playlist, Track, TrackMetadata};
+use crate::player::track::{Playlist, Track, TrackMetadata};
 use base64::engine::general_purpose::STANDARD as BASE64;
 use base64::Engine;
 use dotenv::var;
@@ -387,6 +387,6 @@ fn build_track(sp: &SpTrack) -> Track {
             play_url: Some(format!("ytsearch1:{query}")),
         },
         added_by: String::new(),
-        source: crate::player::player::TrackSource::Spotify,
+        source: crate::player::track::TrackSource::Spotify,
     }
 }

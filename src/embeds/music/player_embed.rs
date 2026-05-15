@@ -1,4 +1,4 @@
-use crate::player::player::{Track, TrackSource};
+use crate::player::track::{Track, TrackSource};
 use serenity::all::{Color, CreateEmbed, CreateEmbedFooter};
 use std::collections::VecDeque;
 use std::path::PathBuf;

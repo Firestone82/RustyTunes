@@ -1,4 +1,4 @@
-use crate::player::notifier::MessageNotify;
+use crate::service::notifier_service::MessageNotify;
 use crate::utils::time_utils::format_time;
 use serenity::all::{Color, CreateEmbed, Mentionable};
 

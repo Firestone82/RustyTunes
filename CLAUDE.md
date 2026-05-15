@@ -27,7 +27,9 @@ src/
 │   ├── error_handler.rs
 │   ├── queue_handler.rs
 │   └── voice_handler.rs
-├── player/             — Player state machine and Notifier.
+├── player/             — Music bot player only.
+│   ├── player.rs       — Player struct, state transitions, activity helpers.
+│   └── track.rs        — Track / Playlist / TrackSource / PlaybackError types.
 ├── service/            — business-logic services that back the commands.
 │   ├── break_service.rs
 │   ├── cache_service.rs
@@ -35,6 +37,7 @@ src/
 │   ├── embed_service.rs
 │   ├── gather_service.rs
 │   ├── normalize_service.rs
+│   ├── notifier_service.rs
 │   └── picker_service.rs
 ├── sources/            — track sources used by commands and services.
 │   ├── local/          — local on-disk files.
@@ -93,6 +96,13 @@ src/
    `_client`, `_checks`, `_utils` suffix in the filename so the role is
    obvious in `use` statements. Picking the right suffix is part of
    choosing the right folder.
+
+9. **Player folder**: `player/` is only for the music bot's playback
+   engine — the `Player` state machine and the value types (`Track`,
+   `Playlist`, `TrackSource`, `PlaybackError`) it owns. Anything that
+   isn't part of playing audio (notifications, reminders, gather/break
+   state) belongs in `service/`. Split long files in `player/` by topic
+   (state machine vs. data types) rather than letting them grow.
 
 ## Adding a feature: checklist
 

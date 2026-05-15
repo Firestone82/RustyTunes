@@ -1,7 +1,8 @@
 use crate::bot::{Context, MusicBotError};
 use crate::checks::channel_checks::check_author_in_same_voice_channel;
 use crate::embeds::music::player_embed::PlayerEmbed;
-use crate::player::player::{Player, Track};
+use crate::player::player::Player;
+use crate::player::track::Track;
 use crate::service::channel_service;
 use crate::service::embed_service::SendEmbed;
 use serenity::all::{

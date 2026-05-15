@@ -2,7 +2,7 @@
 //! `local download` subcommand in `cmd_local`.
 
 use crate::bot::{Context, MusicBotError};
-use crate::player::player::{Track, TrackMetadata, TrackSource};
+use crate::player::track::{Track, TrackMetadata, TrackSource};
 use crate::sources::local::local_client;
 use std::path::PathBuf;
 

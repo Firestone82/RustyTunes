@@ -1,4 +1,4 @@
-use crate::player::player::{Playlist, Track, TrackSource};
+use crate::player::track::{Playlist, Track, TrackSource};
 use crate::utils::string_utils;
 use serenity::all::{Color, CreateEmbed, CreateEmbedAuthor, CreateEmbedFooter};
 

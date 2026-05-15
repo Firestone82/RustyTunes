@@ -2,7 +2,8 @@ use crate::bot::{Context, MusicBotError};
 use crate::checks::channel_checks::check_author_in_same_voice_channel;
 use crate::embeds::music::player_embed::PlayerEmbed;
 use crate::embeds::music::queue_embed::QueueEmbed;
-use crate::player::player::{Player, Track};
+use crate::player::player::Player;
+use crate::player::track::Track;
 use crate::service::channel_service;
 use crate::service::embed_service::SendEmbed;
 use crate::service::picker_service::{self, PickerOutcome};
@@ -192,7 +193,7 @@ async fn do_play(ctx: Context<'_>, track_source: String, top: bool) -> Result<()
 
 async fn report_playback_error(
     ctx: Context<'_>,
-    error: crate::player::player::PlaybackError,
+    error: crate::player::track::PlaybackError,
 ) -> Result<(), MusicBotError> {
     PlayerEmbed::PlaybackErrorEmbed(error.to_string())
         .to_embed()

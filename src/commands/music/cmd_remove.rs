@@ -2,7 +2,8 @@ use crate::bot::{Context, MusicBotError};
 use crate::checks::channel_checks::check_author_in_same_voice_channel;
 use crate::checks::player_checks::check_if_queue_is_not_empty;
 use crate::embeds::music::queue_embed::QueueEmbed;
-use crate::player::player::{PlaybackError, Player};
+use crate::player::player::Player;
+use crate::player::track::PlaybackError;
 use crate::service::embed_service::SendEmbed;
 use tokio::sync::RwLockWriteGuard;
 

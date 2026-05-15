@@ -1,5 +1,6 @@
 use crate::embeds::music::player_embed::PlayerEmbed;
-use crate::player::player::{self, PlaybackError, Player};
+use crate::player::player::{self, Player};
+use crate::player::track::PlaybackError;
 use crate::service::embed_service::SendEmbed;
 use async_trait::async_trait;
 use lombok::AllArgsConstructor;

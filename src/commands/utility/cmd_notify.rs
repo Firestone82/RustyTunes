@@ -1,6 +1,6 @@
 use crate::bot::{Context, MusicBotError};
 use crate::embeds::utility::notify_embeds::NotifyEmbed;
-use crate::player::notifier::{encode_targets, MessageNotify, Notifier, NotifierError};
+use crate::service::notifier_service::{encode_targets, MessageNotify, Notifier, NotifierError};
 use crate::service::embed_service::SendEmbed;
 use crate::utils::time_utils::{parse_text, TimeParseError};
 use serenity::all::{Mentionable, User, UserId};

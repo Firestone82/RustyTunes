@@ -10,7 +10,7 @@
 //! discovered on read, so an existing cache survives the upgrade — only new
 //! downloads land in the per-source folders.
 
-use crate::player::player::{Track, TrackSource};
+use crate::player::track::{Track, TrackSource};
 use crate::service::normalize_service;
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
