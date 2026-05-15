@@ -197,11 +197,21 @@ pub async fn start_gather(
             return Ok(());
         }
     } else {
-        // No countdown: create a placeholder message that phase 2 will immediately replace.
+        // No countdown: ping voice members so they're notified gathering is starting.
+        // Phase 2 will edit this message into the check-in embed.
+        let voice_mentions: String = initial_voice_ids
+            .iter()
+            .map(|id| id.mention().to_string())
+            .collect::<Vec<_>>()
+            .join(" ");
         msg = text_channel_id
             .send_message(
                 &serenity_ctx.http,
-                CreateMessage::new().content("Gathering starting…"),
+                CreateMessage::new().content(if voice_mentions.is_empty() {
+                    "Gathering starting…".to_string()
+                } else {
+                    voice_mentions
+                }),
             )
             .await
             .map_err(|e| MusicBotError::InternalError(e.to_string()))?;
@@ -233,6 +243,7 @@ pub async fn start_gather(
         .edit(
             &serenity_ctx.http,
             EditMessage::new()
+                .content("")
                 .embed(build_embed(
                     serenity_ctx,
                     guild_id,
@@ -304,11 +315,6 @@ pub async fn start_gather(
         }
 
         let now = Instant::now();
-
-        // Track late joiners from voice channel.
-        for id in current_voice_members(serenity_ctx, guild_id, voice_channel_id, bot_id) {
-            expected.insert(id);
-        }
 
         // Merge users added via /gather expect.
         {

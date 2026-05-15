@@ -15,6 +15,7 @@ use std::time::{Duration, Instant};
 use time::OffsetDateTime;
 
 const BTN_BREAK_CANCEL: &str = "break_cancel";
+const BTN_BREAK_SKIP: &str = "break_skip";
 const MAX_BREAK_DURATION: Duration = Duration::from_secs(60 * 60 * 4);
 const MIN_EDIT_INTERVAL: Duration = Duration::from_secs(5);
 
@@ -210,25 +211,30 @@ pub async fn start(
             .await;
 
         if let Some(ic) = interaction {
-            if ic.data.custom_id == BTN_BREAK_CANCEL {
-                if ic.user.id != author_id {
-                    ic.create_response(
-                        ctx.http(),
-                        CreateInteractionResponse::Message(
-                            CreateInteractionResponseMessage::new()
-                                .content("Only the person who started the break can cancel it.")
-                                .ephemeral(true),
-                        ),
-                    )
-                    .await
-                    .ok();
-                    continue;
+            match ic.data.custom_id.as_str() {
+                BTN_BREAK_CANCEL | BTN_BREAK_SKIP => {
+                    if ic.user.id != author_id {
+                        ic.create_response(
+                            ctx.http(),
+                            CreateInteractionResponse::Message(
+                                CreateInteractionResponseMessage::new()
+                                    .content("Only the person who started the break can do that.")
+                                    .ephemeral(true),
+                            ),
+                        )
+                        .await
+                        .ok();
+                        continue;
+                    }
+                    ic.create_response(ctx.http(), CreateInteractionResponse::Acknowledge)
+                        .await
+                        .ok();
+                    if ic.data.custom_id == BTN_BREAK_CANCEL {
+                        cancelled = true;
+                    }
+                    break;
                 }
-                ic.create_response(ctx.http(), CreateInteractionResponse::Acknowledge)
-                    .await
-                    .ok();
-                cancelled = true;
-                break;
+                _ => {}
             }
         }
 
@@ -422,12 +428,16 @@ fn parse_break_duration(text: &str) -> Option<Duration> {
 }
 
 fn break_buttons(disabled: bool) -> Vec<CreateActionRow> {
-    vec![CreateActionRow::Buttons(vec![CreateButton::new(
-        BTN_BREAK_CANCEL,
-    )
-    .label("Cancel")
-    .style(ButtonStyle::Danger)
-    .disabled(disabled)])]
+    vec![CreateActionRow::Buttons(vec![
+        CreateButton::new(BTN_BREAK_SKIP)
+            .label("Skip to gathering")
+            .style(ButtonStyle::Primary)
+            .disabled(disabled),
+        CreateButton::new(BTN_BREAK_CANCEL)
+            .label("Cancel")
+            .style(ButtonStyle::Danger)
+            .disabled(disabled),
+    ])]
 }
 
 fn build_break_embed(state: &BreakState, footer: Option<&str>) -> CreateEmbed {
