@@ -1,9 +1,13 @@
 use crate::bot::MusicBotError;
+use crate::embeds::gather_embed::{
+    gather_buttons, pregather_buttons, sanitize_name, CheckInRow, GatherEmbed, BTN_CANCEL,
+    BTN_FORCE_START, BTN_HERE, BTN_TOGGLE_SILENT, GRACE_PERIOD,
+};
 use crate::player::notifier::get_current_time;
 use serenity::all::{
-    ButtonStyle, ChannelId, Color, ComponentInteractionCollector, CreateActionRow, CreateButton,
-    CreateEmbed, CreateInteractionResponse, CreateInteractionResponseMessage, CreateMessage,
-    EditMessage, GuildId, Mentionable, Message, UserId,
+    ChannelId, ComponentInteractionCollector, CreateInteractionResponse,
+    CreateInteractionResponseMessage, CreateMessage, EditMessage, GuildId, Mentionable, Message,
+    UserId,
 };
 use serenity::futures::StreamExt;
 use serenity::http::Http;
@@ -11,7 +15,6 @@ use serenity::prelude::Context as SerenityContext;
 use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
-use time::OffsetDateTime;
 
 /// Shared state for an active gathering.
 pub struct GatherState {
@@ -36,20 +39,13 @@ impl GatherState {
     }
 }
 
-const GRACE_PERIOD: Duration = Duration::from_secs(60);
 pub const PREGATHER_DURATION: Duration = Duration::from_secs(60);
 const GHOST_PING_INTERVAL: Duration = Duration::from_secs(30);
 const MAX_GATHER_DURATION: Duration = Duration::from_secs(60 * 30);
 const GHOST_PING_LIFETIME: Duration = Duration::from_millis(700);
 const MIN_EDIT_INTERVAL: Duration = Duration::from_secs(5);
-const MAX_NAME_LEN: usize = 21;
 // Max wait in the select loop — keeps button response latency well within 3 s.
 const LOOP_POLL: Duration = Duration::from_millis(800);
-
-const BTN_HERE: &str = "gather_im_here";
-const BTN_CANCEL: &str = "gather_cancel";
-const BTN_FORCE_START: &str = "gather_force_start";
-const BTN_TOGGLE_SILENT: &str = "gather_toggle_silent";
 
 pub async fn start_gather(
     serenity_ctx: &SerenityContext,
@@ -97,7 +93,16 @@ pub async fn start_gather(
             .send_message(
                 &serenity_ctx.http,
                 CreateMessage::new()
-                    .embed(build_pregather_embed(pregather_ends_at, pregather_ends_at_wall, &author_mention, &schedule_label, None))
+                    .embed(
+                        GatherEmbed::Pregather {
+                            ends_at: pregather_ends_at,
+                            ends_at_wall: pregather_ends_at_wall,
+                            author_mention: &author_mention,
+                            schedule_label: &schedule_label,
+                            footer: None,
+                        }
+                        .to_embed(),
+                    )
                     .components(pregather_buttons(false)),
             )
             .await
@@ -182,7 +187,16 @@ pub async fn start_gather(
                         .edit(
                             &serenity_ctx.http,
                             EditMessage::new()
-                                .embed(build_pregather_embed(pregather_ends_at, pregather_ends_at_wall, &author_mention, &schedule_label, None))
+                                .embed(
+                                    GatherEmbed::Pregather {
+                                        ends_at: pregather_ends_at,
+                                        ends_at_wall: pregather_ends_at_wall,
+                                        author_mention: &author_mention,
+                                        schedule_label: &schedule_label,
+                                        footer: None,
+                                    }
+                                    .to_embed(),
+                                )
                                 .components(pregather_buttons(false)),
                         )
                         .await;
@@ -195,7 +209,16 @@ pub async fn start_gather(
                 .edit(
                     &serenity_ctx.http,
                     EditMessage::new()
-                        .embed(build_pregather_embed(pregather_ends_at, pregather_ends_at_wall, &author_mention, &schedule_label, Some("Cancelled.")))
+                        .embed(
+                            GatherEmbed::Pregather {
+                                ends_at: pregather_ends_at,
+                                ends_at_wall: pregather_ends_at_wall,
+                                author_mention: &author_mention,
+                                schedule_label: &schedule_label,
+                                footer: Some("Cancelled."),
+                            }
+                            .to_embed(),
+                        )
                         .components(Vec::new()),
                 )
                 .await;
@@ -249,7 +272,7 @@ pub async fn start_gather(
             &serenity_ctx.http,
             EditMessage::new()
                 .content("")
-                .embed(build_embed(
+                .embed(check_in_embed(
                     serenity_ctx,
                     guild_id,
                     &expected,
@@ -259,7 +282,7 @@ pub async fn start_gather(
                     silent,
                     None,
                 ))
-                .components(buttons(false, silent)),
+                .components(gather_buttons(false, silent)),
         )
         .await;
 
@@ -376,7 +399,7 @@ pub async fn start_gather(
                 .edit(
                     &serenity_ctx.http,
                     EditMessage::new()
-                        .embed(build_embed(
+                        .embed(check_in_embed(
                             serenity_ctx,
                             guild_id,
                             &expected,
@@ -386,7 +409,7 @@ pub async fn start_gather(
                             silent,
                             None,
                         ))
-                        .components(buttons(false, silent)),
+                        .components(gather_buttons(false, silent)),
                 )
                 .await;
         }
@@ -405,7 +428,7 @@ pub async fn start_gather(
         .edit(
             &serenity_ctx.http,
             EditMessage::new()
-                .embed(build_embed(
+                .embed(check_in_embed(
                     serenity_ctx,
                     guild_id,
                     &expected,
@@ -479,7 +502,7 @@ async fn handle_interaction(
                 &serenity_ctx.http,
                 CreateInteractionResponse::UpdateMessage(
                     CreateInteractionResponseMessage::new()
-                        .embed(build_embed(
+                        .embed(check_in_embed(
                             serenity_ctx,
                             guild_id,
                             expected,
@@ -489,7 +512,7 @@ async fn handle_interaction(
                             silent,
                             None,
                         ))
-                        .components(buttons(false, silent)),
+                        .components(gather_buttons(false, silent)),
                 ),
             )
             .await
@@ -519,7 +542,7 @@ async fn handle_interaction(
                 &serenity_ctx.http,
                 CreateInteractionResponse::UpdateMessage(
                     CreateInteractionResponseMessage::new()
-                        .embed(build_embed(
+                        .embed(check_in_embed(
                             serenity_ctx,
                             guild_id,
                             expected,
@@ -529,7 +552,7 @@ async fn handle_interaction(
                             new_silent,
                             None,
                         ))
-                        .components(buttons(false, new_silent)),
+                        .components(gather_buttons(false, new_silent)),
                 ),
             )
             .await
@@ -585,7 +608,7 @@ async fn handle_interaction(
                 &serenity_ctx.http,
                 CreateInteractionResponse::UpdateMessage(
                     CreateInteractionResponseMessage::new()
-                        .embed(build_embed(
+                        .embed(check_in_embed(
                             serenity_ctx,
                             guild_id,
                             expected,
@@ -595,7 +618,7 @@ async fn handle_interaction(
                             silent,
                             None,
                         ))
-                        .components(buttons(false, silent)),
+                        .components(gather_buttons(false, silent)),
                 ),
             )
             .await
@@ -608,6 +631,44 @@ async fn handle_interaction(
                 .ok();
         }
     }
+}
+
+fn check_in_embed(
+    serenity_ctx: &SerenityContext,
+    guild_id: GuildId,
+    expected: &HashSet<UserId>,
+    arrivals: &HashMap<UserId, Duration>,
+    started_at: Instant,
+    grace_ends_at: Instant,
+    silent: bool,
+    footer: Option<&str>,
+) -> serenity::all::CreateEmbed {
+    let rows: Vec<CheckInRow> = {
+        let guild = serenity_ctx.cache.guild(guild_id);
+        expected
+            .iter()
+            .map(|id| {
+                let raw = guild
+                    .as_ref()
+                    .and_then(|g| g.members.get(id))
+                    .map(|m| m.display_name().to_string())
+                    .unwrap_or_else(|| format!("User {}", id.get()));
+                CheckInRow {
+                    display_name: sanitize_name(&raw),
+                    arrived: arrivals.get(id).copied(),
+                }
+            })
+            .collect()
+    };
+
+    GatherEmbed::CheckIn {
+        rows: &rows,
+        started_at,
+        grace_ends_at,
+        silent,
+        footer,
+    }
+    .to_embed()
 }
 
 fn current_voice_members(
@@ -643,263 +704,6 @@ fn user_in_voice(
         .and_then(|g| g.voice_states.get(&user_id))
         .and_then(|vs| vs.channel_id)
         == Some(voice_channel_id)
-}
-
-fn pregather_buttons(disabled: bool) -> Vec<CreateActionRow> {
-    vec![CreateActionRow::Buttons(vec![
-        CreateButton::new(BTN_FORCE_START)
-            .label("Start now")
-            .style(ButtonStyle::Primary)
-            .disabled(disabled),
-        CreateButton::new(BTN_CANCEL)
-            .label("Cancel")
-            .style(ButtonStyle::Danger)
-            .disabled(disabled),
-    ])]
-}
-
-fn build_pregather_embed(
-    ends_at: Instant,
-    ends_at_wall: OffsetDateTime,
-    author_mention: &str,
-    schedule_label: &str,
-    footer: Option<&str>,
-) -> CreateEmbed {
-    let remaining = ends_at.saturating_duration_since(Instant::now());
-    let mut builder = CreateEmbed::new()
-        .color(Color::DARK_BLUE)
-        .title("📣  Voice Channel Gathering")
-        .description(format!(
-            "{} scheduled gathering {}.
-            \n\nTime remaining: **{}**
-            \nStarts at: `{}`
-            \n\nWhen the timer ends, everyone still in voice will be gathered automatically 
-            \n— late arrivals will be tracked.",
-            author_mention,
-            schedule_label,
-            humanize_duration(remaining),
-            format_wall_clock(ends_at_wall),
-        ));
-    if let Some(text) = footer {
-        builder = builder.footer(serenity::all::CreateEmbedFooter::new(text));
-    }
-    builder
-}
-
-pub fn humanize_duration(d: Duration) -> String {
-    let total = d.as_secs();
-    if total == 0 {
-        return "0 seconds".to_string();
-    }
-    let h = total / 3600;
-    let m = (total % 3600) / 60;
-    let s = total % 60;
-    let mut parts: Vec<String> = Vec::new();
-    if h > 0 {
-        parts.push(format!("{} {}", h, if h == 1 { "hour" } else { "hours" }));
-    }
-    if m > 0 {
-        parts.push(format!("{} {}", m, if m == 1 { "minute" } else { "minutes" }));
-    }
-    if s > 0 {
-        parts.push(format!("{} {}", s, if s == 1 { "second" } else { "seconds" }));
-    }
-    parts.join(" ")
-}
-
-fn format_wall_clock(t: OffsetDateTime) -> String {
-    format!("{:02}:{:02}:{:02}", t.hour(), t.minute(), t.second())
-}
-
-fn buttons(disabled: bool, silent: bool) -> Vec<CreateActionRow> {
-    vec![CreateActionRow::Buttons(vec![
-        CreateButton::new(BTN_HERE)
-            .label("I'm here!")
-            .style(ButtonStyle::Success)
-            .disabled(disabled),
-        CreateButton::new(BTN_FORCE_START)
-            .label("Force start")
-            .style(ButtonStyle::Primary)
-            .disabled(disabled),
-        CreateButton::new(BTN_TOGGLE_SILENT)
-            .label(if silent { "🔔 Unmute pings" } else { "🔕 Mute pings" })
-            .style(ButtonStyle::Secondary)
-            .disabled(disabled),
-        CreateButton::new(BTN_CANCEL)
-            .label("Cancel")
-            .style(ButtonStyle::Danger)
-            .disabled(disabled),
-    ])]
-}
-
-fn build_embed(
-    serenity_ctx: &SerenityContext,
-    guild_id: GuildId,
-    expected: &HashSet<UserId>,
-    arrivals: &HashMap<UserId, Duration>,
-    started_at: Instant,
-    grace_ends_at: Instant,
-    silent: bool,
-    footer: Option<&str>,
-) -> CreateEmbed {
-    let now = Instant::now();
-    let in_grace = now < grace_ends_at;
-    let grace_remaining = grace_ends_at.saturating_duration_since(now);
-
-    let names: HashMap<UserId, String> = {
-        let guild = serenity_ctx.cache.guild(guild_id);
-        expected
-            .iter()
-            .map(|id| {
-                let raw = guild
-                    .as_ref()
-                    .and_then(|g| g.members.get(id))
-                    .map(|m| m.display_name().to_string())
-                    .unwrap_or_else(|| format!("User {}", id.get()));
-                (*id, sanitize_name(&raw))
-            })
-            .collect()
-    };
-
-    let mut rows: Vec<(String, String)> = expected
-        .iter()
-        .map(|id| {
-            let name = names.get(id).cloned().unwrap_or_default();
-            let status = match arrivals.get(id) {
-                Some(d) if d.is_zero() => "ON TIME".to_string(),
-                Some(d) => format!("+{}", format_mmss(*d)),
-                None => "--:--".to_string(),
-            };
-            (name, status)
-        })
-        .collect();
-
-    rows.sort_by(|a, b| {
-        let aa = arrivals_order(arrivals, a, &names);
-        let bb = arrivals_order(arrivals, b, &names);
-        aa.cmp(&bb)
-    });
-
-    let name_width = rows
-        .iter()
-        .map(|(n, _)| n.chars().count())
-        .max()
-        .unwrap_or(4)
-        .clamp(4, MAX_NAME_LEN);
-    let status_width = rows
-        .iter()
-        .map(|(_, s)| s.chars().count())
-        .max()
-        .unwrap_or(7)
-        .max(7);
-
-    let mut table = String::new();
-    let sep = format!(
-        "+{}+{}+\n",
-        "-".repeat(name_width + 2),
-        "-".repeat(status_width + 2)
-    );
-    table.push_str(&sep);
-    table.push_str(&format!(
-        "| {:<nw$} | {:<sw$} |\n",
-        "User",
-        "Arrived",
-        nw = name_width,
-        sw = status_width
-    ));
-    table.push_str(&sep);
-    for (name, status) in &rows {
-        let trimmed: String = name.chars().take(name_width).collect();
-        table.push_str(&format!(
-            "| {:<nw$} | {:<sw$} |\n",
-            trimmed,
-            status,
-            nw = name_width,
-            sw = status_width
-        ));
-    }
-    table.push_str(&sep);
-
-    let elapsed = now.saturating_duration_since(started_at);
-    let header = if in_grace {
-        format!(
-            "Grace period: **{}** remaining (counting starts at {}).",
-            format_mmss(grace_remaining),
-            format_mmss(GRACE_PERIOD)
-        )
-    } else {
-        format!(
-            "Counting since gather started — elapsed: **{}**.\nLate arrivals are stamped with their time-from-start.",
-            format_mmss(elapsed)
-        )
-    };
-
-    let present = arrivals.len();
-    let total = expected.len();
-    let ping_status = if silent { "🔕 off" } else { "🔔 on" };
-
-    let color = if footer.is_some() {
-        Color::DARK_GREEN
-    } else if in_grace {
-        Color::DARK_BLUE
-    } else {
-        Color::ORANGE
-    };
-
-    let mut builder = CreateEmbed::new()
-        .color(color)
-        .title("📣  Voice Channel Gathering")
-        .description(format!(
-            "{}\n\nGhost pings: {}\nAttendance: **{}/{}**\n```\n{}```",
-            header, ping_status, present, total, table
-        ));
-
-    if let Some(text) = footer {
-        builder = builder.footer(serenity::all::CreateEmbedFooter::new(text));
-    }
-
-    builder
-}
-
-fn arrivals_order(
-    arrivals: &HashMap<UserId, Duration>,
-    row: &(String, String),
-    names: &HashMap<UserId, String>,
-) -> (u8, u128, String) {
-    let id_for_name = names
-        .iter()
-        .find_map(|(id, n)| if n == &row.0 { Some(*id) } else { None });
-    match id_for_name.and_then(|id| arrivals.get(&id)) {
-        Some(d) => (0, d.as_millis(), row.0.clone()),
-        None => (1, 0, row.0.clone()),
-    }
-}
-
-fn format_mmss(d: Duration) -> String {
-    let total = d.as_secs();
-    let m = total / 60;
-    let s = total % 60;
-    format!("{:02}:{:02}", m, s)
-}
-
-/// Replace emoji grapheme clusters with their `:shortcode:` then truncate
-/// to MAX_NAME_LEN so the table stays aligned in Discord's monospace font.
-fn sanitize_name(name: &str) -> String {
-    use unicode_segmentation::UnicodeSegmentation;
-
-    let mut out = String::new();
-    for g in name.graphemes(true) {
-        if let Some(emoji) = emojis::get(g) {
-            let label = emoji.shortcode().unwrap_or(emoji.name());
-            out.push(':');
-            out.push_str(label.trim_matches(':'));
-            out.push(':');
-        } else {
-            out.push_str(g);
-        }
-    }
-
-    out.chars().take(MAX_NAME_LEN).collect()
 }
 
 async fn ghost_ping(http: Arc<Http>, text_channel_id: ChannelId, users: Vec<UserId>) {
