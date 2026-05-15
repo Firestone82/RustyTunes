@@ -27,6 +27,9 @@ pub struct BreakState {
     pub original_duration: Duration,
     pub extension: Mutex<Duration>,
     pub author_mention: String,
+    /// Set when the break was started with a clock time (e.g. "17:10") rather
+    /// than a relative duration. Controls the embed wording.
+    pub clock_time_label: Option<String>,
 }
 
 impl BreakState {
@@ -65,8 +68,8 @@ pub async fn start(
     ctx: Context<'_>,
     #[description = "Break end time or duration, e.g. `5m`, `1h 30s`, `14:00`."] time: String,
 ) -> Result<(), MusicBotError> {
-    let duration = match parse_break_start_time(&time) {
-        Some(d) if d > Duration::ZERO && d <= MAX_BREAK_DURATION => d,
+    let (duration, clock_time_label) = match parse_break_start_time(&time) {
+        Some((d, label)) if d > Duration::ZERO && d <= MAX_BREAK_DURATION => (d, label),
         Some(_) => {
             CreateEmbed::new()
                 .color(Color::DARK_RED)
@@ -146,6 +149,7 @@ pub async fn start(
         original_duration: duration,
         extension: Mutex::new(Duration::ZERO),
         author_mention: author_mention.clone(),
+        clock_time_label,
     });
 
     ctx.data()
@@ -367,9 +371,9 @@ pub async fn extend(
 }
 
 /// Parse a break start time: relative duration (`5m`, `1h 30s`) or clock time
-/// (`14:00`). Clock times resolve to the duration until that time today (or
-/// tomorrow if already past).
-fn parse_break_start_time(text: &str) -> Option<Duration> {
+/// (`14:00`). Returns `(duration, clock_label)` — `clock_label` is `Some("17:10")`
+/// when a clock time was supplied, `None` for relative durations.
+fn parse_break_start_time(text: &str) -> Option<(Duration, Option<String>)> {
     let text = text.trim();
 
     // Relative duration: 10m, 1h, 30s, 1h 30m, …
@@ -377,7 +381,7 @@ fn parse_break_start_time(text: &str) -> Option<Duration> {
         if d == Duration::ZERO {
             return None;
         }
-        return Some(d);
+        return Some((d, None));
     }
 
     // Clock time: HH:MM or H:MM — break ends at that wall-clock time.
@@ -402,7 +406,8 @@ fn parse_break_start_time(text: &str) -> Option<Duration> {
         return None;
     }
 
-    Some(Duration::from_secs(until_secs))
+    let label = format!("{:02}:{:02}", hour, minute);
+    Some((Duration::from_secs(until_secs), Some(label)))
 }
 
 /// Parse a relative-only break extension: `5m`, `1h 30s`, `90s`, etc.
@@ -438,12 +443,18 @@ fn build_break_embed(state: &BreakState, footer: Option<&str>) -> CreateEmbed {
         Color::DARK_GOLD
     };
 
+    let opening = match &state.clock_time_label {
+        Some(label) => format!("{} started a break until **{}**.", state.author_mention, label),
+        None => format!(
+            "{} started a break of **{}**.",
+            state.author_mention,
+            humanize_duration(state.original_duration)
+        ),
+    };
+
     let mut description = format!(
-        "{} started a break of **{}**.\n\n\
-         Time remaining: **{}**\n\
-         Ends at: `{}`",
-        state.author_mention,
-        humanize_duration(state.original_duration),
+        "{}\n\nTime remaining: **{}**\nEnds at: `{}`",
+        opening,
         humanize_duration(remaining),
         format_wall_clock(state.ends_at_wall()),
     );
