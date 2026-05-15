@@ -183,7 +183,9 @@ impl SpotifyClient {
         if !response.status().is_success() {
             let status = response.status();
             let body = response.text().await.unwrap_or_default();
-            return Err(SpotifyError::ApiError(format!("token request failed: {status} {body}")));
+            return Err(SpotifyError::ApiError(format!(
+                "token request failed: {status} {body}"
+            )));
         }
 
         let token: TokenResponse = response.json().await?;
@@ -210,7 +212,9 @@ impl SpotifyClient {
         if !response.status().is_success() {
             let status = response.status();
             let body = response.text().await.unwrap_or_default();
-            return Err(SpotifyError::ApiError(format!("track fetch failed: {status} {body}")));
+            return Err(SpotifyError::ApiError(format!(
+                "track fetch failed: {status} {body}"
+            )));
         }
 
         Ok(response.json().await?)
@@ -235,7 +239,9 @@ impl SpotifyClient {
         let status = response.status();
         let body = response.text().await.unwrap_or_default();
         if !status.is_success() {
-            return Err(SpotifyError::ApiError(format!("playlist fetch failed: {status} {body}")));
+            return Err(SpotifyError::ApiError(format!(
+                "playlist fetch failed: {status} {body}"
+            )));
         }
 
         serde_json::from_str(&body).map_err(|e| {
@@ -251,10 +257,15 @@ impl SpotifyClient {
         let status = response.status();
         let body = response.text().await.unwrap_or_default();
         if !status.is_success() {
-            return Err(SpotifyError::ApiError(format!("playlist page failed: {status} {body}")));
+            return Err(SpotifyError::ApiError(format!(
+                "playlist page failed: {status} {body}"
+            )));
         }
         serde_json::from_str(&body).map_err(|e| {
-            tracing::error!("Failed to decode playlist page: {e}; body snippet: {}", body.chars().take(400).collect::<String>());
+            tracing::error!(
+                "Failed to decode playlist page: {e}; body snippet: {}",
+                body.chars().take(400).collect::<String>()
+            );
             SpotifyError::ApiError(format!("decode playlist page failed: {e}"))
         })
     }
@@ -284,7 +295,9 @@ impl SpotifyClient {
                 let tracks: Vec<Track> = sp_tracks.iter().map(build_track).collect();
 
                 if tracks.is_empty() {
-                    return Err(SpotifyError::PlaylistNotFound(format!("Playlist {id} has no playable tracks")));
+                    return Err(SpotifyError::PlaylistNotFound(format!(
+                        "Playlist {id} has no playable tracks"
+                    )));
                 }
 
                 Ok(SpotifySearchResult::Playlist(Playlist {
@@ -355,7 +368,10 @@ fn build_track(sp: &SpTrack) -> Track {
         .join(", ");
     let title = sp.name.clone().unwrap_or_else(|| query.clone());
     let (id, track_url) = match &sp.id {
-        Some(spotify_id) => (spotify_id.clone(), format!("https://open.spotify.com/track/{spotify_id}")),
+        Some(spotify_id) => (
+            spotify_id.clone(),
+            format!("https://open.spotify.com/track/{spotify_id}"),
+        ),
         None => (query.clone(), String::new()),
     };
     Track {

@@ -43,7 +43,10 @@ pub async fn start(ctx: Context<'_>, #[description = "Pre-gather countdown lengt
                 return Ok(());
             }
         },
-        None => (PREGATHER_DURATION, format!("in {}", humanize_duration(PREGATHER_DURATION))),
+        None => (
+            PREGATHER_DURATION,
+            format!("in {}", humanize_duration(PREGATHER_DURATION)),
+        ),
     };
 
     {

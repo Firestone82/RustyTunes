@@ -41,7 +41,10 @@ impl<'a> BreakEmbed<'a> {
             BreakEmbed::TooLong { max } => CreateEmbed::new()
                 .color(Color::DARK_RED)
                 .title("🚫  Break too long")
-                .description(format!("Maximum break length is {}.", humanize_duration(*max))),
+                .description(format!(
+                    "Maximum break length is {}.",
+                    humanize_duration(*max)
+                )),
             BreakEmbed::InvalidDuration => CreateEmbed::new()
                 .color(Color::DARK_RED)
                 .title("🚫  Invalid break duration")
@@ -67,7 +70,11 @@ impl<'a> BreakEmbed<'a> {
             BreakEmbed::ExceedsCap { new_total, cap } => CreateEmbed::new()
                 .color(Color::DARK_RED)
                 .title("🚫  Extension would exceed cap")
-                .description(format!("Total break length would be `{}`, over the {} cap.", humanize_duration(*new_total), humanize_duration(*cap),)),
+                .description(format!(
+                    "Total break length would be `{}`, over the {} cap.",
+                    humanize_duration(*new_total),
+                    humanize_duration(*cap),
+                )),
             BreakEmbed::Extended {
                 author_mention,
                 extra,
@@ -98,13 +105,25 @@ impl<'a> BreakEmbed<'a> {
 
                 let opening = match clock_time_label {
                     Some(label) => format!("{} started a break until **{}**.", author_mention, label),
-                    None => format!("{} started a break of **{}**.", author_mention, humanize_duration(*original_duration)),
+                    None => format!(
+                        "{} started a break of **{}**.",
+                        author_mention,
+                        humanize_duration(*original_duration)
+                    ),
                 };
 
-                let mut description = format!("{}\n\nTime remaining: **{}**", opening, humanize_duration(*remaining));
+                let mut description = format!(
+                    "{}\n\nTime remaining: **{}**",
+                    opening,
+                    humanize_duration(*remaining)
+                );
 
                 if *extension > Duration::ZERO {
-                    description.push_str(&format!("\nExtended by: **{}** (total **{}**)", humanize_duration(*extension), humanize_duration(*total),));
+                    description.push_str(&format!(
+                        "\nExtended by: **{}** (total **{}**)",
+                        humanize_duration(*extension),
+                        humanize_duration(*total),
+                    ));
                 }
 
                 description.push_str(

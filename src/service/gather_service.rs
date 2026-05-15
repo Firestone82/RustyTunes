@@ -57,7 +57,9 @@ pub async fn start_gather(
 
     let initial_voice_ids: Vec<UserId> = current_voice_members(serenity_ctx, guild_id, voice_channel_id, bot_id);
     if initial_voice_ids.is_empty() {
-        return Err(MusicBotError::InternalError("No one is in the voice channel.".to_string()));
+        return Err(MusicBotError::InternalError(
+            "No one is in the voice channel.".to_string(),
+        ));
     }
 
     // ── Phase 1: pre-gather countdown (skipped when pregather_duration == 0,
@@ -72,7 +74,10 @@ pub async fn start_gather(
             .collect::<Vec<_>>()
             .join(" ");
         let _ = text_channel_id
-            .send_message(&serenity_ctx.http, CreateMessage::new().content(voice_mentions))
+            .send_message(
+                &serenity_ctx.http,
+                CreateMessage::new().content(voice_mentions),
+            )
             .await;
 
         let pregather_ends_at = Instant::now() + pregather_duration;
@@ -242,7 +247,16 @@ pub async fn start_gather(
             &serenity_ctx.http,
             EditMessage::new()
                 .content("")
-                .embed(check_in_embed(serenity_ctx, guild_id, &expected, &arrivals, started_at, grace_ends_at, silent, None))
+                .embed(check_in_embed(
+                    serenity_ctx,
+                    guild_id,
+                    &expected,
+                    &arrivals,
+                    started_at,
+                    grace_ends_at,
+                    silent,
+                    None,
+                ))
                 .components(gather_buttons(false, silent)),
         )
         .await;
@@ -337,7 +351,11 @@ pub async fn start_gather(
                 .copied()
                 .collect();
             if !missing.is_empty() {
-                tokio::spawn(ghost_ping(serenity_ctx.http.clone(), text_channel_id, missing));
+                tokio::spawn(ghost_ping(
+                    serenity_ctx.http.clone(),
+                    text_channel_id,
+                    missing,
+                ));
             }
         }
 
@@ -347,7 +365,16 @@ pub async fn start_gather(
                 .edit(
                     &serenity_ctx.http,
                     EditMessage::new()
-                        .embed(check_in_embed(serenity_ctx, guild_id, &expected, &arrivals, started_at, grace_ends_at, silent, None))
+                        .embed(check_in_embed(
+                            serenity_ctx,
+                            guild_id,
+                            &expected,
+                            &arrivals,
+                            started_at,
+                            grace_ends_at,
+                            silent,
+                            None,
+                        ))
                         .components(gather_buttons(false, silent)),
                 )
                 .await;
@@ -367,7 +394,16 @@ pub async fn start_gather(
         .edit(
             &serenity_ctx.http,
             EditMessage::new()
-                .embed(check_in_embed(serenity_ctx, guild_id, &expected, &arrivals, started_at, grace_ends_at, silent, footer))
+                .embed(check_in_embed(
+                    serenity_ctx,
+                    guild_id,
+                    &expected,
+                    &arrivals,
+                    started_at,
+                    grace_ends_at,
+                    silent,
+                    footer,
+                ))
                 .components(Vec::new()),
         )
         .await;
@@ -430,7 +466,16 @@ async fn handle_interaction(
                 &serenity_ctx.http,
                 CreateInteractionResponse::UpdateMessage(
                     CreateInteractionResponseMessage::new()
-                        .embed(check_in_embed(serenity_ctx, guild_id, expected, arrivals, started_at, *grace_ends_at, silent, None))
+                        .embed(check_in_embed(
+                            serenity_ctx,
+                            guild_id,
+                            expected,
+                            arrivals,
+                            started_at,
+                            *grace_ends_at,
+                            silent,
+                            None,
+                        ))
                         .components(gather_buttons(false, silent)),
                 ),
             )
@@ -461,7 +506,16 @@ async fn handle_interaction(
                 &serenity_ctx.http,
                 CreateInteractionResponse::UpdateMessage(
                     CreateInteractionResponseMessage::new()
-                        .embed(check_in_embed(serenity_ctx, guild_id, expected, arrivals, started_at, *grace_ends_at, new_silent, None))
+                        .embed(check_in_embed(
+                            serenity_ctx,
+                            guild_id,
+                            expected,
+                            arrivals,
+                            started_at,
+                            *grace_ends_at,
+                            new_silent,
+                            None,
+                        ))
                         .components(gather_buttons(false, new_silent)),
                 ),
             )
@@ -513,7 +567,16 @@ async fn handle_interaction(
                 &serenity_ctx.http,
                 CreateInteractionResponse::UpdateMessage(
                     CreateInteractionResponseMessage::new()
-                        .embed(check_in_embed(serenity_ctx, guild_id, expected, arrivals, started_at, *grace_ends_at, silent, None))
+                        .embed(check_in_embed(
+                            serenity_ctx,
+                            guild_id,
+                            expected,
+                            arrivals,
+                            started_at,
+                            *grace_ends_at,
+                            silent,
+                            None,
+                        ))
                         .components(gather_buttons(false, silent)),
                 ),
             )

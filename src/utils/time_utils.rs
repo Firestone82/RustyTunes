@@ -36,10 +36,18 @@ pub fn humanize_duration(d: Duration) -> String {
         parts.push(format!("{} {}", h, if h == 1 { "hour" } else { "hours" }));
     }
     if m > 0 {
-        parts.push(format!("{} {}", m, if m == 1 { "minute" } else { "minutes" }));
+        parts.push(format!(
+            "{} {}",
+            m,
+            if m == 1 { "minute" } else { "minutes" }
+        ));
     }
     if s > 0 {
-        parts.push(format!("{} {}", s, if s == 1 { "second" } else { "seconds" }));
+        parts.push(format!(
+            "{} {}",
+            s,
+            if s == 1 { "second" } else { "seconds" }
+        ));
     }
     parts.join(" ")
 }
@@ -56,7 +64,15 @@ pub fn format_mmss(d: Duration) -> String {
 }
 
 pub fn format_time(t: OffsetDateTime) -> String {
-    format!("{:04}-{:02}-{:02} {:02}:{:02}:{:02}", t.year(), t.month() as u8, t.day(), t.hour(), t.minute(), t.second())
+    format!(
+        "{:04}-{:02}-{:02} {:02}:{:02}:{:02}",
+        t.year(),
+        t.month() as u8,
+        t.day(),
+        t.hour(),
+        t.minute(),
+        t.second()
+    )
 }
 
 fn parse_offset_secs(text: &str) -> Option<u64> {

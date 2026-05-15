@@ -44,10 +44,12 @@ async fn wakeup_target(ctx: Context<'_>, target: Member, count: Option<usize>) -
                 .await
                 .is_err()
             {
-                BotEmbed::Error(MusicBotError::InternalError("Failed to move user to AFK channel".to_string()))
-                    .to_embed()
-                    .send_context(ctx, true, Some(30))
-                    .await?;
+                BotEmbed::Error(MusicBotError::InternalError(
+                    "Failed to move user to AFK channel".to_string(),
+                ))
+                .to_embed()
+                .send_context(ctx, true, Some(30))
+                .await?;
                 return Ok(());
             }
 
@@ -58,10 +60,12 @@ async fn wakeup_target(ctx: Context<'_>, target: Member, count: Option<usize>) -
                 .await
                 .is_err()
             {
-                BotEmbed::Error(MusicBotError::InternalError("Failed to move user back to original channel".to_string()))
-                    .to_embed()
-                    .send_context(ctx, true, Some(30))
-                    .await?;
+                BotEmbed::Error(MusicBotError::InternalError(
+                    "Failed to move user back to original channel".to_string(),
+                ))
+                .to_embed()
+                .send_context(ctx, true, Some(30))
+                .await?;
                 return Ok(());
             }
         }

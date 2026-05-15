@@ -17,7 +17,9 @@ pub async fn normalize(ctx: Context<'_>, state: Option<String>) -> Result<(), Mu
             "on" | "true" | "1" | "yes" | "y" => true,
             "off" | "false" | "0" | "no" | "n" => false,
             _ => {
-                return Err(MusicBotError::InternalError(format!("Unknown normalize state `{s}`. Use `on` or `off`.")));
+                return Err(MusicBotError::InternalError(format!(
+                    "Unknown normalize state `{s}`. Use `on` or `off`."
+                )));
             }
         },
     };
@@ -30,7 +32,11 @@ pub async fn normalize(ctx: Context<'_>, state: Option<String>) -> Result<(), Mu
         // Turning on: schedule a measurement if we have a path and a handle.
         // The async helper bails if the track changes or the toggle flips
         // back off before the measurement returns.
-        if let (Some(handle), Some(path), Some(track_id)) = (player.track_handle.clone(), player.current_source_path.clone(), player.current_track.as_ref().map(|t| t.id.clone())) {
+        if let (Some(handle), Some(path), Some(track_id)) = (
+            player.track_handle.clone(),
+            player.current_source_path.clone(),
+            player.current_track.as_ref().map(|t| t.id.clone()),
+        ) {
             player::schedule_normalization_apply(player_arc.clone(), handle, path, track_id);
         }
     } else {

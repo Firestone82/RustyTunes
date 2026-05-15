@@ -81,7 +81,14 @@ pub async fn you(
 
     let mut notifier: RwLockWriteGuard<Notifier> = ctx.data().notifier.write().await;
     let created: MessageNotify = notifier
-        .add_message_for_user(guild_id, ctx.channel_id(), ctx.author().id, None, notify_at, Some(stored_note))
+        .add_message_for_user(
+            guild_id,
+            ctx.channel_id(),
+            ctx.author().id,
+            None,
+            notify_at,
+            Some(stored_note),
+        )
         .await?;
     drop(notifier);
 

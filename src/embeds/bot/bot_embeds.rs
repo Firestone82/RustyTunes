@@ -19,7 +19,11 @@ impl<'a> BotEmbed<'a> {
             BotEmbed::CurrentUserNotInSharedChannel(channel_id) => CreateEmbed::new()
                 .color(Color::DARK_RED)
                 .title("🚫  User not in same voice channel")
-                .field("Bot channel:", format!("<#{}> - click to join", channel_id), true)
+                .field(
+                    "Bot channel:",
+                    format!("<#{}> - click to join", channel_id),
+                    true,
+                )
                 .description("You need to be in the same voice channel as the bot to use this command."),
             BotEmbed::TargetUserNotInVoiceChannel => CreateEmbed::new()
                 .color(Color::DARK_RED)

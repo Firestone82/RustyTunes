@@ -123,7 +123,9 @@ impl YoutubeClient {
             .collect::<Result<Vec<Track>, SearchError>>()?;
 
         if tracks.is_empty() {
-            return Err(SearchError::VideoNotFound(format!("No usable results for: {url}")));
+            return Err(SearchError::VideoNotFound(format!(
+                "No usable results for: {url}"
+            )));
         }
 
         match max_tracks {
@@ -147,7 +149,10 @@ impl YoutubeClient {
 
         if let Some(playlist) = response.items {
             if playlist.is_empty() {
-                return Err(SearchError::PlaylistNotFound(format!("No playlist found for url: {}", url)));
+                return Err(SearchError::PlaylistNotFound(format!(
+                    "No playlist found for url: {}",
+                    url
+                )));
             }
 
             let snippet = playlist.first().unwrap().snippet.as_ref().unwrap();
@@ -209,7 +214,10 @@ impl YoutubeClient {
                 tracks,
             }))
         } else {
-            Err(SearchError::PlaylistNotFound(format!("No playlist found for url: {}", url)))
+            Err(SearchError::PlaylistNotFound(format!(
+                "No playlist found for url: {}",
+                url
+            )))
         }
     }
 
@@ -284,7 +292,9 @@ impl YoutubeClient {
         let _ = child.wait().await;
 
         if tracks.is_empty() {
-            return Err(SearchError::PlaylistNotFound(format!("No tracks found in playlist: {url}")));
+            return Err(SearchError::PlaylistNotFound(format!(
+                "No tracks found in playlist: {url}"
+            )));
         }
 
         if playlist_title.is_empty() {

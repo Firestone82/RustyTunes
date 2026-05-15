@@ -38,7 +38,10 @@ impl<'a> QueueEmbed<'a> {
                     .color(Color::DARK_BLUE)
                     .title("📜  Queue")
                     .description("Upcoming tracks:")
-                    .footer(CreateEmbedFooter::new(format!("Queue length: {}", queue.len())));
+                    .footer(CreateEmbedFooter::new(format!(
+                        "Queue length: {}",
+                        queue.len()
+                    )));
 
                 let page: usize = *page.max(&1);
                 let mut start: usize = (page - 1) * 10;
@@ -56,7 +59,15 @@ impl<'a> QueueEmbed<'a> {
                     } else {
                         format!("{}\nAdded by: {}", location, track.added_by)
                     };
-                    embed = embed.field(format!("{}  {}", string_utils::number_to_emoji(index + start + 1), track.metadata.title), value, false);
+                    embed = embed.field(
+                        format!(
+                            "{}  {}",
+                            string_utils::number_to_emoji(index + start + 1),
+                            track.metadata.title
+                        ),
+                        value,
+                        false,
+                    );
                 }
 
                 embed
@@ -64,7 +75,11 @@ impl<'a> QueueEmbed<'a> {
             QueueEmbed::TrackAdded(track) => {
                 let mut embed = CreateEmbed::new()
                     .color(Color::DARK_GREEN)
-                    .author(CreateEmbedAuthor::new(format!("🎵  Track added to queue  ·  {} {}", track.source.emoji(), track.source.label())))
+                    .author(CreateEmbedAuthor::new(format!(
+                        "🎵  Track added to queue  ·  {} {}",
+                        track.source.emoji(),
+                        track.source.label()
+                    )))
                     .title(format!("**{}**", track.metadata.title));
                 if !matches!(track.source, TrackSource::Local(_)) && !track.metadata.track_url.is_empty() {
                     embed = embed.url(track.metadata.track_url.clone());
@@ -79,7 +94,10 @@ impl<'a> QueueEmbed<'a> {
                     .url(playlist.playlist_url.clone())
                     .description(playlist.description.clone());
 
-                embed.footer(CreateEmbedFooter::new(format!("Playlist length: {}", playlist.tracks.len())))
+                embed.footer(CreateEmbedFooter::new(format!(
+                    "Playlist length: {}",
+                    playlist.tracks.len()
+                )))
             }
             QueueEmbed::Skipped(amount) => CreateEmbed::new()
                 .color(Color::DARK_BLUE)
@@ -91,7 +109,10 @@ impl<'a> QueueEmbed<'a> {
                     _ if track.metadata.track_url.is_empty() => {
                         format!("**{}**", track.metadata.title)
                     }
-                    _ => format!("**[{}]({})**", track.metadata.title, track.metadata.track_url),
+                    _ => format!(
+                        "**[{}]({})**",
+                        track.metadata.title, track.metadata.track_url
+                    ),
                 };
                 CreateEmbed::new()
                     .color(Color::DARK_GREEN)

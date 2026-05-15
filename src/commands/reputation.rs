@@ -103,9 +103,15 @@ async fn process_rep(ctx: Context<'_>, user: User, reason: String, rep_value: i6
         return Ok(None);
     }
 
-    let rep = apply_rep_db(&ctx.data().database_pool, &giver_id, &receiver_id, rep_value, &reason)
-        .await
-        .map_err(|e| MusicBotError::InternalError(e.to_string()))?;
+    let rep = apply_rep_db(
+        &ctx.data().database_pool,
+        &giver_id,
+        &receiver_id,
+        rep_value,
+        &reason,
+    )
+    .await
+    .map_err(|e| MusicBotError::InternalError(e.to_string()))?;
 
     Ok(Some(rep))
 }

@@ -13,7 +13,10 @@ fn track_description(track: &Track) -> String {
         _ if track.metadata.track_url.is_empty() => {
             format!("**{}**", track.metadata.title)
         }
-        _ => format!("**[{}]({})**", track.metadata.title, track.metadata.track_url),
+        _ => format!(
+            "**[{}]({})**",
+            track.metadata.title, track.metadata.track_url
+        ),
     }
 }
 
@@ -67,7 +70,10 @@ impl<'a> PlayerEmbed<'a> {
                     .field("Author", author, true)
                     .field("Source", source, true);
                 if !track.added_by.is_empty() {
-                    embed = embed.footer(CreateEmbedFooter::new(format!("Added by {}", track.added_by)));
+                    embed = embed.footer(CreateEmbedFooter::new(format!(
+                        "Added by {}",
+                        track.added_by
+                    )));
                 }
                 embed
             }
@@ -118,9 +124,15 @@ impl<'a> PlayerEmbed<'a> {
             }
             PlayerEmbed::SilentState(on) => {
                 let (title, body) = if *on {
-                    ("🔕  Silent mode on", "Now Playing announcements are **suppressed** for this session.")
+                    (
+                        "🔕  Silent mode on",
+                        "Now Playing announcements are **suppressed** for this session.",
+                    )
                 } else {
-                    ("🔔  Silent mode off", "Now Playing announcements are back on for this session.")
+                    (
+                        "🔔  Silent mode off",
+                        "Now Playing announcements are back on for this session.",
+                    )
                 };
                 CreateEmbed::new()
                     .color(Color::DARK_BLUE)
@@ -142,7 +154,11 @@ impl<'a> PlayerEmbed<'a> {
                     .description("Choose a track to add to the queue:");
 
                 for (index, track) in tracks.iter().enumerate() {
-                    embed = embed.field(format!("{}.  {}", index + 1, track.metadata.title), track.metadata.track_url.clone(), false);
+                    embed = embed.field(
+                        format!("{}.  {}", index + 1, track.metadata.title),
+                        track.metadata.track_url.clone(),
+                        false,
+                    );
                 }
 
                 embed
@@ -185,7 +201,11 @@ impl<'a> PlayerEmbed<'a> {
                         }
                         _ => track.metadata.track_url.clone(),
                     };
-                    embed = embed.field(format!("{}. {}", i + 1, track.metadata.title), location, false);
+                    embed = embed.field(
+                        format!("{}. {}", i + 1, track.metadata.title),
+                        location,
+                        false,
+                    );
                 }
                 embed
             }
@@ -205,7 +225,11 @@ impl<'a> PlayerEmbed<'a> {
                 .color(Color::DARK_RED)
                 .title("🚫  Download failed")
                 .description(reason.clone()),
-            PlayerEmbed::LocalFiles(files) => local_listing_embed("📁  Local library", "Saved tracks (use `!local play <name>`):", files),
+            PlayerEmbed::LocalFiles(files) => local_listing_embed(
+                "📁  Local library",
+                "Saved tracks (use `!local play <name>`):",
+                files,
+            ),
             PlayerEmbed::LocalEmpty => CreateEmbed::new()
                 .color(Color::DARK_GOLD)
                 .title("📁  Local library empty")
@@ -222,9 +246,21 @@ impl<'a> PlayerEmbed<'a> {
                 .color(Color::DARK_GREEN)
                 .title("✏️  Renamed")
                 .description(format!("**{}** → **{}**", old, new)),
-            PlayerEmbed::LocalAmbiguous(files) => local_listing_embed("🔎  Multiple matches", "Be more specific — these all matched:", files),
-            PlayerEmbed::LocalPickToPlay(files) => local_listing_embed("📁  Pick a track to play", "Multiple matches — choose one:", files),
-            PlayerEmbed::LocalPickToRemove(files) => local_listing_embed("🗑️  Pick a track to remove", "Multiple matches — choose one to delete:", files),
+            PlayerEmbed::LocalAmbiguous(files) => local_listing_embed(
+                "🔎  Multiple matches",
+                "Be more specific — these all matched:",
+                files,
+            ),
+            PlayerEmbed::LocalPickToPlay(files) => local_listing_embed(
+                "📁  Pick a track to play",
+                "Multiple matches — choose one:",
+                files,
+            ),
+            PlayerEmbed::LocalPickToRemove(files) => local_listing_embed(
+                "🗑️  Pick a track to remove",
+                "Multiple matches — choose one to delete:",
+                files,
+            ),
         }
     }
 }

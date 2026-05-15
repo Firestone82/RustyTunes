@@ -38,7 +38,9 @@ pub async fn save_to_library(ctx: Context<'_>, source: &DownloadSource, name_ove
     let url = source.url();
 
     if !(url.starts_with("http://") || url.starts_with("https://")) {
-        return Err(MusicBotError::InternalError("URL must start with http:// or https://".to_string()));
+        return Err(MusicBotError::InternalError(
+            "URL must start with http:// or https://".to_string(),
+        ));
     }
 
     let dir = local_client::ensure_downloads_dir()
@@ -54,13 +56,18 @@ pub async fn save_to_library(ctx: Context<'_>, source: &DownloadSource, name_ove
         .map_err(|e| MusicBotError::InternalError(format!("Request failed: {e}")))?;
 
     if !response.status().is_success() {
-        return Err(MusicBotError::InternalError(format!("Server returned {}", response.status())));
+        return Err(MusicBotError::InternalError(format!(
+            "Server returned {}",
+            response.status()
+        )));
     }
 
     let auto_name = match source {
         DownloadSource::Attachment { filename, content_type, .. } => {
             if !is_audio(filename, content_type.as_deref()) {
-                return Err(MusicBotError::InternalError(format!("Attachment `{filename}` doesn't look like an audio file.")));
+                return Err(MusicBotError::InternalError(format!(
+                    "Attachment `{filename}` doesn't look like an audio file."
+                )));
             }
             let mut name = local_client::sanitize_filename(filename);
             // Discord allows audio files without recognized extensions; add

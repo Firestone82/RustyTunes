@@ -143,20 +143,40 @@ fn build_check_in_embed(rows: &[CheckInRow], started_at: Instant, grace_ends_at:
         .unwrap_or(7)
         .max(7);
 
-    let sep = format!("+{}+{}+\n", "-".repeat(name_width + 2), "-".repeat(status_width + 2));
+    let sep = format!(
+        "+{}+{}+\n",
+        "-".repeat(name_width + 2),
+        "-".repeat(status_width + 2)
+    );
     let mut table = String::new();
     table.push_str(&sep);
-    table.push_str(&format!("| {:<nw$} | {:<sw$} |\n", "User", "Arrived", nw = name_width, sw = status_width));
+    table.push_str(&format!(
+        "| {:<nw$} | {:<sw$} |\n",
+        "User",
+        "Arrived",
+        nw = name_width,
+        sw = status_width
+    ));
     table.push_str(&sep);
     for (name, status) in &cells {
         let trimmed: String = name.chars().take(name_width).collect();
-        table.push_str(&format!("| {:<nw$} | {:<sw$} |\n", trimmed, status, nw = name_width, sw = status_width));
+        table.push_str(&format!(
+            "| {:<nw$} | {:<sw$} |\n",
+            trimmed,
+            status,
+            nw = name_width,
+            sw = status_width
+        ));
     }
     table.push_str(&sep);
 
     let elapsed = now.saturating_duration_since(started_at);
     let header = if in_grace {
-        format!("Grace period: **{}** remaining (counting starts at {}).", format_mmss(grace_remaining), format_mmss(GRACE_PERIOD))
+        format!(
+            "Grace period: **{}** remaining (counting starts at {}).",
+            format_mmss(grace_remaining),
+            format_mmss(GRACE_PERIOD)
+        )
     } else {
         format!(
             "Counting since gather started — elapsed: **{}**.\nLate arrivals are stamped with their time-from-start.",
@@ -179,7 +199,10 @@ fn build_check_in_embed(rows: &[CheckInRow], started_at: Instant, grace_ends_at:
     let mut builder = CreateEmbed::new()
         .color(color)
         .title("📣  Voice Channel Gathering")
-        .description(format!("{}\n\nGhost pings: {}\nAttendance: **{}/{}**\n```\n{}```", header, ping_status, present, total, table));
+        .description(format!(
+            "{}\n\nGhost pings: {}\nAttendance: **{}/{}**\n```\n{}```",
+            header, ping_status, present, total, table
+        ));
 
     if let Some(text) = footer {
         builder = builder.footer(CreateEmbedFooter::new(text));

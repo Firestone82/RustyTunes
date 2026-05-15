@@ -46,7 +46,12 @@ impl EventHandler for QueueHandler {
                 if !player.silent {
                     let _ = PlayerEmbed::NowPlaying(&next_track)
                         .to_embed()
-                        .send_channel(self.serenity_ctx.http.clone(), &self.guild_channel, Some(30), None)
+                        .send_channel(
+                            self.serenity_ctx.http.clone(),
+                            &self.guild_channel,
+                            Some(30),
+                            None,
+                        )
                         .await
                         .map_err(|error| {
                             tracing::error!("Error sending now playing embed: {:?}", error);
@@ -68,11 +73,20 @@ impl EventHandler for QueueHandler {
                 match source_path {
                     Some(path) => {
                         if player.should_normalize() {
-                            player::schedule_normalization_apply(self.player.clone(), track_handle.clone(), path, next_track.id.clone());
+                            player::schedule_normalization_apply(
+                                self.player.clone(),
+                                track_handle.clone(),
+                                path,
+                                next_track.id.clone(),
+                            );
                         }
                     }
                     None => {
-                        player::spawn_cache_and_apply(next_track.clone(), self.player.clone(), track_handle.clone());
+                        player::spawn_cache_and_apply(
+                            next_track.clone(),
+                            self.player.clone(),
+                            track_handle.clone(),
+                        );
                     }
                 }
 

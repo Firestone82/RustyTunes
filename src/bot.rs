@@ -139,7 +139,12 @@ impl MusicBotClient {
                 ],
                 pre_command: |ctx| {
                     Box::pin(async move {
-                        tracing::info!("CMD: {} is executing {} ({})", ctx.author().name, ctx.command().name, ctx.invocation_string());
+                        tracing::info!(
+                            "CMD: {} is executing {} ({})",
+                            ctx.author().name,
+                            ctx.command().name,
+                            ctx.invocation_string()
+                        );
                     })
                 },
                 post_command: |ctx| {
@@ -193,13 +198,17 @@ impl MusicBotClient {
                             MusicBotError::InternalError(e.to_string())
                         })?;
 
-                    let _ = sqlx::query!("INSERT OR IGNORE INTO guilds (guild_id, volume) VALUES ($1, $2)", guild_id_map, 0.5)
-                        .execute(&*database)
-                        .await
-                        .map_err(|e| {
-                            tracing::error!("Failed to insert guild into database: {:?}", e);
-                            MusicBotError::InternalError(e.to_string())
-                        })?;
+                    let _ = sqlx::query!(
+                        "INSERT OR IGNORE INTO guilds (guild_id, volume) VALUES ($1, $2)",
+                        guild_id_map,
+                        0.5
+                    )
+                    .execute(&*database)
+                    .await
+                    .map_err(|e| {
+                        tracing::error!("Failed to insert guild into database: {:?}", e);
+                        MusicBotError::InternalError(e.to_string())
+                    })?;
 
                     let player: Player = Player::new(guild_id, database.clone()).await;
                     let player_handle: Arc<RwLock<Player>> = Arc::new(RwLock::new(player));

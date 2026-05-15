@@ -98,7 +98,14 @@ pub async fn start(ctx: Context<'_>, #[description = "Break end time or duration
         .await
         .insert(guild_id, Arc::clone(&state));
 
-    let cancelled = break_service::run_break(ctx.serenity_context(), guild_id, text_channel_id, voice_channel_id, Arc::clone(&state)).await?;
+    let cancelled = break_service::run_break(
+        ctx.serenity_context(),
+        guild_id,
+        text_channel_id,
+        voice_channel_id,
+        Arc::clone(&state),
+    )
+    .await?;
 
     // Drop the break state before handing off to the gather flow.
     ctx.data().breaks.write().await.remove(&guild_id);

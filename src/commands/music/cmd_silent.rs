@@ -16,7 +16,9 @@ pub async fn silent(ctx: Context<'_>, state: Option<String>) -> Result<(), Music
             "on" | "true" | "1" | "yes" | "y" => true,
             "off" | "false" | "0" | "no" | "n" => false,
             _ => {
-                return Err(MusicBotError::InternalError(format!("Unknown silent state `{s}`. Use `on` or `off`.")));
+                return Err(MusicBotError::InternalError(format!(
+                    "Unknown silent state `{s}`. Use `on` or `off`."
+                )));
             }
         },
     };

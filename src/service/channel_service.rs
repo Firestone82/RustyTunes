@@ -65,7 +65,9 @@ pub async fn leave_channel(ctx: Context<'_>) -> Result<(), MusicBotError> {
 
         if let Err(error) = manager.remove(guild_id).await {
             tracing::error!("Could not remove songbird call: {:?}", error);
-            return Err(MusicBotError::InternalError("Could not leave voice channel".to_owned()));
+            return Err(MusicBotError::InternalError(
+                "Could not leave voice channel".to_owned(),
+            ));
         }
     } else {
         tracing::debug!("/leave called but no active songbird call; treating as no-op");

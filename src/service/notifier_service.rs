@@ -144,8 +144,15 @@ impl Notifier {
             _ => None,
         };
 
-        self.add_message_for_user(guild_id, ctx.channel_id(), ctx.author().id, source_message_id, notify_at, note)
-            .await
+        self.add_message_for_user(
+            guild_id,
+            ctx.channel_id(),
+            ctx.author().id,
+            source_message_id,
+            notify_at,
+            note,
+        )
+        .await
     }
 
     pub async fn add_message_for_user(
@@ -244,13 +251,20 @@ impl Notifier {
                 Ok(ch) => match ch.guild() {
                     Some(gc) => gc,
                     None => {
-                        tracing::error!("Notification channel {} is not a guild channel", message.channel_id);
+                        tracing::error!(
+                            "Notification channel {} is not a guild channel",
+                            message.channel_id
+                        );
                         self.drop_notification(message.id).await;
                         continue;
                     }
                 },
                 Err(e) => {
-                    tracing::error!("Failed to fetch notification channel {}: {:?}", message.channel_id, e);
+                    tracing::error!(
+                        "Failed to fetch notification channel {}: {:?}",
+                        message.channel_id,
+                        e
+                    );
                     self.drop_notification(message.id).await;
                     continue;
                 }

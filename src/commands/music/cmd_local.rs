@@ -178,7 +178,14 @@ pub async fn play(
     }
 
     let display: Vec<PathBuf> = matches.into_iter().take(PICKER_LIMIT).collect();
-    let picked = match pick_path(ctx, &display, "play", PlayerEmbed::LocalPickToPlay(&display)).await? {
+    let picked = match pick_path(
+        ctx,
+        &display,
+        "play",
+        PlayerEmbed::LocalPickToPlay(&display),
+    )
+    .await?
+    {
         Some(p) => p,
         None => return Ok(()),
     };
@@ -218,7 +225,14 @@ pub async fn remove(
         matches.into_iter().next().unwrap()
     } else {
         let display: Vec<PathBuf> = matches.into_iter().take(PICKER_LIMIT).collect();
-        match pick_path(ctx, &display, "remove", PlayerEmbed::LocalPickToRemove(&display)).await? {
+        match pick_path(
+            ctx,
+            &display,
+            "remove",
+            PlayerEmbed::LocalPickToRemove(&display),
+        )
+        .await?
+        {
             Some(p) => p,
             None => return Ok(()),
         }
@@ -397,7 +411,14 @@ async fn enqueue_path(ctx: Context<'_>, path: PathBuf) -> Result<(), MusicBotErr
 
 /// Show the path picker and return the chosen path. `None` on cancel/timeout.
 async fn pick_path(ctx: Context<'_>, files: &[PathBuf], id_prefix: &str, embed: PlayerEmbed<'_>) -> Result<Option<PathBuf>, MusicBotError> {
-    let outcome = picker_service::show_picker(ctx, files.len(), id_prefix, embed.to_embed(), "Only the person who ran this command can make a selection.").await?;
+    let outcome = picker_service::show_picker(
+        ctx,
+        files.len(),
+        id_prefix,
+        embed.to_embed(),
+        "Only the person who ran this command can make a selection.",
+    )
+    .await?;
 
     match outcome {
         PickerOutcome::Selected(i) => Ok(files.get(i).cloned()),

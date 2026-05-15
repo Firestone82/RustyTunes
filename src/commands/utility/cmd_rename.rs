@@ -59,7 +59,10 @@ async fn do_rename(ctx: Context<'_>, user: User, new_name: Option<String>) -> Re
         CreateEmbed::new()
             .color(Color::DARK_RED)
             .title("🚫  Insufficient role")
-            .description(format!("You can't rename {} — their top role outranks yours.", target.mention()))
+            .description(format!(
+                "You can't rename {} — their top role outranks yours.",
+                target.mention()
+            ))
             .send_context(ctx, true, Some(30))
             .await?;
         return Ok(());
@@ -93,7 +96,10 @@ async fn do_rename(ctx: Context<'_>, user: User, new_name: Option<String>) -> Re
         CreateEmbed::new()
             .color(Color::DARK_RED)
             .title("🚫  Rename failed")
-            .description(format!("Discord rejected the rename: `{e}`.\nThe bot's role probably sits below {}'s top role.", target.mention()))
+            .description(format!(
+                "Discord rejected the rename: `{e}`.\nThe bot's role probably sits below {}'s top role.",
+                target.mention()
+            ))
             .send_context(ctx, true, Some(30))
             .await?;
         return Ok(());

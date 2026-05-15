@@ -50,15 +50,24 @@ impl ReputationEmbed<'_> {
                     false => {
                         for rep in reps.iter() {
                             embed = embed
-                                .field("Amount", if rep.rep_value == 1 { "+1 💚" } else { "-1 💔" }, true)
+                                .field(
+                                    "Amount",
+                                    if rep.rep_value == 1 { "+1 💚" } else { "-1 💔" },
+                                    true,
+                                )
                                 .field("Given by", format!("<@{}>", rep.giver_id), true)
                                 .field("Date", format!("`{}`", rep.created_at.date()), true)
                                 .field("Reason", format!(">>> {}", rep.reason), false);
                         }
-                        embed = embed.footer(CreateEmbedFooter::new(format!("📊 Overall rep: {} | 📑 Logs: {}", calculated_rep, rep_count,)));
+                        embed = embed.footer(CreateEmbedFooter::new(format!(
+                            "📊 Overall rep: {} | 📑 Logs: {}",
+                            calculated_rep, rep_count,
+                        )));
                     }
                     true => {
-                        embed = embed.footer(CreateEmbedFooter::new("This user has no reputation logs yet."));
+                        embed = embed.footer(CreateEmbedFooter::new(
+                            "This user has no reputation logs yet.",
+                        ));
                     }
                 }
                 embed

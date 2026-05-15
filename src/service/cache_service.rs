@@ -140,7 +140,12 @@ pub async fn cache_track(track: &Track) -> std::io::Result<PathBuf> {
         return Ok(existing);
     }
 
-    let dir = cache_dir_for(&track.source).ok_or_else(|| std::io::Error::new(std::io::ErrorKind::InvalidInput, "track has no cache directory"))?;
+    let dir = cache_dir_for(&track.source).ok_or_else(|| {
+        std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            "track has no cache directory",
+        )
+    })?;
     ensure_dir(&dir).await?;
 
     let input_url = track
@@ -174,7 +179,10 @@ pub async fn cache_track(track: &Track) -> std::io::Result<PathBuf> {
             .rev()
             .collect::<Vec<_>>()
             .join(" | ");
-        return Err(std::io::Error::other(format!("yt-dlp failed ({}): {}", output.status, tail)));
+        return Err(std::io::Error::other(format!(
+            "yt-dlp failed ({}): {}",
+            output.status, tail
+        )));
     }
 
     // yt-dlp picked the extension based on whatever stream it grabbed; find
@@ -200,7 +208,9 @@ pub async fn cache_track(track: &Track) -> std::io::Result<PathBuf> {
         return Ok(final_path);
     }
 
-    Err(std::io::Error::other("yt-dlp reported success but produced no output file"))
+    Err(std::io::Error::other(
+        "yt-dlp reported success but produced no output file",
+    ))
 }
 
 /// Delete any leftover `<stem>.part.*` files in `dir`. Called when yt-dlp

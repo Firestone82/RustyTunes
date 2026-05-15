@@ -94,7 +94,11 @@ impl Player {
     }
 
     pub async fn add_playlist_to_queue(&mut self, ctx: Context<'_>, playlist: Playlist, top: bool) -> Result<(), PlaybackError> {
-        tracing::info!("Adding playlist to queue (top={}), tracks: {}", top, playlist.tracks.len());
+        tracing::info!(
+            "Adding playlist to queue (top={}), tracks: {}",
+            top,
+            playlist.tracks.len()
+        );
 
         self.inactivity_cancel.store(true, Ordering::SeqCst);
         if top {
@@ -108,7 +112,11 @@ impl Player {
     }
 
     pub async fn add_track_to_queue(&mut self, ctx: Context<'_>, track: Track, top: bool) -> Result<(), PlaybackError> {
-        tracing::info!("Adding track to queue (top={}): {}", top, track.metadata.track_url);
+        tracing::info!(
+            "Adding track to queue (top={}): {}",
+            top,
+            track.metadata.track_url
+        );
 
         self.inactivity_cancel.store(true, Ordering::SeqCst);
         if top {
@@ -234,11 +242,20 @@ impl Player {
                 match source_path {
                     Some(path) => {
                         if self.should_normalize() {
-                            schedule_normalization_apply(ctx.data().player.clone(), track_handle.clone(), path, next_track.id.clone());
+                            schedule_normalization_apply(
+                                ctx.data().player.clone(),
+                                track_handle.clone(),
+                                path,
+                                next_track.id.clone(),
+                            );
                         }
                     }
                     None => {
-                        spawn_cache_and_apply(next_track.clone(), ctx.data().player.clone(), track_handle.clone());
+                        spawn_cache_and_apply(
+                            next_track.clone(),
+                            ctx.data().player.clone(),
+                            track_handle.clone(),
+                        );
                     }
                 }
 
@@ -314,10 +331,14 @@ impl Player {
 
         let guild_id_map: i64 = self.guild_id.get() as i64;
 
-        sqlx::query!("UPDATE guilds SET volume = $1 WHERE guild_id = $2", volume, guild_id_map)
-            .execute(&*self.database)
-            .await
-            .expect("TODO: panic message");
+        sqlx::query!(
+            "UPDATE guilds SET volume = $1 WHERE guild_id = $2",
+            volume,
+            guild_id_map
+        )
+        .execute(&*self.database)
+        .await
+        .expect("TODO: panic message");
 
         self.volume = volume;
         Ok(())
@@ -359,7 +380,10 @@ impl Player {
 
                 if let Err(error) = track_handle.stop() {
                     tracing::error!("Error stopping track: {:?}", error);
-                    return Err(PlaybackError::InternalError(format!("Error stopping track: {:?}", error)));
+                    return Err(PlaybackError::InternalError(format!(
+                        "Error stopping track: {:?}",
+                        error
+                    )));
                 }
             }
         }
@@ -460,7 +484,11 @@ pub fn spawn_cache_and_apply(track: Track, player_arc: Arc<tokio::sync::RwLock<P
 /// Set the bot's Discord activity. We bake the "Playing " word into the label
 /// itself because some Discord clients hide the activity-type prefix on bots.
 pub fn set_now_playing(ctx: &serenity_prelude::Context, track: &Track) {
-    let label = format!("Playing {} · {}", track.metadata.title, track.source.label());
+    let label = format!(
+        "Playing {} · {}",
+        track.metadata.title,
+        track.source.label()
+    );
     ctx.set_activity(Some(ActivityData::playing(label)));
 }
 

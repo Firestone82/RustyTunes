@@ -50,7 +50,15 @@ pub async fn list_rep(ctx: Context<'_>, #[description = "User to check reputatio
     let mut message = ctx
         .send(
             poise::CreateReply::default()
-                .embed(ReputationEmbed::List(get_page_slice(current_page), &target_id, total_rep, logs.len()).to_embed())
+                .embed(
+                    ReputationEmbed::List(
+                        get_page_slice(current_page),
+                        &target_id,
+                        total_rep,
+                        logs.len(),
+                    )
+                    .to_embed(),
+                )
                 .components(get_nav_components(current_page, total_pages))
                 .reply(true),
         )
@@ -103,7 +111,15 @@ pub async fn list_rep(ctx: Context<'_>, #[description = "User to check reputatio
                         ctx.serenity_context(),
                         CreateInteractionResponse::UpdateMessage(
                             CreateInteractionResponseMessage::new()
-                                .embed(ReputationEmbed::List(get_page_slice(current_page), &target_id, total_rep, logs.len()).to_embed())
+                                .embed(
+                                    ReputationEmbed::List(
+                                        get_page_slice(current_page),
+                                        &target_id,
+                                        total_rep,
+                                        logs.len(),
+                                    )
+                                    .to_embed(),
+                                )
                                 .components(get_nav_components(current_page, total_pages)),
                         ),
                     )
@@ -116,7 +132,10 @@ pub async fn list_rep(ctx: Context<'_>, #[description = "User to check reputatio
     }
 
     message
-        .edit(ctx.serenity_context(), serenity::all::EditMessage::new().components(Vec::new()))
+        .edit(
+            ctx.serenity_context(),
+            serenity::all::EditMessage::new().components(Vec::new()),
+        )
         .await
         .map_err(|e| MusicBotError::InternalError(e.to_string()))?;
 

@@ -64,7 +64,10 @@ pub async fn run_break(serenity_ctx: &SerenityContext, guild_id: GuildId, text_c
         .unwrap_or_default();
     if !voice_mentions.is_empty() {
         let _ = text_channel_id
-            .send_message(&serenity_ctx.http, CreateMessage::new().content(voice_mentions))
+            .send_message(
+                &serenity_ctx.http,
+                CreateMessage::new().content(voice_mentions),
+            )
             .await;
     }
 
