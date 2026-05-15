@@ -4,32 +4,51 @@ This file defines the project's structural conventions. Apply them when
 adding new code or modifying existing code. Reorganize new modules to fit
 this layout rather than inventing new top-level folders.
 
-## Folder layout
+## Module layout
+
+We use the Rust 2018+ style: a parent module lives in `<name>.rs` next
+to its `<name>/` subfolder of children — never inside it as `mod.rs`.
+See <https://doc.rust-lang.org/stable/book/ch07-02-defining-modules-to-control-scope-and-privacy.html>.
 
 ```
 src/
-├── bot.rs              — framework wiring & MusicBotData. No event/business logic.
 ├── main.rs             — entry point, tracing setup, runs MusicBotClient.
+├── bot.rs              — framework wiring & MusicBotData. No event/business logic.
+├── checks.rs           — declares `channel_checks`, `player_checks`.
 ├── checks/             — command/button checks invoked via poise's `check =`.
+├── commands.rs         — declares feature submodules + `help`.
 ├── commands/           — thin command handlers grouped by feature area.
+│   ├── activity.rs     — declares `cmd_break`, `cmd_gather`.
 │   ├── activity/       — coupled features (gather + break).
+│   ├── help.rs
+│   ├── music.rs        — declares music command files.
 │   ├── music/          — playback (play, pause, queue, …).
+│   ├── reputation.rs   — Rep struct + shared `process_rep`, declares subcommands.
 │   ├── reputation/     — rep +/-/list.
-│   ├── utility/        — standalone utilities (uwu, wakeup, rename, notify).
-│   └── help.rs
+│   ├── utility.rs      — declares utility command files.
+│   └── utility/        — standalone utilities (uwu, wakeup, rename, notify).
+├── embeds.rs           — declares feature embed submodules.
 ├── embeds/             — Discord embeds, grouped by feature area.
+│   ├── activity.rs
 │   ├── activity/       — break, gather.
+│   ├── bot.rs
 │   ├── bot/            — bot-level error/voice embeds.
+│   ├── music.rs
 │   ├── music/          — player, queue.
+│   ├── reputation.rs
 │   ├── reputation/     — rep.
+│   ├── utility.rs
 │   └── utility/        — notify.
+├── handlers.rs         — declares error/queue/voice handlers.
 ├── handlers/           — every async/event handler (Serenity/Songbird/poise).
 │   ├── error_handler.rs
 │   ├── queue_handler.rs
 │   └── voice_handler.rs
+├── player.rs           — declares `player`, `track`.
 ├── player/             — Music bot player only.
 │   ├── player.rs       — Player struct, state transitions, activity helpers.
 │   └── track.rs        — Track / Playlist / TrackSource / PlaybackError types.
+├── service.rs          — declares all service files.
 ├── service/            — business-logic services that back the commands.
 │   ├── break_service.rs
 │   ├── cache_service.rs
@@ -39,10 +58,15 @@ src/
 │   ├── normalize_service.rs
 │   ├── notifier_service.rs
 │   └── picker_service.rs
+├── sources.rs          — declares `local`, `spotify`, `youtube`.
 ├── sources/            — track sources used by commands and services.
+│   ├── local.rs
 │   ├── local/          — local on-disk files.
+│   ├── spotify.rs
 │   ├── spotify/        — Spotify API client.
+│   ├── youtube.rs
 │   └── youtube/        — YouTube/yt-dlp client.
+├── utils.rs            — declares `string_utils`, `time_utils`.
 └── utils/              — pure, shared helpers reusable across services/commands.
     ├── string_utils.rs — number_to_emoji, sanitize_name, MAX_NAME_LEN.
     └── time_utils.rs   — get_current_time, humanize_duration, parse_text, …
@@ -96,6 +120,9 @@ src/
    `_client`, `_checks`, `_utils` suffix in the filename so the role is
    obvious in `use` statements. Picking the right suffix is part of
    choosing the right folder.
+
+   No `mod.rs`. A module that has children lives in `<name>.rs` next to
+   the `<name>/` folder it owns. Never add a `mod.rs` inside the folder.
 
 9. **Player folder**: `player/` is only for the music bot's playback
    engine — the `Player` state machine and the value types (`Track`,
