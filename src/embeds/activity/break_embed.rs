@@ -128,7 +128,7 @@ impl<'a> BreakEmbed<'a> {
 
                 description.push_str(
                     "\n\nWhen the timer ends, everyone still in voice will be gathered automatically
-                    \n— late arrivals will be tracked.",
+                    — late arrivals will be tracked.",
                 );
 
                 let mut builder = CreateEmbed::new()
