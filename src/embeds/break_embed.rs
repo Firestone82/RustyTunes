@@ -1,4 +1,4 @@
-use crate::embeds::gather_embed::{format_wall_clock, humanize_duration};
+use crate::service::utils_service::{format_wall_clock, humanize_duration};
 use serenity::all::{
     ButtonStyle, Color, CreateActionRow, CreateButton, CreateEmbed, CreateEmbedFooter,
 };
