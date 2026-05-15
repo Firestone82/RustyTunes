@@ -16,7 +16,10 @@ pub async fn resume(ctx: Context<'_>) -> Result<(), MusicBotError> {
     drop(player);
 
     if let Some(track) = track {
-        PlayerEmbed::Resumed(&track).to_embed().send_context(ctx, true, Some(30)).await?;
+        PlayerEmbed::Resumed(&track)
+            .to_embed()
+            .send_context(ctx, true, Some(30))
+            .await?;
     }
 
     Ok(())

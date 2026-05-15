@@ -29,12 +29,19 @@ async fn main() -> Result<(), MusicBotError> {
     tracing_subscriber::registry()
         .with(env_filter)
         .with(fmt::layer().with_target(false))
-        .with(fmt::layer().with_target(false).with_ansi(false).with_writer(file_writer))
+        .with(
+            fmt::layer()
+                .with_target(false)
+                .with_ansi(false)
+                .with_writer(file_writer),
+        )
         .init();
 
     tracing::info!("Starting server.");
 
-    rustls::crypto::ring::default_provider().install_default().expect("Failed to install rustls ring CryptoProvider");
+    rustls::crypto::ring::default_provider()
+        .install_default()
+        .expect("Failed to install rustls ring CryptoProvider");
 
     MusicBotClient::new().await.start().await?;
 

@@ -143,7 +143,11 @@ pub async fn cache_track(track: &Track) -> std::io::Result<PathBuf> {
     let dir = cache_dir_for(&track.source).ok_or_else(|| std::io::Error::new(std::io::ErrorKind::InvalidInput, "track has no cache directory"))?;
     ensure_dir(&dir).await?;
 
-    let input_url = track.metadata.play_url.clone().unwrap_or_else(|| track.metadata.track_url.clone());
+    let input_url = track
+        .metadata
+        .play_url
+        .clone()
+        .unwrap_or_else(|| track.metadata.track_url.clone());
 
     // Write to `<stem>.part.<ext>` first so a half-downloaded file isn't
     // picked up by `find_cached` on a concurrent lookup.
@@ -161,7 +165,15 @@ pub async fn cache_track(track: &Track) -> std::io::Result<PathBuf> {
     if !output.status.success() {
         cleanup_part_files(&dir, &stem).await;
         let stderr = String::from_utf8_lossy(&output.stderr);
-        let tail = stderr.lines().rev().take(5).collect::<Vec<_>>().into_iter().rev().collect::<Vec<_>>().join(" | ");
+        let tail = stderr
+            .lines()
+            .rev()
+            .take(5)
+            .collect::<Vec<_>>()
+            .into_iter()
+            .rev()
+            .collect::<Vec<_>>()
+            .join(" | ");
         return Err(std::io::Error::other(format!("yt-dlp failed ({}): {}", output.status, tail)));
     }
 

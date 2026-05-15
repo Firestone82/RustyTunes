@@ -50,10 +50,13 @@ impl Player {
     pub async fn new(guild_id: GuildId, database: Arc<Database>) -> Self {
         let guild_id_map: i64 = guild_id.get() as i64;
 
-        let volume = sqlx::query!("SELECT * FROM guilds WHERE guild_id = $1", guild_id_map).fetch_one(&*database).await.map_err(|e| {
-            tracing::error!("Failed to fetch volume from database: {:?}", e);
-            crate::bot::MusicBotError::InternalError(e.to_string())
-        });
+        let volume = sqlx::query!("SELECT * FROM guilds WHERE guild_id = $1", guild_id_map)
+            .fetch_one(&*database)
+            .await
+            .map_err(|e| {
+                tracing::error!("Failed to fetch volume from database: {:?}", e);
+                crate::bot::MusicBotError::InternalError(e.to_string())
+            });
 
         let volume: f32 = match volume {
             Ok(volume) => volume.volume.unwrap_or(0.5) as f32,
@@ -210,7 +213,10 @@ impl Player {
                 tracing::info!("Found: {}", next_track.metadata.title);
 
                 if !self.silent {
-                    PlayerEmbed::NowPlaying(&next_track).to_embed().send_context(ctx, false, Some(30)).await?;
+                    PlayerEmbed::NowPlaying(&next_track)
+                        .to_embed()
+                        .send_context(ctx, false, Some(30))
+                        .await?;
                 }
 
                 let (input, source_path) = next_track.resolve_input(&ctx.data().request_client).await;
@@ -325,7 +331,9 @@ impl Player {
             return Err(PlaybackError::PlaybackAlreadyPaused);
         }
         if let Some(track_handle) = &self.track_handle {
-            track_handle.pause().map_err(|e| PlaybackError::InternalError(e.to_string()))?;
+            track_handle
+                .pause()
+                .map_err(|e| PlaybackError::InternalError(e.to_string()))?;
         }
         self.is_paused = true;
         Ok(())
@@ -336,7 +344,9 @@ impl Player {
             return Err(PlaybackError::PlaybackNotPaused);
         }
         if let Some(track_handle) = &self.track_handle {
-            track_handle.play().map_err(|e| PlaybackError::InternalError(e.to_string()))?;
+            track_handle
+                .play()
+                .map_err(|e| PlaybackError::InternalError(e.to_string()))?;
         }
         self.is_paused = false;
         Ok(())
@@ -380,15 +390,26 @@ pub fn schedule_normalization_apply(player_arc: Arc<tokio::sync::RwLock<Player>>
     tokio::spawn(async move {
         let measurement = normalize_service::measurement_for(&path).await;
         let mut player = player_arc.write().await;
-        let still_current = player.current_track.as_ref().map(|t| t.id == track_id).unwrap_or(false);
+        let still_current = player
+            .current_track
+            .as_ref()
+            .map(|t| t.id == track_id)
+            .unwrap_or(false);
         if !still_current || !player.should_normalize() {
             return;
         }
-        let title = player.current_track.as_ref().map(|t| t.metadata.title.clone()).unwrap_or_default();
+        let title = player
+            .current_track
+            .as_ref()
+            .map(|t| t.metadata.title.clone())
+            .unwrap_or_default();
         player.current_gain = measurement.multiplier;
         let effective = player.volume * measurement.multiplier;
         let _ = handle.set_volume(effective);
-        let lufs_str = measurement.lufs.map(|l| format!("{l:.2} LUFS")).unwrap_or_else(|| "unknown LUFS".to_string());
+        let lufs_str = measurement
+            .lufs
+            .map(|l| format!("{l:.2} LUFS"))
+            .unwrap_or_else(|| "unknown LUFS".to_string());
         tracing::info!(
             "Normalize applied: '{}' — {} → gain {:+.2} dB (×{:.3}); volume {:.0}% × gain = {:.3} effective",
             title,
@@ -419,7 +440,11 @@ pub fn spawn_cache_and_apply(track: Track, player_arc: Arc<tokio::sync::RwLock<P
                 // but only if the user hasn't already skipped to another track.
                 {
                     let mut player = player_arc.write().await;
-                    let still_current = player.current_track.as_ref().map(|t| t.id == track.id).unwrap_or(false);
+                    let still_current = player
+                        .current_track
+                        .as_ref()
+                        .map(|t| t.id == track.id)
+                        .unwrap_or(false);
                     if still_current {
                         player.current_source_path = Some(path.clone());
                     }

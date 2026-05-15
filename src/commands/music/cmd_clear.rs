@@ -13,7 +13,10 @@ pub async fn clear(ctx: Context<'_>) -> Result<(), MusicBotError> {
     let cleared = player.clear_queue().await;
     drop(player);
 
-    QueueEmbed::Cleared(cleared).to_embed().send_context(ctx, true, Some(30)).await?;
+    QueueEmbed::Cleared(cleared)
+        .to_embed()
+        .send_context(ctx, true, Some(30))
+        .await?;
 
     Ok(())
 }

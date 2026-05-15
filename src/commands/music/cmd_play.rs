@@ -34,9 +34,13 @@ async fn do_play(ctx: Context<'_>, track_source: String, top: bool) -> Result<()
         let youtube_client: &YoutubeClient = &ctx.data().youtube_client;
 
         if track_source.starts_with(YOUTUBE_VIDEO_URL) {
-            result = youtube_client.search_track_url(track_source.clone(), 1).await;
+            result = youtube_client
+                .search_track_url(track_source.clone(), 1)
+                .await;
         } else if track_source.starts_with(YOUTUBE_PLAYLIST_URL) {
-            result = youtube_client.fetch_playlist_lazy(track_source.clone()).await;
+            result = youtube_client
+                .fetch_playlist_lazy(track_source.clone())
+                .await;
         }
     }
     // Search Spotify
@@ -61,7 +65,9 @@ async fn do_play(ctx: Context<'_>, track_source: String, top: bool) -> Result<()
     // Search using text on YouTube
     else {
         let youtube_client: &YoutubeClient = &ctx.data().youtube_client;
-        result = youtube_client.search_track_url(track_source.clone(), 5).await;
+        result = youtube_client
+            .search_track_url(track_source.clone(), 5)
+            .await;
     }
 
     match result {
@@ -72,7 +78,10 @@ async fn do_play(ctx: Context<'_>, track_source: String, top: bool) -> Result<()
             // Skip the "added to queue" confirmation when nothing is playing —
             // the new track will start immediately and NowPlaying covers it.
             if player.is_playing {
-                QueueEmbed::TrackAdded(&track).to_embed().send_context(ctx, true, Some(30)).await?;
+                QueueEmbed::TrackAdded(&track)
+                    .to_embed()
+                    .send_context(ctx, true, Some(30))
+                    .await?;
             }
 
             if let Err(error) = player.add_track_to_queue(ctx, track.clone(), top).await {
@@ -102,7 +111,10 @@ async fn do_play(ctx: Context<'_>, track_source: String, top: bool) -> Result<()
                     let mut player: RwLockWriteGuard<Player> = ctx.data().player.write().await;
 
                     if player.is_playing {
-                        QueueEmbed::TrackAdded(&track).to_embed().send_context(ctx, true, Some(30)).await?;
+                        QueueEmbed::TrackAdded(&track)
+                            .to_embed()
+                            .send_context(ctx, true, Some(30))
+                            .await?;
                     }
 
                     if let Err(error) = player.add_track_to_queue(ctx, track, top).await {
@@ -114,7 +126,10 @@ async fn do_play(ctx: Context<'_>, track_source: String, top: bool) -> Result<()
                     channel_service::join_user_channel(ctx).await?;
                 }
                 PickerOutcome::Cancelled => {
-                    PlayerEmbed::SearchCancelled.to_embed().send_context(ctx, true, Some(30)).await?;
+                    PlayerEmbed::SearchCancelled
+                        .to_embed()
+                        .send_context(ctx, true, Some(30))
+                        .await?;
                     return Ok(());
                 }
                 PickerOutcome::Expired => return Ok(()),
@@ -129,7 +144,10 @@ async fn do_play(ctx: Context<'_>, track_source: String, top: bool) -> Result<()
 
             let mut player: RwLockWriteGuard<Player> = ctx.data().player.write().await;
 
-            QueueEmbed::PlaylistAdded(&playlist).to_embed().send_context(ctx, true, Some(30)).await?;
+            QueueEmbed::PlaylistAdded(&playlist)
+                .to_embed()
+                .send_context(ctx, true, Some(30))
+                .await?;
 
             if let Err(error) = player.add_playlist_to_queue(ctx, playlist, top).await {
                 drop(player);
@@ -141,11 +159,17 @@ async fn do_play(ctx: Context<'_>, track_source: String, top: bool) -> Result<()
         }
 
         Err(SearchError::VideoNotFound(_)) | Err(SearchError::PlaylistNotFound(_)) => {
-            PlayerEmbed::NoResults(track_source).to_embed().send_context(ctx, true, Some(30)).await?;
+            PlayerEmbed::NoResults(track_source)
+                .to_embed()
+                .send_context(ctx, true, Some(30))
+                .await?;
         }
 
         Err(SearchError::QuotaExceeded) => {
-            PlayerEmbed::QuotaExceeded.to_embed().send_context(ctx, true, Some(60)).await?;
+            PlayerEmbed::QuotaExceeded
+                .to_embed()
+                .send_context(ctx, true, Some(60))
+                .await?;
         }
 
         Err(error) => {
@@ -157,6 +181,9 @@ async fn do_play(ctx: Context<'_>, track_source: String, top: bool) -> Result<()
 }
 
 async fn report_playback_error(ctx: Context<'_>, error: crate::player::track::PlaybackError) -> Result<(), MusicBotError> {
-    PlayerEmbed::PlaybackErrorEmbed(error.to_string()).to_embed().send_context(ctx, true, Some(30)).await?;
+    PlayerEmbed::PlaybackErrorEmbed(error.to_string())
+        .to_embed()
+        .send_context(ctx, true, Some(30))
+        .await?;
     Ok(())
 }

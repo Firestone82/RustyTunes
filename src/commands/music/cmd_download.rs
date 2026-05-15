@@ -81,7 +81,10 @@ pub async fn save_to_library(ctx: Context<'_>, source: &DownloadSource, name_ove
 
     let target = local_client::unique_path(&dir, &filename).await;
 
-    let bytes = response.bytes().await.map_err(|e| MusicBotError::InternalError(format!("Failed to read body: {e}")))?;
+    let bytes = response
+        .bytes()
+        .await
+        .map_err(|e| MusicBotError::InternalError(format!("Failed to read body: {e}")))?;
 
     tokio::fs::write(&target, &bytes)
         .await
@@ -113,7 +116,9 @@ fn is_audio(filename: &str, content_type: Option<&str>) -> bool {
     if local_client::has_audio_extension(filename) {
         return true;
     }
-    content_type.map(|ct| ct.starts_with("audio/")).unwrap_or(false)
+    content_type
+        .map(|ct| ct.starts_with("audio/"))
+        .unwrap_or(false)
 }
 
 fn audio_ext_from_content_type(ct: Option<&str>) -> Option<&'static str> {

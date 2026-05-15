@@ -44,7 +44,10 @@ pub async fn normalize(ctx: Context<'_>, state: Option<String>) -> Result<(), Mu
 
     drop(player);
 
-    PlayerEmbed::NormalizeState(desired).to_embed().send_context(ctx, true, Some(30)).await?;
+    PlayerEmbed::NormalizeState(desired)
+        .to_embed()
+        .send_context(ctx, true, Some(30))
+        .await?;
 
     Ok(())
 }

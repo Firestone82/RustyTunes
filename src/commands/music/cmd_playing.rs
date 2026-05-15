@@ -10,9 +10,15 @@ pub async fn playing(ctx: Context<'_>) -> Result<(), MusicBotError> {
     let player: RwLockReadGuard<Player> = ctx.data().player.read().await;
 
     if let Some(track) = &player.current_track {
-        PlayerEmbed::NowPlaying(track).to_embed().send_context(ctx, true, Some(30)).await?;
+        PlayerEmbed::NowPlaying(track)
+            .to_embed()
+            .send_context(ctx, true, Some(30))
+            .await?;
     } else {
-        PlayerEmbed::NoSongPlaying.to_embed().send_context(ctx, true, Some(30)).await?;
+        PlayerEmbed::NoSongPlaying
+            .to_embed()
+            .send_context(ctx, true, Some(30))
+            .await?;
     }
 
     Ok(())

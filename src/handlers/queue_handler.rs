@@ -120,7 +120,10 @@ impl EventHandler for QueueHandler {
 
                     tracing::info!("Leaving voice channel after 5 minutes of inactivity");
 
-                    let _ = PlayerEmbed::InactivityLeave.to_embed().send_channel(serenity_ctx.http.clone(), &guild_channel, Some(60), None).await;
+                    let _ = PlayerEmbed::InactivityLeave
+                        .to_embed()
+                        .send_channel(serenity_ctx.http.clone(), &guild_channel, Some(60), None)
+                        .await;
 
                     let mut player = player_arc.write().await;
                     let _ = player.stop_playback().await;

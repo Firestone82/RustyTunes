@@ -30,9 +30,15 @@ pub async fn rename_context(ctx: poise::ApplicationContext<'_, MusicBotData, Mus
 }
 
 async fn do_rename(ctx: Context<'_>, user: User, new_name: Option<String>) -> Result<(), MusicBotError> {
-    let guild_id: GuildId = ctx.guild_id().ok_or_else(|| MusicBotError::InternalError("Rename is only available in guilds".to_string()))?;
+    let guild_id: GuildId = ctx
+        .guild_id()
+        .ok_or_else(|| MusicBotError::InternalError("Rename is only available in guilds".to_string()))?;
 
-    let guild: PartialGuild = ctx.http().get_guild(guild_id).await.map_err(|e| MusicBotError::InternalError(format!("Failed to fetch guild: {e}")))?;
+    let guild: PartialGuild = ctx
+        .http()
+        .get_guild(guild_id)
+        .await
+        .map_err(|e| MusicBotError::InternalError(format!("Failed to fetch guild: {e}")))?;
 
     let actor: Member = guild
         .member(ctx.http(), ctx.author().id)
@@ -74,7 +80,13 @@ async fn do_rename(ctx: Context<'_>, user: User, new_name: Option<String>) -> Re
         EditMember::new().nickname(trimmed)
     };
 
-    let previous = target.nick.clone().unwrap_or_else(|| target.user.global_name.clone().unwrap_or_else(|| target.user.name.clone()));
+    let previous = target.nick.clone().unwrap_or_else(|| {
+        target
+            .user
+            .global_name
+            .clone()
+            .unwrap_or_else(|| target.user.name.clone())
+    });
 
     if let Err(e) = guild_id.edit_member(ctx.http(), target.user.id, edit).await {
         tracing::error!("Failed to rename {}: {:?}", target.user.id, e);
@@ -88,7 +100,11 @@ async fn do_rename(ctx: Context<'_>, user: User, new_name: Option<String>) -> Re
     }
 
     let next = if trimmed.is_empty() {
-        target.user.global_name.clone().unwrap_or(target.user.name.clone())
+        target
+            .user
+            .global_name
+            .clone()
+            .unwrap_or(target.user.name.clone())
     } else {
         trimmed.to_string()
     };
@@ -105,5 +121,11 @@ async fn do_rename(ctx: Context<'_>, user: User, new_name: Option<String>) -> Re
 }
 
 fn highest_role_position(guild: &PartialGuild, member: &Member) -> u16 {
-    member.roles.iter().filter_map(|role_id| guild.roles.get(role_id)).map(|role| role.position).max().unwrap_or(0)
+    member
+        .roles
+        .iter()
+        .filter_map(|role_id| guild.roles.get(role_id))
+        .map(|role| role.position)
+        .max()
+        .unwrap_or(0)
 }

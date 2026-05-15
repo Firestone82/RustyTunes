@@ -14,7 +14,10 @@ pub async fn stop(ctx: Context<'_>) -> Result<(), MusicBotError> {
     player.stop_playback().await?;
     crate::player::player::set_idle(ctx.serenity_context());
 
-    PlayerEmbed::Stopped.to_embed().send_context(ctx, true, Some(30)).await?;
+    PlayerEmbed::Stopped
+        .to_embed()
+        .send_context(ctx, true, Some(30))
+        .await?;
 
     Ok(())
 }

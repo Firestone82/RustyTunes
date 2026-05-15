@@ -29,7 +29,10 @@ impl<'a> BotEmbed<'a> {
                 .color(Color::DARK_RED)
                 .title("🤬 Hey you, fucker!")
                 .description("You shall not remove me forcefully! Next time, use `!leave` to ask me to leave politely. 🙃"),
-            BotEmbed::Error(error) => CreateEmbed::new().color(Color::DARK_RED).title("🚫  Error").description(error.to_string()),
+            BotEmbed::Error(error) => CreateEmbed::new()
+                .color(Color::DARK_RED)
+                .title("🚫  Error")
+                .description(error.to_string()),
         }
     }
 }

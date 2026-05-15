@@ -29,7 +29,10 @@ pub enum QueueEmbed<'a> {
 impl<'a> QueueEmbed<'a> {
     pub fn to_embed(&self) -> CreateEmbed {
         match self {
-            QueueEmbed::IsEmpty => CreateEmbed::new().color(Color::DARK_RED).title("🚫  Empty queue").description("The queue is empty."),
+            QueueEmbed::IsEmpty => CreateEmbed::new()
+                .color(Color::DARK_RED)
+                .title("🚫  Empty queue")
+                .description("The queue is empty."),
             QueueEmbed::Current { queue, page } => {
                 let mut embed: CreateEmbed = CreateEmbed::new()
                     .color(Color::DARK_BLUE)
@@ -78,7 +81,10 @@ impl<'a> QueueEmbed<'a> {
 
                 embed.footer(CreateEmbedFooter::new(format!("Playlist length: {}", playlist.tracks.len())))
             }
-            QueueEmbed::Skipped(amount) => CreateEmbed::new().color(Color::DARK_BLUE).title("⏭️  Skipped").description(format!("Skipped {} track(s).", amount)),
+            QueueEmbed::Skipped(amount) => CreateEmbed::new()
+                .color(Color::DARK_BLUE)
+                .title("⏭️  Skipped")
+                .description(format!("Skipped {} track(s).", amount)),
             QueueEmbed::TrackRemoved(track) => {
                 let body = match &track.source {
                     TrackSource::Local(_) => format!("**{}**", track.metadata.title),
@@ -87,7 +93,10 @@ impl<'a> QueueEmbed<'a> {
                     }
                     _ => format!("**[{}]({})**", track.metadata.title, track.metadata.track_url),
                 };
-                CreateEmbed::new().color(Color::DARK_GREEN).title("🗑️  Track removed").description(body)
+                CreateEmbed::new()
+                    .color(Color::DARK_GREEN)
+                    .title("🗑️  Track removed")
+                    .description(body)
             }
             QueueEmbed::InvalidIndex(index) => CreateEmbed::new()
                 .color(Color::DARK_RED)

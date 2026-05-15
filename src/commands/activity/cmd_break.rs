@@ -24,11 +24,17 @@ pub async fn start(ctx: Context<'_>, #[description = "Break end time or duration
     let (duration, clock_time_label) = match parse_break_start_time(&time) {
         Some((d, label)) if d > Duration::ZERO && d <= MAX_BREAK_DURATION => (d, label),
         Some(_) => {
-            BreakEmbed::TooLong { max: MAX_BREAK_DURATION }.to_embed().send_context(ctx, true, Some(15)).await?;
+            BreakEmbed::TooLong { max: MAX_BREAK_DURATION }
+                .to_embed()
+                .send_context(ctx, true, Some(15))
+                .await?;
             return Ok(());
         }
         None => {
-            BreakEmbed::InvalidDuration.to_embed().send_context(ctx, true, Some(15)).await?;
+            BreakEmbed::InvalidDuration
+                .to_embed()
+                .send_context(ctx, true, Some(15))
+                .await?;
             return Ok(());
         }
     };
@@ -39,7 +45,10 @@ pub async fn start(ctx: Context<'_>, #[description = "Break end time or duration
     let voice_channel_id: ChannelId = match channel_service::get_user_voice_channel(ctx, &author_id) {
         Some(c) => c,
         None => {
-            BotEmbed::CurrentUserNotInVoiceChannel.to_embed().send_context(ctx, true, Some(30)).await?;
+            BotEmbed::CurrentUserNotInVoiceChannel
+                .to_embed()
+                .send_context(ctx, true, Some(30))
+                .await?;
             return Ok(());
         }
     };
@@ -48,7 +57,10 @@ pub async fn start(ctx: Context<'_>, #[description = "Break end time or duration
     {
         let breaks = ctx.data().breaks.read().await;
         if breaks.contains_key(&guild_id) {
-            BreakEmbed::AlreadyRunning.to_embed().send_context(ctx, true, Some(15)).await?;
+            BreakEmbed::AlreadyRunning
+                .to_embed()
+                .send_context(ctx, true, Some(15))
+                .await?;
             return Ok(());
         }
     }
@@ -58,7 +70,11 @@ pub async fn start(ctx: Context<'_>, #[description = "Break end time or duration
             .interaction
             .create_response(
                 ctx.http(),
-                CreateInteractionResponse::Message(CreateInteractionResponseMessage::new().content("Starting break…").ephemeral(true)),
+                CreateInteractionResponse::Message(
+                    CreateInteractionResponseMessage::new()
+                        .content("Starting break…")
+                        .ephemeral(true),
+                ),
             )
             .await;
     }
@@ -76,7 +92,11 @@ pub async fn start(ctx: Context<'_>, #[description = "Break end time or duration
         clock_time_label,
     });
 
-    ctx.data().breaks.write().await.insert(guild_id, Arc::clone(&state));
+    ctx.data()
+        .breaks
+        .write()
+        .await
+        .insert(guild_id, Arc::clone(&state));
 
     let cancelled = break_service::run_break(ctx.serenity_context(), guild_id, text_channel_id, voice_channel_id, Arc::clone(&state)).await?;
 
@@ -88,7 +108,11 @@ pub async fn start(ctx: Context<'_>, #[description = "Break end time or duration
     }
 
     let gather_state = Arc::new(GatherState::new(voice_channel_id));
-    ctx.data().gatherings.write().await.insert(guild_id, Arc::clone(&gather_state));
+    ctx.data()
+        .gatherings
+        .write()
+        .await
+        .insert(guild_id, Arc::clone(&gather_state));
 
     // Skip the pre-gather countdown — break already announced and pinged everyone.
     gather_service::start_gather(
@@ -115,7 +139,10 @@ pub async fn extend(ctx: Context<'_>, #[description = "Extra time to add, e.g. `
     let extra = match parse_break_duration(&time) {
         Some(d) if d > Duration::ZERO => d,
         _ => {
-            BreakEmbed::InvalidExtension.to_embed().send_context(ctx, true, Some(15)).await?;
+            BreakEmbed::InvalidExtension
+                .to_embed()
+                .send_context(ctx, true, Some(15))
+                .await?;
             return Ok(());
         }
     };
@@ -130,14 +157,20 @@ pub async fn extend(ctx: Context<'_>, #[description = "Extra time to add, e.g. `
     let state = match state {
         Some(s) => s,
         None => {
-            BreakEmbed::NoActiveBreak.to_embed().send_context(ctx, true, Some(15)).await?;
+            BreakEmbed::NoActiveBreak
+                .to_embed()
+                .send_context(ctx, true, Some(15))
+                .await?;
             return Ok(());
         }
     };
 
     let new_total = state.total_duration() + extra;
     if new_total > MAX_BREAK_DURATION {
-        BreakEmbed::ExceedsCap { new_total, cap: MAX_BREAK_DURATION }.to_embed().send_context(ctx, true, Some(15)).await?;
+        BreakEmbed::ExceedsCap { new_total, cap: MAX_BREAK_DURATION }
+            .to_embed()
+            .send_context(ctx, true, Some(15))
+            .await?;
         return Ok(());
     }
 

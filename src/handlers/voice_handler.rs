@@ -19,9 +19,17 @@ pub async fn handle(ctx: &SerenityContext, event: &FullEvent, data: &MusicBotDat
         let gatherings = data.gatherings.read().await;
         if let Some(gather_state) = gatherings.get(&guild_id) {
             if gather_state.voice_channel_id == joined_channel {
-                let is_expected = gather_state.extra_expected.lock().unwrap().contains(&new.user_id);
+                let is_expected = gather_state
+                    .extra_expected
+                    .lock()
+                    .unwrap()
+                    .contains(&new.user_id);
                 if is_expected {
-                    gather_state.auto_arrived.lock().unwrap().insert(new.user_id);
+                    gather_state
+                        .auto_arrived
+                        .lock()
+                        .unwrap()
+                        .insert(new.user_id);
                 }
             }
         }
@@ -29,7 +37,12 @@ pub async fn handle(ctx: &SerenityContext, event: &FullEvent, data: &MusicBotDat
 
     let bot_id = ctx.cache.current_user().id;
 
-    let bot_channel: Option<ChannelId> = ctx.cache.guild(guild_id).as_ref().and_then(|g| g.voice_states.get(&bot_id)).and_then(|vs| vs.channel_id);
+    let bot_channel: Option<ChannelId> = ctx
+        .cache
+        .guild(guild_id)
+        .as_ref()
+        .and_then(|g| g.voice_states.get(&bot_id))
+        .and_then(|vs| vs.channel_id);
 
     // Bot is no longer in voice (kicked, dragged out, force-disconnected).
     // A paused track still holds queue state, so always wipe both.
@@ -56,7 +69,12 @@ pub async fn handle(ctx: &SerenityContext, event: &FullEvent, data: &MusicBotDat
         .cache
         .guild(guild_id)
         .as_ref()
-        .map(|g| g.voice_states.values().filter(|vs| vs.channel_id == Some(bot_channel) && vs.user_id != bot_id).count())
+        .map(|g| {
+            g.voice_states
+                .values()
+                .filter(|vs| vs.channel_id == Some(bot_channel) && vs.user_id != bot_id)
+                .count()
+        })
         .unwrap_or(0);
 
     if humans == 0 {

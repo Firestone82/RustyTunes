@@ -13,7 +13,10 @@ pub async fn skip(ctx: Context<'_>, amount: Option<usize>) -> Result<(), MusicBo
 
     let amount: usize = player.skip(amount.unwrap_or(1)).await?;
 
-    QueueEmbed::Skipped(amount).to_embed().send_context(ctx, true, Some(30)).await?;
+    QueueEmbed::Skipped(amount)
+        .to_embed()
+        .send_context(ctx, true, Some(30))
+        .await?;
 
     drop(player);
     Ok(())

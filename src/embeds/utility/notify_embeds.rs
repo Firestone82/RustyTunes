@@ -28,14 +28,16 @@ impl<'a> NotifyEmbed<'a> {
                  » `tomorrow` / `week`  - Convenience literals.
                 "#;
 
-                CreateEmbed::new().color(Color::DARK_RED).title("🚫  Invalid notify format").description(description)
+                CreateEmbed::new()
+                    .color(Color::DARK_RED)
+                    .title("🚫  Invalid notify format")
+                    .description(description)
             }
             NotifyEmbed::Created(notify) => {
-                let mut builder = CreateEmbed::new().color(Color::DARK_BLUE).title("🔔  Notification created").description(format!(
-                    "ID `#{}` — you will be notified at `{}`",
-                    notify.id,
-                    format_time(notify.notify_at)
-                ));
+                let mut builder = CreateEmbed::new()
+                    .color(Color::DARK_BLUE)
+                    .title("🔔  Notification created")
+                    .description(format!("ID `#{}` — you will be notified at `{}`", notify.id, format_time(notify.notify_at)));
 
                 if let Some(note) = notify.display_note() {
                     builder = builder.field("Note:", format!("```{}```", note), false);
@@ -48,16 +50,19 @@ impl<'a> NotifyEmbed<'a> {
                 let description = if targets.is_empty() {
                     format!("Hey {}, you wanted to be notified at `{}`", notify.user_id.mention(), format_time(notify.notify_at))
                 } else {
-                    let mentions = targets.iter().map(|u| u.mention().to_string()).collect::<Vec<_>>().join(", ");
+                    let mentions = targets
+                        .iter()
+                        .map(|u| u.mention().to_string())
+                        .collect::<Vec<_>>()
+                        .join(", ");
                     format!("Hey {}, you have a reminder at `{}`", mentions, format_time(notify.notify_at))
                 };
 
-                let mut builder =
-                    CreateEmbed::new()
-                        .color(Color::DARK_BLUE)
-                        .title("🔔  Notification")
-                        .description(description)
-                        .field("Requested at:", format!("`{}`", format_time(notify.created_at)), true);
+                let mut builder = CreateEmbed::new()
+                    .color(Color::DARK_BLUE)
+                    .title("🔔  Notification")
+                    .description(description)
+                    .field("Requested at:", format!("`{}`", format_time(notify.created_at)), true);
 
                 if !targets.is_empty() {
                     builder = builder.field("From:", notify.user_id.mention().to_string(), true);
@@ -75,7 +80,10 @@ impl<'a> NotifyEmbed<'a> {
             }
             NotifyEmbed::List(items) => {
                 if items.is_empty() {
-                    return CreateEmbed::new().color(Color::DARK_BLUE).title("🔔  Notifications").description("You have no pending notifications.");
+                    return CreateEmbed::new()
+                        .color(Color::DARK_BLUE)
+                        .title("🔔  Notifications")
+                        .description("You have no pending notifications.");
                 }
 
                 let mut description = String::new();
@@ -91,13 +99,15 @@ impl<'a> NotifyEmbed<'a> {
                     description.push_str(&format!("`#{:>3}` `{}`{}\n", n.id, format_time(n.notify_at), note_preview));
                 }
 
-                CreateEmbed::new().color(Color::DARK_BLUE).title("🔔  Your notifications").description(description)
+                CreateEmbed::new()
+                    .color(Color::DARK_BLUE)
+                    .title("🔔  Your notifications")
+                    .description(description)
             }
-            NotifyEmbed::Removed(notify) => CreateEmbed::new().color(Color::DARK_BLUE).title("🗑️  Notification removed").description(format!(
-                "Removed notification `#{}` scheduled for `{}`.",
-                notify.id,
-                format_time(notify.notify_at)
-            )),
+            NotifyEmbed::Removed(notify) => CreateEmbed::new()
+                .color(Color::DARK_BLUE)
+                .title("🗑️  Notification removed")
+                .description(format!("Removed notification `#{}` scheduled for `{}`.", notify.id, format_time(notify.notify_at))),
             NotifyEmbed::NotFound => CreateEmbed::new()
                 .color(Color::DARK_RED)
                 .title("🚫  Notification not found")

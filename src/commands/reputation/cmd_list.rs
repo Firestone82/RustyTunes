@@ -63,7 +63,10 @@ pub async fn list_rep(ctx: Context<'_>, #[description = "User to check reputatio
     loop {
         match tokio::time::timeout(
             Duration::from_mins(2),
-            ComponentInteractionCollector::new(ctx.serenity_context()).message_id(message.id).stream().next(),
+            ComponentInteractionCollector::new(ctx.serenity_context())
+                .message_id(message.id)
+                .stream()
+                .next(),
         )
         .await
         {
@@ -121,14 +124,20 @@ pub async fn list_rep(ctx: Context<'_>, #[description = "User to check reputatio
 }
 
 fn get_nav_components(page: usize, total_pages: usize) -> Vec<CreateActionRow> {
-    let prev_btn = CreateButton::new("page_prev").label("⬅️ Previews").style(ButtonStyle::Primary).disabled(page == 0);
+    let prev_btn = CreateButton::new("page_prev")
+        .label("⬅️ Previews")
+        .style(ButtonStyle::Primary)
+        .disabled(page == 0);
 
     let indicator = CreateButton::new("page_indicator")
         .label(format!("{}/{}", page + 1, total_pages))
         .style(ButtonStyle::Secondary)
         .disabled(true);
 
-    let next_btn = CreateButton::new("page_next").label("Next ➡️").style(ButtonStyle::Primary).disabled(page + 1 >= total_pages);
+    let next_btn = CreateButton::new("page_next")
+        .label("Next ➡️")
+        .style(ButtonStyle::Primary)
+        .disabled(page + 1 >= total_pages);
 
     vec![CreateActionRow::Buttons(vec![prev_btn, indicator, next_btn])]
 }

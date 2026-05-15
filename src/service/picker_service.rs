@@ -24,20 +24,39 @@ pub enum PickerOutcome {
 /// `not_author_message` is shown to anyone else who clicks a button.
 pub async fn show_picker(ctx: Context<'_>, count: usize, id_prefix: &str, embed: CreateEmbed, not_author_message: &str) -> Result<PickerOutcome, MusicBotError> {
     let mut buttons: Vec<CreateButton> = (0..count)
-        .map(|i| CreateButton::new(format!("{id_prefix}_{i}")).label((i + 1).to_string()).style(ButtonStyle::Secondary))
+        .map(|i| {
+            CreateButton::new(format!("{id_prefix}_{i}"))
+                .label((i + 1).to_string())
+                .style(ButtonStyle::Secondary)
+        })
         .collect();
-    buttons.push(CreateButton::new(format!("{id_prefix}_cancel")).label("✖ Cancel").style(ButtonStyle::Danger));
+    buttons.push(
+        CreateButton::new(format!("{id_prefix}_cancel"))
+            .label("✖ Cancel")
+            .style(ButtonStyle::Danger),
+    );
 
     let row_count = buttons.len().div_ceil(5);
     let per_row = buttons.len().div_ceil(row_count.max(1));
-    let rows: Vec<CreateActionRow> = buttons.chunks(per_row.max(1)).map(|chunk| CreateActionRow::Buttons(chunk.to_vec())).collect();
+    let rows: Vec<CreateActionRow> = buttons
+        .chunks(per_row.max(1))
+        .map(|chunk| CreateActionRow::Buttons(chunk.to_vec()))
+        .collect();
 
     let reply_handle = ctx
-        .send(poise::CreateReply::default().embed(embed).components(rows).reply(true))
+        .send(
+            poise::CreateReply::default()
+                .embed(embed)
+                .components(rows)
+                .reply(true),
+        )
         .await
         .map_err(|e| MusicBotError::InternalError(e.to_string()))?;
 
-    let message: Message = reply_handle.into_message().await.map_err(|e| MusicBotError::InternalError(e.to_string()))?;
+    let message: Message = reply_handle
+        .into_message()
+        .await
+        .map_err(|e| MusicBotError::InternalError(e.to_string()))?;
 
     let deadline = Instant::now() + PICKER_TIMEOUT;
     let mut cooldowns: HashMap<UserId, Instant> = HashMap::new();
@@ -48,21 +67,33 @@ pub async fn show_picker(ctx: Context<'_>, count: usize, id_prefix: &str, embed:
         let remaining = deadline.saturating_duration_since(Instant::now());
         if remaining.is_zero() {
             message.delete(ctx.http()).await?;
-            PlayerEmbed::SearchExpired.to_embed().send_context(ctx, true, Some(15)).await?;
+            PlayerEmbed::SearchExpired
+                .to_embed()
+                .send_context(ctx, true, Some(15))
+                .await?;
             return Ok(PickerOutcome::Expired);
         }
 
-        let interaction = message.await_component_interaction(ctx.serenity_context().shard.clone()).timeout(remaining).await;
+        let interaction = message
+            .await_component_interaction(ctx.serenity_context().shard.clone())
+            .timeout(remaining)
+            .await;
 
         let Some(interaction) = interaction else {
             message.delete(ctx.http()).await?;
-            PlayerEmbed::SearchExpired.to_embed().send_context(ctx, true, Some(15)).await?;
+            PlayerEmbed::SearchExpired
+                .to_embed()
+                .send_context(ctx, true, Some(15))
+                .await?;
             return Ok(PickerOutcome::Expired);
         };
 
         if interaction.user.id != ctx.author().id {
             let now = Instant::now();
-            let on_cooldown = cooldowns.get(&interaction.user.id).map(|&last| now.duration_since(last) < OTHER_USER_COOLDOWN).unwrap_or(false);
+            let on_cooldown = cooldowns
+                .get(&interaction.user.id)
+                .map(|&last| now.duration_since(last) < OTHER_USER_COOLDOWN)
+                .unwrap_or(false);
             if on_cooldown {
                 interaction.defer(ctx.http()).await.ok();
             } else {
@@ -70,7 +101,11 @@ pub async fn show_picker(ctx: Context<'_>, count: usize, id_prefix: &str, embed:
                 interaction
                     .create_response(
                         ctx.http(),
-                        CreateInteractionResponse::Message(CreateInteractionResponseMessage::new().content(not_author_message).ephemeral(true)),
+                        CreateInteractionResponse::Message(
+                            CreateInteractionResponseMessage::new()
+                                .content(not_author_message)
+                                .ephemeral(true),
+                        ),
                     )
                     .await
                     .ok();

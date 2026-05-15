@@ -75,5 +75,8 @@ pub async fn leave_channel(ctx: Context<'_>) -> Result<(), MusicBotError> {
 }
 
 pub fn get_user_voice_channel(ctx: Context<'_>, user_id: &UserId) -> Option<ChannelId> {
-    ctx.guild().as_ref().and_then(|guild| guild.voice_states.get(user_id)).and_then(|voice_state| voice_state.channel_id)
+    ctx.guild()
+        .as_ref()
+        .and_then(|guild| guild.voice_states.get(user_id))
+        .and_then(|voice_state| voice_state.channel_id)
 }

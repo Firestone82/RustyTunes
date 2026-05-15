@@ -24,7 +24,10 @@ pub async fn start(ctx: Context<'_>, #[description = "Pre-gather countdown lengt
     let voice_channel_id: ChannelId = match channel_service::get_user_voice_channel(ctx, &ctx.author().id) {
         Some(c) => c,
         None => {
-            BotEmbed::CurrentUserNotInVoiceChannel.to_embed().send_context(ctx, true, Some(30)).await?;
+            BotEmbed::CurrentUserNotInVoiceChannel
+                .to_embed()
+                .send_context(ctx, true, Some(30))
+                .await?;
             return Ok(());
         }
     };
@@ -33,7 +36,10 @@ pub async fn start(ctx: Context<'_>, #[description = "Pre-gather countdown lengt
         Some(ref t) => match parse_pregather_time(t.trim()) {
             Some(pair) => pair,
             None => {
-                GatherEmbed::InvalidPregatherTime.to_embed().send_context(ctx, true, Some(15)).await?;
+                GatherEmbed::InvalidPregatherTime
+                    .to_embed()
+                    .send_context(ctx, true, Some(15))
+                    .await?;
                 return Ok(());
             }
         },
@@ -43,7 +49,10 @@ pub async fn start(ctx: Context<'_>, #[description = "Pre-gather countdown lengt
     {
         let gatherings = ctx.data().gatherings.read().await;
         if gatherings.contains_key(&guild_id) {
-            GatherEmbed::AlreadyRunning.to_embed().send_context(ctx, true, Some(15)).await?;
+            GatherEmbed::AlreadyRunning
+                .to_embed()
+                .send_context(ctx, true, Some(15))
+                .await?;
             return Ok(());
         }
     }
@@ -55,14 +64,22 @@ pub async fn start(ctx: Context<'_>, #[description = "Pre-gather countdown lengt
             .interaction
             .create_response(
                 ctx.http(),
-                CreateInteractionResponse::Message(CreateInteractionResponseMessage::new().content("Starting gathering…").ephemeral(true)),
+                CreateInteractionResponse::Message(
+                    CreateInteractionResponseMessage::new()
+                        .content("Starting gathering…")
+                        .ephemeral(true),
+                ),
             )
             .await;
     }
 
     let state = Arc::new(GatherState::new(voice_channel_id));
 
-    ctx.data().gatherings.write().await.insert(guild_id, Arc::clone(&state));
+    ctx.data()
+        .gatherings
+        .write()
+        .await
+        .insert(guild_id, Arc::clone(&state));
 
     let result = gather_service::start_gather(
         ctx.serenity_context(),
@@ -102,12 +119,18 @@ pub async fn expect(
     let state = match state {
         Some(s) => s,
         None => {
-            GatherEmbed::NoActiveGathering.to_embed().send_context(ctx, true, Some(15)).await?;
+            GatherEmbed::NoActiveGathering
+                .to_embed()
+                .send_context(ctx, true, Some(15))
+                .await?;
             return Ok(());
         }
     };
 
-    let users: Vec<&User> = [Some(&user1), user2.as_ref(), user3.as_ref(), user4.as_ref(), user5.as_ref()].into_iter().flatten().collect();
+    let users: Vec<&User> = [Some(&user1), user2.as_ref(), user3.as_ref(), user4.as_ref(), user5.as_ref()]
+        .into_iter()
+        .flatten()
+        .collect();
 
     {
         let mut extra = state.extra_expected.lock().unwrap();
@@ -116,9 +139,16 @@ pub async fn expect(
         }
     }
 
-    let names = users.iter().map(|u| u.mention().to_string()).collect::<Vec<_>>().join(", ");
+    let names = users
+        .iter()
+        .map(|u| u.mention().to_string())
+        .collect::<Vec<_>>()
+        .join(", ");
 
-    GatherEmbed::UsersExpected { names: &names }.to_embed().send_context(ctx, true, Some(15)).await?;
+    GatherEmbed::UsersExpected { names: &names }
+        .to_embed()
+        .send_context(ctx, true, Some(15))
+        .await?;
 
     Ok(())
 }

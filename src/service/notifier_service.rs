@@ -100,7 +100,11 @@ pub fn encode_targets(targets: &[UserId], note: &str) -> String {
 pub fn extract_targets(note: &str) -> (Vec<UserId>, String) {
     if let Some(rest) = note.strip_prefix("[T:") {
         if let Some(end) = rest.find(']') {
-            let ids: Vec<UserId> = rest[..end].split(',').filter_map(|s| s.parse::<u64>().ok()).map(UserId::new).collect();
+            let ids: Vec<UserId> = rest[..end]
+                .split(',')
+                .filter_map(|s| s.parse::<u64>().ok())
+                .map(UserId::new)
+                .collect();
             return (ids, rest[end + 1..].to_string());
         }
     }
@@ -131,14 +135,17 @@ impl Notifier {
     }
 
     pub async fn add_message(&mut self, ctx: Context<'_>, notify_at: OffsetDateTime, note: Option<String>) -> Result<MessageNotify, NotifierError> {
-        let guild_id = ctx.guild_id().ok_or_else(|| NotifierError::InternalError("Notify is only available in guilds".to_string()))?;
+        let guild_id = ctx
+            .guild_id()
+            .ok_or_else(|| NotifierError::InternalError("Notify is only available in guilds".to_string()))?;
 
         let source_message_id: Option<MessageId> = match ctx {
             Context::Prefix(prefix) => Some(prefix.msg.id),
             _ => None,
         };
 
-        self.add_message_for_user(guild_id, ctx.channel_id(), ctx.author().id, source_message_id, notify_at, note).await
+        self.add_message_for_user(guild_id, ctx.channel_id(), ctx.author().id, source_message_id, notify_at, note)
+            .await
     }
 
     pub async fn add_message_for_user(
@@ -208,17 +215,32 @@ impl Notifier {
     }
 
     pub fn list_for_user(&self, user_id: UserId, guild_id: GuildId) -> Vec<MessageNotify> {
-        let mut out: Vec<MessageNotify> = self.messages.iter().filter(|m| m.user_id == user_id && m.guild_id == guild_id).cloned().collect();
+        let mut out: Vec<MessageNotify> = self
+            .messages
+            .iter()
+            .filter(|m| m.user_id == user_id && m.guild_id == guild_id)
+            .cloned()
+            .collect();
         out.sort_by_key(|m| m.notify_at);
         out
     }
 
     pub async fn check_messages(&mut self) {
         let now = get_current_time();
-        let due: Vec<MessageNotify> = self.messages.iter().filter(|m| m.notify_at <= now).cloned().collect();
+        let due: Vec<MessageNotify> = self
+            .messages
+            .iter()
+            .filter(|m| m.notify_at <= now)
+            .cloned()
+            .collect();
 
         for message in due {
-            let guild_channel: GuildChannel = match self.serenity_context.http.get_channel(message.channel_id).await {
+            let guild_channel: GuildChannel = match self
+                .serenity_context
+                .http
+                .get_channel(message.channel_id)
+                .await
+            {
                 Ok(ch) => match ch.guild() {
                     Some(gc) => gc,
                     None => {
@@ -238,7 +260,11 @@ impl Notifier {
             let content = if targets.is_empty() {
                 format!("||{}||", message.user_id.mention())
             } else {
-                targets.iter().map(|u| u.mention().to_string()).collect::<Vec<_>>().join(" ")
+                targets
+                    .iter()
+                    .map(|u| u.mention().to_string())
+                    .collect::<Vec<_>>()
+                    .join(" ")
             };
 
             let embed = NotifyEmbed::Notification(&message).to_embed();

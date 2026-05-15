@@ -42,13 +42,17 @@ pub fn filename_from_url(url: &str) -> String {
     if has_audio_extension(&candidate) {
         candidate
     } else {
-        format!("{candidate}.mp3").trim_start_matches('.').to_string()
+        format!("{candidate}.mp3")
+            .trim_start_matches('.')
+            .to_string()
     }
 }
 
 pub fn has_audio_extension(name: &str) -> bool {
     let lower = name.to_ascii_lowercase();
-    ALLOWED_EXTENSIONS.iter().any(|ext| lower.ends_with(&format!(".{ext}")))
+    ALLOWED_EXTENSIONS
+        .iter()
+        .any(|ext| lower.ends_with(&format!(".{ext}")))
 }
 
 /// Avoid clobbering an existing file by appending " (n)" before the extension.
@@ -88,7 +92,11 @@ pub async fn list_local_files() -> std::io::Result<Vec<PathBuf>> {
 
     while let Some(entry) = read_dir.next_entry().await? {
         let path = entry.path();
-        let is_file = entry.file_type().await.map(|t| t.is_file()).unwrap_or(false);
+        let is_file = entry
+            .file_type()
+            .await
+            .map(|t| t.is_file())
+            .unwrap_or(false);
         if !is_file {
             continue;
         }
@@ -108,7 +116,10 @@ pub async fn list_local_files() -> std::io::Result<Vec<PathBuf>> {
 }
 
 pub fn track_title(path: &Path) -> String {
-    path.file_stem().and_then(|s| s.to_str()).map(|s| s.to_string()).unwrap_or_else(|| "Unknown".to_string())
+    path.file_stem()
+        .and_then(|s| s.to_str())
+        .map(|s| s.to_string())
+        .unwrap_or_else(|| "Unknown".to_string())
 }
 
 /// Substring match (case-insensitive) against the file stem. Returns matches
@@ -121,7 +132,10 @@ pub async fn search_local(query: &str) -> std::io::Result<Vec<PathBuf>> {
     }
 
     let all = list_local_files().await?;
-    let mut matches: Vec<PathBuf> = all.into_iter().filter(|p| track_title(p).to_ascii_lowercase().contains(&needle)).collect();
+    let mut matches: Vec<PathBuf> = all
+        .into_iter()
+        .filter(|p| track_title(p).to_ascii_lowercase().contains(&needle))
+        .collect();
 
     matches.sort();
     Ok(matches)

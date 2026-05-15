@@ -159,7 +159,10 @@ impl SpotifyClient {
 
     async fn access_token(&self) -> Result<String, SpotifyError> {
         let id = self.client_id.as_ref().ok_or(SpotifyError::NotConfigured)?;
-        let secret = self.client_secret.as_ref().ok_or(SpotifyError::NotConfigured)?;
+        let secret = self
+            .client_secret
+            .as_ref()
+            .ok_or(SpotifyError::NotConfigured)?;
 
         let mut guard = self.token.lock().await;
         if let Some(cached) = guard.as_ref() {
@@ -194,7 +197,12 @@ impl SpotifyClient {
 
     async fn fetch_track(&self, id: &str) -> Result<SpTrack, SpotifyError> {
         let token = self.access_token().await?;
-        let response = self.http.get(format!("{SPOTIFY_API}/tracks/{id}")).bearer_auth(token).send().await?;
+        let response = self
+            .http
+            .get(format!("{SPOTIFY_API}/tracks/{id}"))
+            .bearer_auth(token)
+            .send()
+            .await?;
 
         if response.status() == reqwest::StatusCode::NOT_FOUND {
             return Err(SpotifyError::TrackNotFound(id.to_string()));
@@ -316,7 +324,12 @@ fn extract_tracks(items: Vec<JsonValue>) -> Vec<SpTrack> {
 
 fn track_query(track: &SpTrack) -> String {
     let name = track.name.as_deref().unwrap_or("");
-    let artists = track.artists.iter().map(|a| a.name.as_str()).collect::<Vec<_>>().join(", ");
+    let artists = track
+        .artists
+        .iter()
+        .map(|a| a.name.as_str())
+        .collect::<Vec<_>>()
+        .join(", ");
     if artists.is_empty() {
         name.to_string()
     } else {
@@ -334,7 +347,12 @@ fn track_query(track: &SpTrack) -> String {
 // holds the `ytsearch1:` query that yt-dlp actually consumes.
 fn build_track(sp: &SpTrack) -> Track {
     let query = track_query(sp);
-    let channel = sp.artists.iter().map(|a| a.name.clone()).collect::<Vec<_>>().join(", ");
+    let channel = sp
+        .artists
+        .iter()
+        .map(|a| a.name.clone())
+        .collect::<Vec<_>>()
+        .join(", ");
     let title = sp.name.clone().unwrap_or_else(|| query.clone());
     let (id, track_url) = match &sp.id {
         Some(spotify_id) => (spotify_id.clone(), format!("https://open.spotify.com/track/{spotify_id}")),

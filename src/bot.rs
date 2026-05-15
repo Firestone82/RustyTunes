@@ -166,22 +166,32 @@ impl MusicBotClient {
                     crate::player::player::set_idle(ctx);
 
                     tracing::info!("Registering commands in guild");
-                    poise::builtins::register_in_guild(ctx, &fw.options().commands, ready.guilds[0].id).await.map_err(|e| {
-                        tracing::error!("Failed to register commands in guild: {:?}", e);
-                        MusicBotError::InternalError(e.to_string())
-                    })?;
+                    poise::builtins::register_in_guild(ctx, &fw.options().commands, ready.guilds[0].id)
+                        .await
+                        .map_err(|e| {
+                            tracing::error!("Failed to register commands in guild: {:?}", e);
+                            MusicBotError::InternalError(e.to_string())
+                        })?;
 
                     tracing::info!("Connecting to database");
-                    let database: Arc<Database> = Arc::new(SqlitePoolOptions::new().connect(&database_url).await.map_err(|e| {
-                        tracing::error!("Failed to connect to database: {:?}", e);
-                        MusicBotError::InternalError(e.to_string())
-                    })?);
+                    let database: Arc<Database> = Arc::new(
+                        SqlitePoolOptions::new()
+                            .connect(&database_url)
+                            .await
+                            .map_err(|e| {
+                                tracing::error!("Failed to connect to database: {:?}", e);
+                                MusicBotError::InternalError(e.to_string())
+                            })?,
+                    );
 
                     tracing::info!("Running database migrations");
-                    sqlx::migrate!("./migrations").run(&*database).await.map_err(|e| {
-                        tracing::error!("Failed to run migrations: {:?}", e);
-                        MusicBotError::InternalError(e.to_string())
-                    })?;
+                    sqlx::migrate!("./migrations")
+                        .run(&*database)
+                        .await
+                        .map_err(|e| {
+                            tracing::error!("Failed to run migrations: {:?}", e);
+                            MusicBotError::InternalError(e.to_string())
+                        })?;
 
                     let _ = sqlx::query!("INSERT OR IGNORE INTO guilds (guild_id, volume) VALUES ($1, $2)", guild_id_map, 0.5)
                         .execute(&*database)
@@ -261,6 +271,8 @@ async fn wait_for_signal() {
 
 #[cfg(not(unix))]
 async fn wait_for_signal() {
-    tokio::signal::ctrl_c().await.expect("Failed to listen for Ctrl+C");
+    tokio::signal::ctrl_c()
+        .await
+        .expect("Failed to listen for Ctrl+C");
     tracing::info!("Received Ctrl+C");
 }

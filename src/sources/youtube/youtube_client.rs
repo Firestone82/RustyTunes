@@ -92,7 +92,9 @@ impl YoutubeClient {
 
         let (_, response) = request.doit().await.map_err(map_api_error)?;
 
-        let items: Vec<SearchResult> = response.items.ok_or_else(|| SearchError::VideoNotFound(format!("No video found for url: {}", url)))?;
+        let items: Vec<SearchResult> = response
+            .items
+            .ok_or_else(|| SearchError::VideoNotFound(format!("No video found for url: {}", url)))?;
 
         let mut tracks: Vec<Track> = items
             .iter()
@@ -163,12 +165,20 @@ impl YoutubeClient {
 
             let (_, response) = tracks_request.doit().await.map_err(map_api_error)?;
 
-            let items: Vec<PlaylistItem> = response.items.ok_or_else(|| SearchError::VideoNotFound(format!("No video found for url: {}", url)))?;
+            let items: Vec<PlaylistItem> = response
+                .items
+                .ok_or_else(|| SearchError::VideoNotFound(format!("No video found for url: {}", url)))?;
 
             let tracks: Vec<Track> = items
                 .iter()
                 .filter_map(|result| {
-                    let video_id: String = result.snippet.as_ref()?.resource_id.clone()?.video_id.clone()?;
+                    let video_id: String = result
+                        .snippet
+                        .as_ref()?
+                        .resource_id
+                        .clone()?
+                        .video_id
+                        .clone()?;
 
                     let snippet: &PlaylistItemSnippet = result.snippet.as_ref()?;
                     let title: &String = snippet.title.as_ref()?;
@@ -222,7 +232,10 @@ impl YoutubeClient {
             .spawn()
             .map_err(|e| SearchError::InternalError(format!("Failed to spawn yt-dlp: {e}")))?;
 
-        let stdout = child.stdout.take().ok_or_else(|| SearchError::InternalError("yt-dlp stdout missing".into()))?;
+        let stdout = child
+            .stdout
+            .take()
+            .ok_or_else(|| SearchError::InternalError("yt-dlp stdout missing".into()))?;
 
         let mut lines = BufReader::new(stdout).lines();
 
@@ -247,7 +260,11 @@ impl YoutubeClient {
 
             let Some(id) = v["id"].as_str() else { continue };
             let title = v["title"].as_str().unwrap_or(id).to_string();
-            let channel = v["channel"].as_str().or_else(|| v["uploader"].as_str()).unwrap_or("").to_string();
+            let channel = v["channel"]
+                .as_str()
+                .or_else(|| v["uploader"].as_str())
+                .unwrap_or("")
+                .to_string();
 
             tracks.push(Track {
                 id: id.to_string(),

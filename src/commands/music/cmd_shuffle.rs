@@ -19,7 +19,10 @@ pub async fn shuffle(ctx: Context<'_>) -> Result<(), MusicBotError> {
 
     player.shuffle().await?;
 
-    PlayerEmbed::Shuffled.to_embed().send_context(ctx, true, Some(30)).await?;
+    PlayerEmbed::Shuffled
+        .to_embed()
+        .send_context(ctx, true, Some(30))
+        .await?;
 
     Ok(())
 }

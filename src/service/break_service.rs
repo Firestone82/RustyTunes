@@ -63,11 +63,18 @@ pub async fn run_break(serenity_ctx: &SerenityContext, guild_id: GuildId, text_c
         })
         .unwrap_or_default();
     if !voice_mentions.is_empty() {
-        let _ = text_channel_id.send_message(&serenity_ctx.http, CreateMessage::new().content(voice_mentions)).await;
+        let _ = text_channel_id
+            .send_message(&serenity_ctx.http, CreateMessage::new().content(voice_mentions))
+            .await;
     }
 
     let mut msg: Message = text_channel_id
-        .send_message(&serenity_ctx.http, CreateMessage::new().embed(progress_embed(&state, None)).components(break_buttons(false)))
+        .send_message(
+            &serenity_ctx.http,
+            CreateMessage::new()
+                .embed(progress_embed(&state, None))
+                .components(break_buttons(false)),
+        )
         .await
         .map_err(|e| MusicBotError::InternalError(e.to_string()))?;
 
@@ -85,7 +92,10 @@ pub async fn run_break(serenity_ctx: &SerenityContext, guild_id: GuildId, text_c
         let remaining = ends_at.saturating_duration_since(now);
         let wait = remaining.min(MIN_EDIT_INTERVAL);
 
-        let interaction = msg.await_component_interaction(shard.clone()).timeout(wait).await;
+        let interaction = msg
+            .await_component_interaction(shard.clone())
+            .timeout(wait)
+            .await;
 
         if let Some(ic) = interaction {
             match ic.data.custom_id.as_str() {
@@ -93,13 +103,19 @@ pub async fn run_break(serenity_ctx: &SerenityContext, guild_id: GuildId, text_c
                     if ic.user.id != state.author_id {
                         ic.create_response(
                             &serenity_ctx.http,
-                            CreateInteractionResponse::Message(CreateInteractionResponseMessage::new().content("Only the person who started the break can do that.").ephemeral(true)),
+                            CreateInteractionResponse::Message(
+                                CreateInteractionResponseMessage::new()
+                                    .content("Only the person who started the break can do that.")
+                                    .ephemeral(true),
+                            ),
                         )
                         .await
                         .ok();
                         continue;
                     }
-                    ic.create_response(&serenity_ctx.http, CreateInteractionResponse::Acknowledge).await.ok();
+                    ic.create_response(&serenity_ctx.http, CreateInteractionResponse::Acknowledge)
+                        .await
+                        .ok();
                     if ic.data.custom_id == BTN_BREAK_CANCEL {
                         cancelled = true;
                     }
@@ -114,14 +130,24 @@ pub async fn run_break(serenity_ctx: &SerenityContext, guild_id: GuildId, text_c
         }
         last_edit = Instant::now();
         let _ = msg
-            .edit(&serenity_ctx.http, EditMessage::new().embed(progress_embed(&state, None)).components(break_buttons(false)))
+            .edit(
+                &serenity_ctx.http,
+                EditMessage::new()
+                    .embed(progress_embed(&state, None))
+                    .components(break_buttons(false)),
+            )
             .await;
     }
 
     let footer = if cancelled { "Break cancelled." } else { "Break is over — starting gathering." };
 
     let _ = msg
-        .edit(&serenity_ctx.http, EditMessage::new().embed(progress_embed(&state, Some(footer))).components(Vec::new()))
+        .edit(
+            &serenity_ctx.http,
+            EditMessage::new()
+                .embed(progress_embed(&state, Some(footer)))
+                .components(Vec::new()),
+        )
         .await;
 
     Ok(cancelled)

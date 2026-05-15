@@ -24,7 +24,10 @@ pub async fn silent(ctx: Context<'_>, state: Option<String>) -> Result<(), Music
     player.silent = desired;
     drop(player);
 
-    PlayerEmbed::SilentState(desired).to_embed().send_context(ctx, true, Some(30)).await?;
+    PlayerEmbed::SilentState(desired)
+        .to_embed()
+        .send_context(ctx, true, Some(30))
+        .await?;
 
     Ok(())
 }
