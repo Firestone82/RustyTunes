@@ -1,19 +1,21 @@
 use crate::commands::reputation::Rep;
-use serenity::all::{CreateEmbed, CreateEmbedFooter};
+use serenity::all::{CreateEmbed, CreateEmbedFooter, User};
+
 
 pub enum ReputationEmbed<'a> {
     SelfError,
     SpamError,
-    PlusRep(&'a RepEmbed),
-    MinusRep(&'a RepEmbed),
+    PlusRep(&'a RepEmbed<'a>),
+    MinusRep(&'a RepEmbed<'a>),
     List(&'a [Rep], &'a str, i64, usize),
     NotFound,
 }
 
-pub struct RepEmbed {
-    pub giver_id: String,
-    pub receiver_id: String,
+pub struct RepEmbed<'a> {
+    pub giver_id: &'a User,
+    pub receiver_id: &'a User,
     pub reason: String,
+    pub overall_rep: i64,
 }
 
 impl ReputationEmbed<'_> {
@@ -22,18 +24,26 @@ impl ReputationEmbed<'_> {
             ReputationEmbed::PlusRep(rep) => CreateEmbed::new()
                 .color(serenity::all::Color::DARK_GREEN)
                 .title("✅  Reputation Increased")
-                .field("Target", format!("<@{}>", rep.receiver_id), true)
-                .field("Given by", format!("<@{}>", rep.giver_id), true)
+                .field("Given by", format!("{}", rep.giver_id), true)
+                .field("ㅤ", "-->", true)
+                .field("Target", format!("{}", rep.receiver_id), true)
                 .field("Amount", "+1 💚", true)
-                .field("Reason", format!("```{}```", rep.reason), false),
+                .field(" ", " ", true)
+                .field("Current rep", format!("`{}`", rep.overall_rep), true)
+                .field("Reason", format!(">>> {}", rep.reason), false)
+            ,
 
             ReputationEmbed::MinusRep(rep) => CreateEmbed::new()
                 .color(serenity::all::Color::DARK_RED)
                 .title("❌  Reputation Decreased")
-                .field("Target", format!("<@{}>", rep.receiver_id), true)
-                .field("Given by", format!("<@{}>", rep.giver_id), true)
+                .field("Given by", format!("{}", rep.giver_id), true)
+                .field("ㅤ", "-->", true)
+                .field("Target", format!("{}", rep.receiver_id), true)
                 .field("Amount", "-1 💔", true)
-                .field("Reason", format!("```{}```", rep.reason), false),
+                .field(" ", " ", true)
+                .field("Current rep", format!("`{}`", rep.overall_rep), true)
+                .field("Reason", format!(">>> {}", rep.reason), false)
+            ,
 
             ReputationEmbed::List(reps, for_user, calculated_rep, rep_count) => {
                 let mut embed = CreateEmbed::new()
@@ -48,10 +58,10 @@ impl ReputationEmbed<'_> {
                     false => {
                         for rep in reps.iter() {
                             embed = embed
-                                .field("Amount", if rep.rep_value == 1 { "✅ +1" } else { "❌ -1" }, true)
+                                .field("Amount", if rep.rep_value == 1 { "+1 💚" } else { "-1 💔" }, true)
                                 .field("Given by", format!("<@{}>", rep.giver_id), true)
                                 .field("Date", format!("`{}`", rep.created_at.date()), true)
-                                .field("Reason", format!("```{}```", rep.reason), false);
+                                .field("Reason", format!(">>> {}", rep.reason), false);
                         }
                         embed = embed.footer(CreateEmbedFooter::new(format!(
                             "📊 Overall rep: {} | 📑 Logs: {}",
