@@ -310,10 +310,6 @@ impl MusicBotClient {
     pub async fn start(&mut self) -> Result<(), MusicBotError> {
         tracing::info!("Starting bot client");
 
-        self.serenity_client.start().await.map_err(|e| {
-            tracing::error!("Failed to start server: {:?}", e);
-            MusicBotError::InternalError(e.to_string())
-        })?;
         let shard_manager = self.serenity_client.shard_manager.clone();
         tokio::spawn(async move {
             wait_for_signal().await;
