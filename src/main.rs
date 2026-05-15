@@ -10,6 +10,7 @@ pub mod handlers;
 pub mod player;
 pub mod service;
 pub mod sources;
+pub mod utils;
 
 #[tokio::main]
 async fn main() -> Result<(), MusicBotError> {

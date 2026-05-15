@@ -1,6 +1,6 @@
 use crate::bot::{Context, MusicBotError};
-use crate::embeds::player_embed::PlayerEmbed;
-use crate::embeds::queue_embed::QueueEmbed;
+use crate::embeds::music::player_embed::PlayerEmbed;
+use crate::embeds::music::queue_embed::QueueEmbed;
 use crate::player::player::Player;
 use crate::service::embed_service::SendEmbed;
 use serenity::all::{

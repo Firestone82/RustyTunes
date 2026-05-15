@@ -1,8 +1,8 @@
 use crate::bot::MusicBotError;
-use crate::embeds::break_embed::{
+use crate::embeds::activity::break_embed::{
     break_buttons, BreakEmbed, BTN_BREAK_CANCEL, BTN_BREAK_SKIP,
 };
-use crate::player::notifier::{get_current_time, parse_duration_from_string};
+use crate::utils::time_utils::{get_current_time, parse_duration_from_string};
 use serenity::all::{
     ChannelId, CreateInteractionResponse, CreateInteractionResponseMessage, CreateMessage,
     EditMessage, GuildId, Mentionable, Message, UserId,

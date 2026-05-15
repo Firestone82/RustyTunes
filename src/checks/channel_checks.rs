@@ -1,5 +1,5 @@
 use crate::bot::{Context, MusicBotError};
-use crate::embeds::bot_embeds::BotEmbed;
+use crate::embeds::bot::bot_embeds::BotEmbed;
 use crate::service::channel_service;
 use crate::service::embed_service::SendEmbed;
 use serenity::all::ChannelId;

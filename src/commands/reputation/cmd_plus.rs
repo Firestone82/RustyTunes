@@ -1,6 +1,6 @@
 use crate::bot::{Context, MusicBotError};
 use crate::commands::reputation::process_rep;
-use crate::embeds::rep_embed::{RepEmbed, ReputationEmbed};
+use crate::embeds::reputation::rep_embed::{RepEmbed, ReputationEmbed};
 use crate::service::embed_service::SendEmbed;
 use serenity::all::User;
 

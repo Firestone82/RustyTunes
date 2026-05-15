@@ -1,7 +1,5 @@
-pub mod bot_embeds;
-pub mod break_embed;
-pub mod gather_embed;
-pub mod notify_embeds;
-pub mod player_embed;
-pub mod queue_embed;
-pub mod rep_embed;
+pub mod activity;
+pub mod bot;
+pub mod music;
+pub mod reputation;
+pub mod utility;

@@ -1,5 +1,5 @@
 use crate::player::player::{Playlist, Track, TrackSource};
-use crate::service::utils_service;
+use crate::utils::string_utils;
 use serenity::all::{Color, CreateEmbed, CreateEmbedAuthor, CreateEmbedFooter};
 
 /// "Location" line shown under each track in queue embeds. Local files don't
@@ -63,7 +63,7 @@ impl<'a> QueueEmbed<'a> {
                     embed = embed.field(
                         format!(
                             "{}  {}",
-                            utils_service::number_to_emoji(index + start + 1),
+                            string_utils::number_to_emoji(index + start + 1),
                             track.metadata.title
                         ),
                         value,

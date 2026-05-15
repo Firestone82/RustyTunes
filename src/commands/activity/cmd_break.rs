@@ -1,8 +1,8 @@
 use crate::bot::{Context, MusicBotError};
 use crate::checks::channel_checks::check_author_in_voice_channel;
-use crate::embeds::bot_embeds::BotEmbed;
-use crate::embeds::break_embed::BreakEmbed;
-use crate::player::notifier::get_current_time;
+use crate::embeds::bot::bot_embeds::BotEmbed;
+use crate::embeds::activity::break_embed::BreakEmbed;
+use crate::utils::time_utils::get_current_time;
 use crate::service::break_service::{
     self, parse_break_duration, parse_break_start_time, BreakState, MAX_BREAK_DURATION,
 };

@@ -1,5 +1,5 @@
 use crate::bot::{Context, Database, MusicBotError};
-use crate::embeds::player_embed::PlayerEmbed;
+use crate::embeds::music::player_embed::PlayerEmbed;
 use crate::handlers::queue_handler::QueueHandler;
 use crate::service::cache_service;
 use crate::service::embed_service::SendEmbed;

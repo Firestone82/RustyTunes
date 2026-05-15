@@ -1,10 +1,10 @@
 use crate::bot::MusicBotError;
-use crate::embeds::gather_embed::{
+use crate::embeds::activity::gather_embed::{
     gather_buttons, pregather_buttons, CheckInRow, GatherEmbed, BTN_CANCEL, BTN_FORCE_START,
     BTN_HERE, BTN_TOGGLE_SILENT, GRACE_PERIOD,
 };
-use crate::player::notifier::get_current_time;
-use crate::service::utils_service::sanitize_name;
+use crate::utils::string_utils::sanitize_name;
+use crate::utils::time_utils::get_current_time;
 use serenity::all::{
     ChannelId, ComponentInteractionCollector, CreateInteractionResponse,
     CreateInteractionResponseMessage, CreateMessage, EditMessage, GuildId, Mentionable, Message,

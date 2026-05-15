@@ -1,7 +1,7 @@
 use crate::bot::{Context, MusicBotError};
 use serenity::all::User;
 
-use crate::embeds::rep_embed::ReputationEmbed;
+use crate::embeds::reputation::rep_embed::ReputationEmbed;
 use crate::service::embed_service::SendEmbed;
 use time::{Duration, OffsetDateTime};
 

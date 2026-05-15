@@ -1,4 +1,5 @@
-use crate::player::notifier::{format_time, MessageNotify};
+use crate::player::notifier::MessageNotify;
+use crate::utils::time_utils::format_time;
 use serenity::all::{Color, CreateEmbed, Mentionable};
 
 pub enum NotifyEmbed<'a> {

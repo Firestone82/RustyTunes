@@ -1,6 +1,6 @@
 use crate::bot::{Context, MusicBotError};
 use crate::commands::reputation::Rep;
-use crate::embeds::rep_embed::ReputationEmbed;
+use crate::embeds::reputation::rep_embed::ReputationEmbed;
 use serenity::all::{
     ButtonStyle, ComponentInteractionCollector, CreateActionRow, CreateButton,
     CreateInteractionResponse, CreateInteractionResponseMessage, User,

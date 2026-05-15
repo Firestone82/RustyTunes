@@ -1,4 +1,4 @@
-use crate::embeds::player_embed::PlayerEmbed;
+use crate::embeds::music::player_embed::PlayerEmbed;
 use crate::player::player::{self, PlaybackError, Player};
 use crate::service::embed_service::SendEmbed;
 use async_trait::async_trait;

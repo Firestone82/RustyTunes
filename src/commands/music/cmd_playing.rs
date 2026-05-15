@@ -1,5 +1,5 @@
 use crate::bot::{Context, MusicBotError};
-use crate::embeds::player_embed::PlayerEmbed;
+use crate::embeds::music::player_embed::PlayerEmbed;
 use crate::player::player::Player;
 use crate::service::embed_service::SendEmbed;
 use tokio::sync::RwLockReadGuard;

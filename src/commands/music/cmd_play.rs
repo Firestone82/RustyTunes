@@ -1,19 +1,13 @@
 use crate::bot::{Context, MusicBotError};
 use crate::checks::channel_checks::check_author_in_same_voice_channel;
-use crate::embeds::player_embed::PlayerEmbed;
-use crate::embeds::queue_embed::QueueEmbed;
+use crate::embeds::music::player_embed::PlayerEmbed;
+use crate::embeds::music::queue_embed::QueueEmbed;
 use crate::player::player::{Player, Track};
 use crate::service::channel_service;
 use crate::service::embed_service::SendEmbed;
+use crate::service::picker_service::{self, PickerOutcome};
 use crate::sources::spotify::spotify_client::{SpotifyClient, SpotifyError, SpotifySearchResult};
 use crate::sources::youtube::youtube_client::{SearchError, YouTubeSearchResult, YoutubeClient};
-use serenity::all::{
-    ButtonStyle, CreateActionRow, CreateButton, CreateInteractionResponse,
-    CreateInteractionResponseMessage, Message,
-};
-use std::collections::HashMap;
-use std::convert::Into;
-use std::time::{Duration, Instant};
 use tokio::sync::RwLockWriteGuard;
 
 const YOUTUBE_VIDEO_URL: &str = "https://www.youtube.com/watch?v=";
@@ -110,127 +104,45 @@ async fn do_play(ctx: Context<'_>, track_source: String, top: bool) -> Result<()
         }
 
         Ok(YouTubeSearchResult::Tracks(mut tracks)) => {
-            let mut buttons: Vec<CreateButton> = (0..tracks.len())
-                .map(|i| {
-                    CreateButton::new(format!("track_{}", i))
-                        .label((i + 1).to_string())
-                        .style(ButtonStyle::Secondary)
-                })
-                .collect();
-            buttons.push(
-                CreateButton::new("track_cancel")
-                    .label("✖ Cancel")
-                    .style(ButtonStyle::Danger),
-            );
+            let outcome = picker_service::show_picker(
+                ctx,
+                tracks.len(),
+                "track",
+                PlayerEmbed::Search(&tracks).to_embed(),
+                "Only the person who ran this command can select a track.",
+            )
+            .await?;
 
-            let row_count = buttons.len().div_ceil(5);
-            let per_row = buttons.len().div_ceil(row_count.max(1));
-            let rows: Vec<CreateActionRow> = buttons
-                .chunks(per_row.max(1))
-                .map(|chunk| CreateActionRow::Buttons(chunk.to_vec()))
-                .collect();
+            match outcome {
+                PickerOutcome::Selected(track_index) => {
+                    let mut track: Track = tracks.swap_remove(track_index);
+                    track.added_by = ctx.author().name.clone();
 
-            let reply_handle = ctx
-                .send(
-                    poise::CreateReply::default()
-                        .embed(PlayerEmbed::Search(&tracks).to_embed())
-                        .components(rows)
-                        .reply(true),
-                )
-                .await
-                .map_err(|error| MusicBotError::InternalError(error.to_string()))?;
+                    let mut player: RwLockWriteGuard<Player> = ctx.data().player.write().await;
 
-            let message: Message = reply_handle
-                .into_message()
-                .await
-                .map_err(|error| MusicBotError::InternalError(error.to_string()))?;
+                    if player.is_playing {
+                        QueueEmbed::TrackAdded(&track)
+                            .to_embed()
+                            .send_context(ctx, true, Some(30))
+                            .await?;
+                    }
 
-            let deadline = Instant::now() + Duration::from_secs(60 * 2);
-            let mut cooldowns: HashMap<serenity::all::UserId, Instant> = HashMap::new();
-            loop {
-                let remaining = deadline.saturating_duration_since(Instant::now());
-                if remaining.is_zero() {
-                    message.delete(ctx.http()).await?;
-                    PlayerEmbed::SearchExpired
+                    if let Err(error) = player.add_track_to_queue(ctx, track, top).await {
+                        drop(player);
+                        report_playback_error(ctx, error).await?;
+                        return Ok(());
+                    }
+                    drop(player);
+                    channel_service::join_user_channel(ctx).await?;
+                }
+                PickerOutcome::Cancelled => {
+                    PlayerEmbed::SearchCancelled
                         .to_embed()
                         .send_context(ctx, true, Some(30))
                         .await?;
                     return Ok(());
                 }
-
-                let interaction = message
-                    .await_component_interaction(ctx.serenity_context().shard.clone())
-                    .timeout(remaining)
-                    .await;
-
-                match interaction {
-                    Some(interaction) => {
-                        if interaction.user.id != ctx.author().id {
-                            let now = Instant::now();
-                            let on_cooldown = cooldowns
-                                .get(&interaction.user.id)
-                                .map(|&last| now.duration_since(last) < Duration::from_secs(5))
-                                .unwrap_or(false);
-                            if on_cooldown {
-                                interaction.defer(ctx.http()).await.ok();
-                            } else {
-                                cooldowns.insert(interaction.user.id, now);
-                                interaction.create_response(ctx.http(), CreateInteractionResponse::Message(
-                                    CreateInteractionResponseMessage::new()
-                                        .content("Only the person who ran this command can select a track.")
-                                        .ephemeral(true)
-                                )).await.ok();
-                            }
-                            continue;
-                        }
-
-                        interaction.defer(ctx.http()).await?;
-                        message.delete(ctx.http()).await?;
-
-                        if interaction.data.custom_id == "track_cancel" {
-                            PlayerEmbed::SearchCancelled
-                                .to_embed()
-                                .send_context(ctx, true, Some(30))
-                                .await?;
-                            return Ok(());
-                        }
-
-                        let track_index: usize = interaction
-                            .data
-                            .custom_id
-                            .strip_prefix("track_")
-                            .and_then(|s| s.parse().ok())
-                            .unwrap();
-                        let mut track: Track = tracks.swap_remove(track_index);
-                        track.added_by = ctx.author().name.clone();
-
-                        let mut player: RwLockWriteGuard<Player> = ctx.data().player.write().await;
-
-                        if player.is_playing {
-                            QueueEmbed::TrackAdded(&track)
-                                .to_embed()
-                                .send_context(ctx, true, Some(30))
-                                .await?;
-                        }
-
-                        if let Err(error) = player.add_track_to_queue(ctx, track, top).await {
-                            drop(player);
-                            report_playback_error(ctx, error).await?;
-                            return Ok(());
-                        }
-                        drop(player);
-                        channel_service::join_user_channel(ctx).await?;
-                        break;
-                    }
-                    None => {
-                        message.delete(ctx.http()).await?;
-                        PlayerEmbed::SearchExpired
-                            .to_embed()
-                            .send_context(ctx, true, Some(30))
-                            .await?;
-                        return Ok(());
-                    }
-                }
+                PickerOutcome::Expired => return Ok(()),
             }
         }
 

@@ -1,12 +1,11 @@
 use crate::bot::{Context, MusicBotError};
 use crate::checks::channel_checks::check_author_in_voice_channel;
-use crate::embeds::bot_embeds::BotEmbed;
-use crate::embeds::gather_embed::GatherEmbed;
-use crate::player::notifier::{get_current_time, parse_duration_from_string};
+use crate::embeds::bot::bot_embeds::BotEmbed;
+use crate::embeds::activity::gather_embed::GatherEmbed;
 use crate::service::channel_service;
 use crate::service::embed_service::SendEmbed;
 use crate::service::gather_service::{self, GatherState, PREGATHER_DURATION};
-use crate::service::utils_service::humanize_duration;
+use crate::utils::time_utils::{get_current_time, humanize_duration, parse_duration_from_string};
 use serenity::all::{
     ChannelId, CreateInteractionResponse, CreateInteractionResponseMessage, GuildId, Mentionable,
     User,

@@ -1,5 +1,5 @@
 use crate::bot::{MusicBotData, MusicBotError};
-use crate::embeds::bot_embeds::BotEmbed;
+use crate::embeds::bot::bot_embeds::BotEmbed;
 use async_trait::async_trait;
 use songbird::{Event, EventContext, EventHandler};
 
