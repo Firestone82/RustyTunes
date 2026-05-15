@@ -7,8 +7,8 @@ use crate::player::track::Track;
 use crate::service::channel_service;
 use crate::service::embed_service::SendEmbed;
 use crate::service::picker_service::{self, PickerOutcome};
-use crate::sources::spotify::spotify_client::{SpotifyClient, SpotifyError, SpotifySearchResult};
-use crate::sources::youtube::youtube_client::{SearchError, YouTubeSearchResult, YoutubeClient};
+use crate::sources::spotify_player::{SpotifyClient, SpotifyError, SpotifySearchResult};
+use crate::sources::youtube_player::{SearchError, YouTubeSearchResult, YoutubeClient};
 use tokio::sync::RwLockWriteGuard;
 
 const YOUTUBE_VIDEO_URL: &str = "https://www.youtube.com/watch?v=";

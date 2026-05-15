@@ -3,7 +3,7 @@
 
 use crate::bot::{Context, MusicBotError};
 use crate::player::track::{Track, TrackMetadata, TrackSource};
-use crate::sources::local::local_client;
+use crate::sources::local_player;
 use std::path::PathBuf;
 
 /// What we're pulling into the library. Either an attached Discord file
@@ -47,7 +47,7 @@ pub async fn save_to_library(
         ));
     }
 
-    let dir = local_client::ensure_downloads_dir()
+    let dir = local_player::ensure_downloads_dir()
         .await
         .map_err(|e| MusicBotError::InternalError(format!("Could not create downloads dir: {e}")))?;
 
@@ -73,10 +73,10 @@ pub async fn save_to_library(
                     "Attachment `{filename}` doesn't look like an audio file."
                 )));
             }
-            let mut name = local_client::sanitize_filename(filename);
+            let mut name = local_player::sanitize_filename(filename);
             // Discord allows audio files without recognized extensions; add
             // one so `local list` can find the file later.
-            if !local_client::has_audio_extension(&name) {
+            if !local_player::has_audio_extension(&name) {
                 let ext = audio_ext_from_content_type(content_type.as_deref()).unwrap_or("mp3");
                 name = format!("{name}.{ext}");
             }
@@ -90,7 +90,7 @@ pub async fn save_to_library(
         None => auto_name,
     };
 
-    let target = local_client::unique_path(&dir, &filename).await;
+    let target = local_player::unique_path(&dir, &filename).await;
 
     let bytes = response
         .bytes()
@@ -110,8 +110,8 @@ fn apply_name_override(
     custom: &str,
     auto_name: &str,
 ) -> String {
-    let cleaned = local_client::sanitize_filename(custom);
-    if local_client::has_audio_extension(&cleaned) {
+    let cleaned = local_player::sanitize_filename(custom);
+    if local_player::has_audio_extension(&cleaned) {
         return cleaned;
     }
     let ext = extension_of(auto_name).unwrap_or("mp3");
@@ -130,7 +130,7 @@ fn is_audio(
     filename: &str,
     content_type: Option<&str>,
 ) -> bool {
-    if local_client::has_audio_extension(filename) {
+    if local_player::has_audio_extension(filename) {
         return true;
     }
     content_type
@@ -158,14 +158,14 @@ fn filename_from_response(
     if let Some(disposition) = response.headers().get(reqwest::header::CONTENT_DISPOSITION) {
         if let Ok(value) = disposition.to_str() {
             if let Some(name) = parse_content_disposition_filename(value) {
-                let cleaned = local_client::sanitize_filename(&name);
-                if local_client::has_audio_extension(&cleaned) {
+                let cleaned = local_player::sanitize_filename(&name);
+                if local_player::has_audio_extension(&cleaned) {
                     return cleaned;
                 }
             }
         }
     }
-    local_client::filename_from_url(url)
+    local_player::filename_from_url(url)
 }
 
 fn parse_content_disposition_filename(header: &str) -> Option<String> {
@@ -207,7 +207,7 @@ pub fn build_local_track(
     path: PathBuf,
     added_by: String,
 ) -> Track {
-    let title = local_client::track_title(&path);
+    let title = local_player::track_title(&path);
     let id = path.to_string_lossy().to_string();
     let display_url = format!("file://{}", path.to_string_lossy());
 

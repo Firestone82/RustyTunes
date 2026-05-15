@@ -6,8 +6,8 @@ use crate::player::track::PlaybackError;
 use crate::service::break_service::BreakState;
 use crate::service::gather_service::GatherState;
 use crate::service::notifier_service::{Notifier, NotifierError};
-use crate::sources::spotify::spotify_client::{SpotifyClient, SpotifyError};
-use crate::sources::youtube::youtube_client::{SearchError, YoutubeClient};
+use crate::sources::spotify_player::{SpotifyClient, SpotifyError};
+use crate::sources::youtube_player::{SearchError, YoutubeClient};
 use dotenv::var;
 use poise::serenity_prelude;
 

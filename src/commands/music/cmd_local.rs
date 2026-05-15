@@ -8,7 +8,7 @@ use crate::player::track::Track;
 use crate::service::channel_service;
 use crate::service::embed_service::SendEmbed;
 use crate::service::picker_service::{self, PickerOutcome};
-use crate::sources::local::local_client;
+use crate::sources::local_player;
 use serenity::all::Attachment;
 use std::path::PathBuf;
 use tokio::sync::RwLockWriteGuard;
@@ -40,10 +40,10 @@ async fn autocomplete_local_track(
     partial: &str,
 ) -> Vec<String> {
     let needle = partial.trim().to_ascii_lowercase();
-    let files = local_client::list_local_files().await.unwrap_or_default();
+    let files = local_player::list_local_files().await.unwrap_or_default();
     files
         .into_iter()
-        .map(|p| local_client::track_title(&p))
+        .map(|p| local_player::track_title(&p))
         .filter(|title| needle.is_empty() || title.to_ascii_lowercase().contains(&needle))
         .take(25)
         .collect()
@@ -164,10 +164,10 @@ pub async fn play(
         .filter(|n| !n.is_empty());
 
     let matches: Vec<PathBuf> = match needle.as_deref() {
-        Some(q) => local_client::search_local(q)
+        Some(q) => local_player::search_local(q)
             .await
             .map_err(|e| MusicBotError::InternalError(format!("Could not read downloads: {e}")))?,
-        None => local_client::list_local_files()
+        None => local_player::list_local_files()
             .await
             .map_err(|e| MusicBotError::InternalError(format!("Could not read downloads: {e}")))?,
     };
@@ -226,7 +226,7 @@ pub async fn remove(
         return Ok(());
     }
 
-    let matches: Vec<PathBuf> = local_client::search_local(needle)
+    let matches: Vec<PathBuf> = local_player::search_local(needle)
         .await
         .map_err(|e| MusicBotError::InternalError(format!("Could not read downloads: {e}")))?;
 
@@ -261,7 +261,7 @@ pub async fn remove(
         .unwrap_or("?")
         .to_string();
 
-    if let Err(e) = local_client::delete_local(&target).await {
+    if let Err(e) = local_player::delete_local(&target).await {
         PlayerEmbed::DownloadFailed(format!("Could not delete `{display_name}`: {e}"))
             .to_embed()
             .send_context(ctx, true, Some(30))
@@ -304,8 +304,8 @@ pub async fn rename_track(
 
     let current_ext = target.extension().and_then(|e| e.to_str()).unwrap_or("mp3");
 
-    let cleaned = local_client::sanitize_filename(new_name);
-    let new_filename = if local_client::has_audio_extension(&cleaned) {
+    let cleaned = local_player::sanitize_filename(new_name);
+    let new_filename = if local_player::has_audio_extension(&cleaned) {
         cleaned
     } else {
         format!("{cleaned}.{current_ext}")
@@ -314,9 +314,9 @@ pub async fn rename_track(
     let parent = target
         .parent()
         .map(|p| p.to_path_buf())
-        .unwrap_or_else(local_client::downloads_dir);
+        .unwrap_or_else(local_player::downloads_dir);
 
-    let new_path = local_client::unique_path(&parent, &new_filename).await;
+    let new_path = local_player::unique_path(&parent, &new_filename).await;
 
     if let Err(e) = tokio::fs::rename(&target, &new_path).await {
         PlayerEmbed::DownloadFailed(format!("Rename failed: {e}"))
@@ -352,7 +352,7 @@ async fn resolve_unique(
     ctx: Context<'_>,
     query: &str,
 ) -> Result<Option<PathBuf>, MusicBotError> {
-    let matches: Vec<PathBuf> = local_client::search_local(query)
+    let matches: Vec<PathBuf> = local_player::search_local(query)
         .await
         .map_err(|e| MusicBotError::InternalError(format!("Could not read downloads: {e}")))?;
 
@@ -367,7 +367,7 @@ async fn resolve_unique(
     let needle_lower = query.trim().to_ascii_lowercase();
     if let Some(exact) = matches
         .iter()
-        .find(|p| local_client::track_title(p).to_ascii_lowercase() == needle_lower)
+        .find(|p| local_player::track_title(p).to_ascii_lowercase() == needle_lower)
     {
         return Ok(Some(exact.clone()));
     }
@@ -385,7 +385,7 @@ async fn resolve_unique(
 }
 
 async fn list_inner(ctx: Context<'_>) -> Result<(), MusicBotError> {
-    let files: Vec<PathBuf> = local_client::list_local_files()
+    let files: Vec<PathBuf> = local_player::list_local_files()
         .await
         .map_err(|e| MusicBotError::InternalError(format!("Could not read downloads: {e}")))?;
 

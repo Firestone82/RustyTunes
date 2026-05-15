@@ -58,14 +58,11 @@ src/
 │   ├── normalize_service.rs
 │   ├── notifier_service.rs
 │   └── picker_service.rs
-├── sources.rs          — declares `local`, `spotify`, `youtube`.
+├── sources.rs          — declares `local_player`, `spotify_player`, `youtube_player`.
 ├── sources/            — track sources used by commands and services.
-│   ├── local.rs
-│   ├── local/          — local on-disk files.
-│   ├── spotify.rs
-│   ├── spotify/        — Spotify API client.
-│   ├── youtube.rs
-│   └── youtube/        — YouTube/yt-dlp client.
+│   ├── local_player.rs
+│   ├── spotify_player.rs
+│   └── youtube_player.rs
 ├── utils.rs            — declares `string_utils`, `time_utils`.
 └── utils/              — pure, shared helpers reusable across services/commands.
     ├── string_utils.rs — number_to_emoji, sanitize_name, MAX_NAME_LEN.
@@ -101,9 +98,9 @@ src/
    acquires nested helpers, push the body into a service.
 
 5. **Sources**: Track origins (`spotify`, `youtube`, `local`) live in
-   `sources/`. Both commands and services may call into them. A new source
-   gets its own `sources/<name>/` subfolder with a `<name>_client.rs`
-   entry point.
+   `sources/` as flat files named `<name>_player.rs`. Both commands and
+   services may call into them. A new source goes in as a sibling file —
+   no per-source subfolder unless it grows enough to need one.
 
 6. **Coupled commands stay together**: When commands hand off to each
    other (`break` ends and auto-starts `gather`), put them in a shared
@@ -117,7 +114,7 @@ src/
    its own methods stay on `Player`.
 
 8. **Module names**: Files keep their `_service`, `_handler`, `_embed`,
-   `_client`, `_checks`, `_utils` suffix in the filename so the role is
+   `_player`, `_checks`, `_utils` suffix in the filename so the role is
    obvious in `use` statements. Picking the right suffix is part of
    choosing the right folder.
 
@@ -144,7 +141,7 @@ merge — but running `cargo fmt` locally keeps diffs small.
 - Embeds go in `embeds/<area>/<feature>_embed.rs`.
 - Business logic goes in `service/<feature>_service.rs` (or extends an
   existing service when it fits).
-- Source-specific code goes in `sources/<source>/<source>_client.rs`.
+- Source-specific code goes in `sources/<source>_player.rs`.
 - Event/listener code goes in `handlers/<event>_handler.rs`.
 - Command file in `commands/<area>/cmd_<name>.rs` that calls the service.
 - Shared helpers (time, string, parsing) extract into `utils/`.
