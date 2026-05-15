@@ -155,6 +155,19 @@ impl MusicBotClient {
                             None => return Ok(()),
                         };
 
+                        // Auto-arrive expected gathering users when they join the gathering voice channel.
+                        if let Some(joined_channel) = new.channel_id {
+                            let gatherings = data.gatherings.read().await;
+                            if let Some(gather_state) = gatherings.get(&guild_id) {
+                                if gather_state.voice_channel_id == joined_channel {
+                                    let is_expected = gather_state.extra_expected.lock().unwrap().contains(&new.user_id);
+                                    if is_expected {
+                                        gather_state.auto_arrived.lock().unwrap().insert(new.user_id);
+                                    }
+                                }
+                            }
+                        }
+
                         let bot_id = ctx.cache.current_user().id;
 
                         let bot_channel: Option<ChannelId> = ctx.cache

@@ -1,9 +1,10 @@
 use crate::bot::{Context, MusicBotError};
 use crate::checks::channel_checks::check_author_in_voice_channel;
 use crate::embeds::bot_embeds::BotEmbed;
+use crate::player::notifier::parse_duration_from_string;
 use crate::service::channel_service;
 use crate::service::embed_service::SendEmbed;
-use crate::service::gather_service::{self, GatherState};
+use crate::service::gather_service::{self, GatherState, PREGATHER_DURATION};
 use serenity::all::{
     ChannelId, Color, CreateEmbed, CreateInteractionResponse, CreateInteractionResponseMessage,
     GuildId, Mentionable, User,
@@ -23,7 +24,11 @@ pub async fn gather(_ctx: Context<'_>) -> Result<(), MusicBotError> {
 
 /// Gather everyone in your voice channel — they tap "I'm here!" to check in.
 #[poise::command(slash_command, prefix_command, check = "check_author_in_voice_channel")]
-pub async fn start(ctx: Context<'_>) -> Result<(), MusicBotError> {
+pub async fn start(
+    ctx: Context<'_>,
+    #[description = "Pre-gather countdown length (e.g. 30s, 2m). Default: 1 minute."]
+    time: Option<String>,
+) -> Result<(), MusicBotError> {
     let guild_id: GuildId = ctx.guild_id().ok_or(MusicBotError::NoGuildIdError)?;
 
     let voice_channel_id: ChannelId =
@@ -37,6 +42,22 @@ pub async fn start(ctx: Context<'_>) -> Result<(), MusicBotError> {
                 return Ok(());
             }
         };
+
+    let pregather_duration = match time {
+        Some(ref t) => match parse_duration_from_string(t.trim()) {
+            Some(d) if d.as_secs() > 0 => d,
+            _ => {
+                CreateEmbed::new()
+                    .color(Color::DARK_RED)
+                    .title("🚫  Invalid duration")
+                    .description("Use a relative duration like `30s`, `2m`, or `1m 30s`.")
+                    .send_context(ctx, true, Some(15))
+                    .await?;
+                return Ok(());
+            }
+        },
+        None => PREGATHER_DURATION,
+    };
 
     {
         let gatherings = ctx.data().gatherings.read().await;
@@ -67,7 +88,7 @@ pub async fn start(ctx: Context<'_>) -> Result<(), MusicBotError> {
             .await;
     }
 
-    let state = Arc::new(GatherState::default());
+    let state = Arc::new(GatherState::new(voice_channel_id));
 
     ctx.data()
         .gatherings
@@ -82,6 +103,7 @@ pub async fn start(ctx: Context<'_>) -> Result<(), MusicBotError> {
         voice_channel_id,
         ctx.author().id,
         state,
+        pregather_duration,
     )
     .await;
 
@@ -90,13 +112,15 @@ pub async fn start(ctx: Context<'_>) -> Result<(), MusicBotError> {
     result
 }
 
-/// Add a user to wait for — gathering won't finish until they check in too.
+/// Add users to wait for — gathering won't finish until they all check in too.
 #[poise::command(slash_command, prefix_command)]
 pub async fn expect(
     ctx: Context<'_>,
-    #[description = "User to wait for"] user: User,
-    #[description = "Suppress ghost-ping reminders for this user (default: pings enabled)"]
-    silent: Option<bool>,
+    #[description = "User to wait for"] user1: User,
+    #[description = "Second user to wait for"] user2: Option<User>,
+    #[description = "Third user to wait for"] user3: Option<User>,
+    #[description = "Fourth user to wait for"] user4: Option<User>,
+    #[description = "Fifth user to wait for"] user5: Option<User>,
 ) -> Result<(), MusicBotError> {
     let guild_id = ctx.guild_id().ok_or(MusicBotError::NoGuildIdError)?;
 
@@ -120,26 +144,34 @@ pub async fn expect(
         }
     };
 
-    state.extra_expected.lock().unwrap().insert(user.id);
+    let users: Vec<&User> = [
+        Some(&user1),
+        user2.as_ref(),
+        user3.as_ref(),
+        user4.as_ref(),
+        user5.as_ref(),
+    ]
+    .into_iter()
+    .flatten()
+    .collect();
 
-    let silent = silent.unwrap_or(false);
-    if silent {
-        state.no_spam.lock().unwrap().insert(user.id);
+    {
+        let mut extra = state.extra_expected.lock().unwrap();
+        for u in &users {
+            extra.insert(u.id);
+        }
     }
 
-    let desc = if silent {
-        format!(
-            "{} added to the gathering.\nGhost-ping reminders are **disabled** for them.",
-            user.mention()
-        )
-    } else {
-        format!("{} added to the gathering.", user.mention())
-    };
+    let names = users
+        .iter()
+        .map(|u| u.mention().to_string())
+        .collect::<Vec<_>>()
+        .join(", ");
 
     CreateEmbed::new()
         .color(Color::DARK_GREEN)
-        .title("✅  User expected")
-        .description(desc)
+        .title("✅  Users expected")
+        .description(format!("{} added to the gathering.", names))
         .send_context(ctx, true, Some(15))
         .await?;
 

@@ -4,7 +4,7 @@ use crate::embeds::bot_embeds::BotEmbed;
 use crate::player::notifier::{get_current_time, parse_duration_from_string};
 use crate::service::channel_service;
 use crate::service::embed_service::SendEmbed;
-use crate::service::gather_service::{self, GatherState};
+use crate::service::gather_service::{self, GatherState, PREGATHER_DURATION};
 use serenity::all::{
     ButtonStyle, ChannelId, Color, CreateActionRow, CreateButton, CreateEmbed,
     CreateInteractionResponse, CreateInteractionResponseMessage, CreateMessage, EditMessage,
@@ -261,7 +261,7 @@ pub async fn start(
         return Ok(());
     }
 
-    let gather_state = Arc::new(GatherState::default());
+    let gather_state = Arc::new(GatherState::new(voice_channel_id));
     ctx.data()
         .gatherings
         .write()
@@ -275,6 +275,7 @@ pub async fn start(
         voice_channel_id,
         author_id,
         gather_state,
+        PREGATHER_DURATION,
     )
     .await?;
 
