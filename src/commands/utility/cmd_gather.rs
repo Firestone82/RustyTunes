@@ -1,13 +1,15 @@
 use crate::bot::{Context, MusicBotError};
 use crate::checks::channel_checks::check_author_in_voice_channel;
 use crate::embeds::bot_embeds::BotEmbed;
+use crate::embeds::gather_embed::GatherEmbed;
 use crate::player::notifier::{get_current_time, parse_duration_from_string};
 use crate::service::channel_service;
 use crate::service::embed_service::SendEmbed;
-use crate::service::gather_service::{self, humanize_duration, GatherState, PREGATHER_DURATION};
+use crate::service::gather_service::{self, GatherState, PREGATHER_DURATION};
+use crate::service::utils_service::humanize_duration;
 use serenity::all::{
-    ChannelId, Color, CreateEmbed, CreateInteractionResponse, CreateInteractionResponseMessage,
-    GuildId, Mentionable, User,
+    ChannelId, CreateInteractionResponse, CreateInteractionResponseMessage, GuildId, Mentionable,
+    User,
 };
 use std::sync::Arc;
 use std::time::Duration;
@@ -48,13 +50,8 @@ pub async fn start(
         Some(ref t) => match parse_pregather_time(t.trim()) {
             Some(pair) => pair,
             None => {
-                CreateEmbed::new()
-                    .color(Color::DARK_RED)
-                    .title("🚫  Invalid time")
-                    .description(
-                        "Use a relative duration like `10m` or `1h 30m`, \
-                         or a clock time like `10:00` or `14:30`.",
-                    )
+                GatherEmbed::InvalidPregatherTime
+                    .to_embed()
                     .send_context(ctx, true, Some(15))
                     .await?;
                 return Ok(());
@@ -66,10 +63,8 @@ pub async fn start(
     {
         let gatherings = ctx.data().gatherings.read().await;
         if gatherings.contains_key(&guild_id) {
-            CreateEmbed::new()
-                .color(Color::DARK_RED)
-                .title("🚫  Gathering already running")
-                .description("There's already an active gathering in this guild.")
+            GatherEmbed::AlreadyRunning
+                .to_embed()
                 .send_context(ctx, true, Some(15))
                 .await?;
             return Ok(());
@@ -138,12 +133,8 @@ pub async fn expect(
     let state = match state {
         Some(s) => s,
         None => {
-            CreateEmbed::new()
-                .color(Color::DARK_RED)
-                .title("🚫  No active gathering")
-                .description(
-                    "There's no gathering running right now. Start one with `/gather start`.",
-                )
+            GatherEmbed::NoActiveGathering
+                .to_embed()
                 .send_context(ctx, true, Some(15))
                 .await?;
             return Ok(());
@@ -174,10 +165,8 @@ pub async fn expect(
         .collect::<Vec<_>>()
         .join(", ");
 
-    CreateEmbed::new()
-        .color(Color::DARK_GREEN)
-        .title("✅  Users expected")
-        .description(format!("{} added to the gathering.", names))
+    GatherEmbed::UsersExpected { names: &names }
+        .to_embed()
         .send_context(ctx, true, Some(15))
         .await?;
 

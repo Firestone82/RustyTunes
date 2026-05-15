@@ -1,6 +1,6 @@
 use crate::commands;
-use crate::commands::utility::cmd_break::BreakState;
 use crate::commands::{music, reputation, utility};
+use crate::service::break_service::BreakState;
 use crate::service::gather_service::GatherState;
 use crate::handlers::error_handler;
 use crate::player::notifier::{Notifier, NotifierError};
