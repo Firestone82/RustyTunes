@@ -1,4 +1,5 @@
 use crate::bot::MusicBotError;
+use crate::player::notifier::get_current_time;
 use serenity::all::{
     ButtonStyle, ChannelId, Color, ComponentInteractionCollector, CreateActionRow, CreateButton,
     CreateEmbed, CreateInteractionResponse, CreateInteractionResponseMessage, CreateMessage,
@@ -10,6 +11,7 @@ use serenity::prelude::Context as SerenityContext;
 use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
+use time::OffsetDateTime;
 
 /// Shared state for an active gathering.
 pub struct GatherState {
@@ -87,12 +89,13 @@ pub async fn start_gather(
             .await;
 
         let pregather_ends_at = Instant::now() + pregather_duration;
+        let pregather_ends_at_wall = get_current_time() + pregather_duration;
 
         msg = text_channel_id
             .send_message(
                 &serenity_ctx.http,
                 CreateMessage::new()
-                    .embed(build_pregather_embed(pregather_ends_at, None))
+                    .embed(build_pregather_embed(pregather_ends_at, pregather_ends_at_wall, None))
                     .components(pregather_buttons(false)),
             )
             .await
@@ -177,7 +180,7 @@ pub async fn start_gather(
                         .edit(
                             &serenity_ctx.http,
                             EditMessage::new()
-                                .embed(build_pregather_embed(pregather_ends_at, None))
+                                .embed(build_pregather_embed(pregather_ends_at, pregather_ends_at_wall, None))
                                 .components(pregather_buttons(false)),
                         )
                         .await;
@@ -190,7 +193,7 @@ pub async fn start_gather(
                 .edit(
                     &serenity_ctx.http,
                     EditMessage::new()
-                        .embed(build_pregather_embed(pregather_ends_at, Some("Cancelled.")))
+                        .embed(build_pregather_embed(pregather_ends_at, pregather_ends_at_wall, Some("Cancelled.")))
                         .components(Vec::new()),
                 )
                 .await;
@@ -653,19 +656,24 @@ fn pregather_buttons(disabled: bool) -> Vec<CreateActionRow> {
     ])]
 }
 
-fn build_pregather_embed(ends_at: Instant, footer: Option<&str>) -> CreateEmbed {
+fn build_pregather_embed(ends_at: Instant, ends_at_wall: OffsetDateTime, footer: Option<&str>) -> CreateEmbed {
     let remaining = ends_at.saturating_duration_since(Instant::now());
     let mut builder = CreateEmbed::new()
         .color(Color::DARK_BLUE)
         .title("📣  Voice Channel Gathering")
         .description(format!(
-            "Starting in **{}** — join the voice channel now!",
+            "Starting in **{}** — join the voice channel now!\n\nStarts at: `{}`",
             format_mmss(remaining),
+            format_wall_clock(ends_at_wall),
         ));
     if let Some(text) = footer {
         builder = builder.footer(serenity::all::CreateEmbedFooter::new(text));
     }
     builder
+}
+
+fn format_wall_clock(t: OffsetDateTime) -> String {
+    format!("{:02}:{:02}:{:02}", t.hour(), t.minute(), t.second())
 }
 
 fn buttons(disabled: bool, silent: bool) -> Vec<CreateActionRow> {
