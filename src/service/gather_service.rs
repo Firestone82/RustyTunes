@@ -670,7 +670,11 @@ fn build_pregather_embed(
         .color(Color::DARK_BLUE)
         .title("📣  Voice Channel Gathering")
         .description(format!(
-            "{} scheduled gathering {}.\n\nTime remaining: {}\nStarts at: `{}`\n\nWhen the timer ends, everyone still in voice will be gathered automatically — late arrivals will be tracked.",
+            "{} scheduled gathering {}.
+            \n\nTime remaining: **{}**
+            \nStarts at: `{}`
+            \n\nWhen the timer ends, everyone still in voice will be gathered automatically 
+            \n— late arrivals will be tracked.",
             author_mention,
             schedule_label,
             humanize_duration(remaining),

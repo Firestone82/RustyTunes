@@ -456,31 +456,31 @@ fn build_break_embed(state: &BreakState, footer: Option<&str>) -> CreateEmbed {
     };
 
     let opening = match &state.clock_time_label {
-        Some(label) => format!("{} started a break until {}.", state.author_mention, label),
+        Some(label) => format!("{} started a break until **{}**.", state.author_mention, label),
         None => format!(
-            "{} started a break of {}.",
+            "{} started a break of **{}**.",
             state.author_mention,
             humanize_duration(state.original_duration)
         ),
     };
 
     let mut description = format!(
-        "{}\n\nTime remaining: {}",
+        "{}\n\nTime remaining: **{}**",
         opening,
         humanize_duration(remaining),
     );
 
     if extension > Duration::ZERO {
         description.push_str(&format!(
-            "\nExtended by: {} (total {})",
+            "\nExtended by: **{}** (total **{}**)",
             humanize_duration(extension),
             humanize_duration(total),
         ));
     }
 
     description.push_str(
-        "\n\nWhen the timer ends, everyone still in voice will be gathered \
-         automatically — late arrivals will be tracked.",
+        "\n\nWhen the timer ends, everyone still in voice will be gathered automatically
+        \n— late arrivals will be tracked.",
     );
 
     let mut builder = CreateEmbed::new()
