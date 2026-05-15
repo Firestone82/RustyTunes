@@ -1,6 +1,7 @@
 use crate::commands;
 use crate::commands::utility::cmd_break::BreakState;
 use crate::commands::{music, reputation, utility};
+use crate::service::gather_service::GatherState;
 use crate::handlers::error_handler;
 use crate::player::notifier::{Notifier, NotifierError};
 use crate::player::player::{PlaybackError, Player};
@@ -25,6 +26,7 @@ pub struct MusicBotData {
     pub player: Arc<RwLock<Player>>,
     pub notifier: Arc<RwLock<Notifier>>,
     pub breaks: Arc<RwLock<HashMap<GuildId, Arc<BreakState>>>>,
+    pub gatherings: Arc<RwLock<HashMap<GuildId, Arc<GatherState>>>>,
 }
 
 pub type Database = Pool<Sqlite>;
@@ -152,6 +154,19 @@ impl MusicBotClient {
                             Some(g) => g,
                             None => return Ok(()),
                         };
+
+                        // Auto-arrive expected gathering users when they join the gathering voice channel.
+                        if let Some(joined_channel) = new.channel_id {
+                            let gatherings = data.gatherings.read().await;
+                            if let Some(gather_state) = gatherings.get(&guild_id) {
+                                if gather_state.voice_channel_id == joined_channel {
+                                    let is_expected = gather_state.extra_expected.lock().unwrap().contains(&new.user_id);
+                                    if is_expected {
+                                        gather_state.auto_arrived.lock().unwrap().insert(new.user_id);
+                                    }
+                                }
+                            }
+                        }
 
                         let bot_id = ctx.cache.current_user().id;
 
@@ -290,6 +305,7 @@ impl MusicBotClient {
                         player: player_handle,
                         notifier: notifier_handle,
                         breaks: Arc::new(RwLock::new(HashMap::new())),
+                        gatherings: Arc::new(RwLock::new(HashMap::new())),
                     })
                 })
             })
@@ -307,10 +323,6 @@ impl MusicBotClient {
     pub async fn start(&mut self) -> Result<(), MusicBotError> {
         tracing::info!("Starting bot client");
 
-        self.serenity_client.start().await.map_err(|e| {
-            tracing::error!("Failed to start server: {:?}", e);
-            MusicBotError::InternalError(e.to_string())
-        })?;
         let shard_manager = self.serenity_client.shard_manager.clone();
         tokio::spawn(async move {
             wait_for_signal().await;

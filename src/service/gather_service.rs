@@ -8,21 +8,46 @@ use serenity::futures::StreamExt;
 use serenity::http::Http;
 use serenity::prelude::Context as SerenityContext;
 use std::collections::{HashMap, HashSet};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
+/// Shared state for an active gathering.
+pub struct GatherState {
+    /// The voice channel this gathering is tracking.
+    pub voice_channel_id: ChannelId,
+    /// Users added via `/gather expect` that must check in before gathering ends.
+    pub extra_expected: Mutex<HashSet<UserId>>,
+    /// Users who joined the gathering voice channel while expected — processed on the next loop tick.
+    pub auto_arrived: Mutex<HashSet<UserId>>,
+    /// When true, ghost-ping reminders are suppressed for everyone.
+    pub silent: Mutex<bool>,
+}
+
+impl GatherState {
+    pub fn new(voice_channel_id: ChannelId) -> Self {
+        Self {
+            voice_channel_id,
+            extra_expected: Mutex::new(HashSet::new()),
+            auto_arrived: Mutex::new(HashSet::new()),
+            silent: Mutex::new(false),
+        }
+    }
+}
+
 const GRACE_PERIOD: Duration = Duration::from_secs(60);
+pub const PREGATHER_DURATION: Duration = Duration::from_secs(60);
 const GHOST_PING_INTERVAL: Duration = Duration::from_secs(30);
 const MAX_GATHER_DURATION: Duration = Duration::from_secs(60 * 30);
 const GHOST_PING_LIFETIME: Duration = Duration::from_millis(700);
 const MIN_EDIT_INTERVAL: Duration = Duration::from_secs(5);
-const MAX_NAME_LEN: usize = 22;
+const MAX_NAME_LEN: usize = 21;
 // Max wait in the select loop — keeps button response latency well within 3 s.
 const LOOP_POLL: Duration = Duration::from_millis(800);
 
 const BTN_HERE: &str = "gather_im_here";
 const BTN_CANCEL: &str = "gather_cancel";
 const BTN_FORCE_START: &str = "gather_force_start";
+const BTN_TOGGLE_SILENT: &str = "gather_toggle_silent";
 
 pub async fn start_gather(
     serenity_ctx: &SerenityContext,
@@ -30,16 +55,156 @@ pub async fn start_gather(
     text_channel_id: ChannelId,
     voice_channel_id: ChannelId,
     author_id: UserId,
+    state: Arc<GatherState>,
+    pregather_duration: Duration,
 ) -> Result<(), MusicBotError> {
     let bot_id = serenity_ctx.cache.current_user().id;
+    let shard = serenity_ctx.shard.clone();
 
-    let expected_ids: Vec<UserId> =
+    // Fail fast if nobody is in voice yet.
+    let initial_voice_ids: Vec<UserId> =
         current_voice_members(serenity_ctx, guild_id, voice_channel_id, bot_id);
-
-    if expected_ids.is_empty() {
+    if initial_voice_ids.is_empty() {
         return Err(MusicBotError::InternalError(
             "No one is in the voice channel.".to_string(),
         ));
+    }
+
+    // Ping all current voice members above the embed.
+    let voice_mentions: String = initial_voice_ids
+        .iter()
+        .map(|id| id.mention().to_string())
+        .collect::<Vec<_>>()
+        .join(" ");
+    let _ = text_channel_id
+        .send_message(&serenity_ctx.http, CreateMessage::new().content(voice_mentions))
+        .await;
+
+    // ── Phase 1: pre-gather countdown ──────────────────────────────────────
+    let pregather_ends_at = Instant::now() + pregather_duration;
+
+    let mut msg: Message = text_channel_id
+        .send_message(
+            &serenity_ctx.http,
+            CreateMessage::new()
+                .embed(build_pregather_embed(pregather_ends_at, None))
+                .components(pregather_buttons(false)),
+        )
+        .await
+        .map_err(|e| MusicBotError::InternalError(e.to_string()))?;
+
+    let pregather_cancelled = 'pregather: loop {
+        let now = Instant::now();
+        if now >= pregather_ends_at {
+            break false;
+        }
+
+        let wait = pregather_ends_at
+            .saturating_duration_since(now)
+            .min(MIN_EDIT_INTERVAL);
+
+        match msg
+            .await_component_interaction(shard.clone())
+            .timeout(wait)
+            .await
+        {
+            Some(ic) => match ic.data.custom_id.as_str() {
+                BTN_CANCEL => {
+                    if ic.user.id != author_id {
+                        ic.create_response(
+                            &serenity_ctx.http,
+                            CreateInteractionResponse::Message(
+                                CreateInteractionResponseMessage::new()
+                                    .content(
+                                        "Only the person who started the gathering can cancel it.",
+                                    )
+                                    .ephemeral(true),
+                            ),
+                        )
+                        .await
+                        .ok();
+                        continue 'pregather;
+                    }
+                    ic.create_response(
+                        &serenity_ctx.http,
+                        CreateInteractionResponse::Acknowledge,
+                    )
+                    .await
+                    .ok();
+                    break 'pregather true;
+                }
+                BTN_FORCE_START => {
+                    if ic.user.id != author_id {
+                        ic.create_response(
+                            &serenity_ctx.http,
+                            CreateInteractionResponse::Message(
+                                CreateInteractionResponseMessage::new()
+                                    .content(
+                                        "Only the person who started the gathering can skip the countdown.",
+                                    )
+                                    .ephemeral(true),
+                            ),
+                        )
+                        .await
+                        .ok();
+                        continue 'pregather;
+                    }
+                    ic.create_response(
+                        &serenity_ctx.http,
+                        CreateInteractionResponse::Acknowledge,
+                    )
+                    .await
+                    .ok();
+                    break 'pregather false;
+                }
+                _ => {
+                    ic.create_response(
+                        &serenity_ctx.http,
+                        CreateInteractionResponse::Acknowledge,
+                    )
+                    .await
+                    .ok();
+                }
+            },
+            None => {
+                // Timeout: refresh the countdown display.
+                let _ = msg
+                    .edit(
+                        &serenity_ctx.http,
+                        EditMessage::new()
+                            .embed(build_pregather_embed(pregather_ends_at, None))
+                            .components(pregather_buttons(false)),
+                    )
+                    .await;
+            }
+        }
+    };
+
+    if pregather_cancelled {
+        let _ = msg
+            .edit(
+                &serenity_ctx.http,
+                EditMessage::new()
+                    .embed(build_pregather_embed(pregather_ends_at, Some("Cancelled.")))
+                    .components(Vec::new()),
+            )
+            .await;
+        return Ok(());
+    }
+
+    // ── Phase 2: gathering check-in ────────────────────────────────────────
+    // Re-read voice members: people may have joined during the countdown.
+    let mut expected: HashSet<UserId> =
+        current_voice_members(serenity_ctx, guild_id, voice_channel_id, bot_id)
+            .into_iter()
+            .collect();
+    expected.insert(author_id);
+    // Fold in anyone already added via /gather expect.
+    {
+        let extra = state.extra_expected.lock().unwrap();
+        for id in extra.iter() {
+            expected.insert(*id);
+        }
     }
 
     let started_at = Instant::now();
@@ -47,27 +212,12 @@ pub async fn start_gather(
     let deadline = started_at + MAX_GATHER_DURATION;
 
     let mut arrivals: HashMap<UserId, Duration> = HashMap::new();
-    let mut expected: HashSet<UserId> = expected_ids.iter().copied().collect();
-    expected.insert(author_id);
 
-    // Ping all voice members in a standalone message so the mention appears
-    // above the embed and is not baked into the embed message itself.
-    let voice_mentions: String = expected_ids
-        .iter()
-        .map(|id| id.mention().to_string())
-        .collect::<Vec<_>>()
-        .join(" ");
-    let _ = text_channel_id
-        .send_message(
+    let silent = *state.silent.lock().unwrap();
+    let _ = msg
+        .edit(
             &serenity_ctx.http,
-            CreateMessage::new().content(voice_mentions),
-        )
-        .await;
-
-    let mut msg: Message = text_channel_id
-        .send_message(
-            &serenity_ctx.http,
-            CreateMessage::new()
+            EditMessage::new()
                 .embed(build_embed(
                     serenity_ctx,
                     guild_id,
@@ -75,12 +225,12 @@ pub async fn start_gather(
                     &arrivals,
                     started_at,
                     grace_ends_at,
+                    silent,
                     None,
                 ))
-                .components(buttons(false)),
+                .components(buttons(false, silent)),
         )
-        .await
-        .map_err(|e| MusicBotError::InternalError(e.to_string()))?;
+        .await;
 
     let mut last_ghost_ping = started_at;
     let mut last_edit = Instant::now();
@@ -129,6 +279,7 @@ pub async fn start_gather(
                         &mut arrivals,
                         &mut cancelled,
                         &mut last_edit,
+                        &state,
                     )
                     .await,
                     None => break,
@@ -144,8 +295,39 @@ pub async fn start_gather(
             expected.insert(id);
         }
 
-        // Ghost-ping missing members after grace expires.
-        if now >= grace_ends_at && now >= last_ghost_ping + GHOST_PING_INTERVAL {
+        // Merge users added via /gather expect.
+        {
+            let extra = state.extra_expected.lock().unwrap();
+            for id in extra.iter() {
+                expected.insert(*id);
+            }
+        }
+
+        // Auto-arrive expected users who joined voice (signalled by the event handler).
+        {
+            let auto_ids: Vec<UserId> = state.auto_arrived.lock().unwrap().drain().collect();
+            if !auto_ids.is_empty() {
+                for id in auto_ids {
+                    if expected.contains(&id) && !arrivals.contains_key(&id) {
+                        let lateness = if now <= grace_ends_at {
+                            Duration::ZERO
+                        } else {
+                            now - started_at
+                        };
+                        arrivals.insert(id, lateness);
+                        if expected.iter().all(|id2| arrivals.contains_key(id2)) {
+                            grace_ends_at = grace_ends_at.min(now);
+                        }
+                    }
+                }
+                last_edit = started_at; // force embed refresh on next throttle check
+            }
+        }
+
+        let silent = *state.silent.lock().unwrap();
+
+        // Ghost-ping missing members after grace expires (unless silenced).
+        if !silent && now >= grace_ends_at && now >= last_ghost_ping + GHOST_PING_INTERVAL {
             last_ghost_ping = now;
             let missing: Vec<UserId> = expected
                 .iter()
@@ -175,14 +357,16 @@ pub async fn start_gather(
                             &arrivals,
                             started_at,
                             grace_ends_at,
+                            silent,
                             None,
                         ))
-                        .components(buttons(false)),
+                        .components(buttons(false, silent)),
                 )
                 .await;
         }
     }
 
+    let silent = *state.silent.lock().unwrap();
     let footer = if cancelled {
         Some("Cancelled by initiator.")
     } else if Instant::now() >= deadline {
@@ -202,6 +386,7 @@ pub async fn start_gather(
                     &arrivals,
                     started_at,
                     grace_ends_at,
+                    silent,
                     footer,
                 ))
                 .components(Vec::new()),
@@ -224,6 +409,7 @@ async fn handle_interaction(
     arrivals: &mut HashMap<UserId, Duration>,
     cancelled: &mut bool,
     last_edit: &mut Instant,
+    state: &GatherState,
 ) {
     match ic.data.custom_id.as_str() {
         BTN_CANCEL => {
@@ -262,6 +448,7 @@ async fn handle_interaction(
                 return;
             }
             *grace_ends_at = Instant::now();
+            let silent = *state.silent.lock().unwrap();
             ic.create_response(
                 &serenity_ctx.http,
                 CreateInteractionResponse::UpdateMessage(
@@ -273,9 +460,37 @@ async fn handle_interaction(
                             arrivals,
                             started_at,
                             *grace_ends_at,
+                            silent,
                             None,
                         ))
-                        .components(buttons(false)),
+                        .components(buttons(false, silent)),
+                ),
+            )
+            .await
+            .ok();
+            *last_edit = Instant::now();
+        }
+        BTN_TOGGLE_SILENT => {
+            let new_silent = {
+                let mut s = state.silent.lock().unwrap();
+                *s = !*s;
+                *s
+            };
+            ic.create_response(
+                &serenity_ctx.http,
+                CreateInteractionResponse::UpdateMessage(
+                    CreateInteractionResponseMessage::new()
+                        .embed(build_embed(
+                            serenity_ctx,
+                            guild_id,
+                            expected,
+                            arrivals,
+                            started_at,
+                            *grace_ends_at,
+                            new_silent,
+                            None,
+                        ))
+                        .components(buttons(false, new_silent)),
                 ),
             )
             .await
@@ -326,6 +541,7 @@ async fn handle_interaction(
                 *grace_ends_at = now;
             }
 
+            let silent = *state.silent.lock().unwrap();
             ic.create_response(
                 &serenity_ctx.http,
                 CreateInteractionResponse::UpdateMessage(
@@ -337,9 +553,10 @@ async fn handle_interaction(
                             arrivals,
                             started_at,
                             *grace_ends_at,
+                            silent,
                             None,
                         ))
-                        .components(buttons(false)),
+                        .components(buttons(false, silent)),
                 ),
             )
             .await
@@ -389,7 +606,35 @@ fn user_in_voice(
         == Some(voice_channel_id)
 }
 
-fn buttons(disabled: bool) -> Vec<CreateActionRow> {
+fn pregather_buttons(disabled: bool) -> Vec<CreateActionRow> {
+    vec![CreateActionRow::Buttons(vec![
+        CreateButton::new(BTN_FORCE_START)
+            .label("Start now")
+            .style(ButtonStyle::Primary)
+            .disabled(disabled),
+        CreateButton::new(BTN_CANCEL)
+            .label("Cancel")
+            .style(ButtonStyle::Danger)
+            .disabled(disabled),
+    ])]
+}
+
+fn build_pregather_embed(ends_at: Instant, footer: Option<&str>) -> CreateEmbed {
+    let remaining = ends_at.saturating_duration_since(Instant::now());
+    let mut builder = CreateEmbed::new()
+        .color(Color::DARK_BLUE)
+        .title("📣  Voice Channel Gathering")
+        .description(format!(
+            "Starting in **{}** — join the voice channel now!",
+            format_mmss(remaining),
+        ));
+    if let Some(text) = footer {
+        builder = builder.footer(serenity::all::CreateEmbedFooter::new(text));
+    }
+    builder
+}
+
+fn buttons(disabled: bool, silent: bool) -> Vec<CreateActionRow> {
     vec![CreateActionRow::Buttons(vec![
         CreateButton::new(BTN_HERE)
             .label("I'm here!")
@@ -398,6 +643,10 @@ fn buttons(disabled: bool) -> Vec<CreateActionRow> {
         CreateButton::new(BTN_FORCE_START)
             .label("Force start")
             .style(ButtonStyle::Primary)
+            .disabled(disabled),
+        CreateButton::new(BTN_TOGGLE_SILENT)
+            .label(if silent { "🔔 Unmute pings" } else { "🔕 Mute pings" })
+            .style(ButtonStyle::Secondary)
             .disabled(disabled),
         CreateButton::new(BTN_CANCEL)
             .label("Cancel")
@@ -413,6 +662,7 @@ fn build_embed(
     arrivals: &HashMap<UserId, Duration>,
     started_at: Instant,
     grace_ends_at: Instant,
+    silent: bool,
     footer: Option<&str>,
 ) -> CreateEmbed {
     let now = Instant::now();
@@ -509,6 +759,7 @@ fn build_embed(
 
     let present = arrivals.len();
     let total = expected.len();
+    let ping_status = if silent { "🔕 off" } else { "🔔 on" };
 
     let color = if footer.is_some() {
         Color::DARK_GREEN
@@ -522,8 +773,8 @@ fn build_embed(
         .color(color)
         .title("📣  Voice Channel Gathering")
         .description(format!(
-            "{}\n\nAttendance: **{}/{}**\n```\n{}```",
-            header, present, total, table
+            "{}\n\nGhost pings: {}\nAttendance: **{}/{}**\n```\n{}```",
+            header, ping_status, present, total, table
         ));
 
     if let Some(text) = footer {
