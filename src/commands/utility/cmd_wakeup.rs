@@ -17,7 +17,10 @@ pub async fn wakeup(
 }
 
 /// Wake up a user in the same voice channel.
-#[poise::command(context_menu_command = "WakeUp!", check = "check_author_in_same_voice_channel")]
+#[poise::command(
+    context_menu_command = "WakeUp!",
+    check = "check_author_in_same_voice_channel"
+)]
 pub async fn wakeup_context(
     ctx: Context<'_>,
     user: User,

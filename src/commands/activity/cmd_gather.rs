@@ -11,13 +11,22 @@ use std::sync::Arc;
 use std::time::Duration;
 
 /// Gathering commands — gather everyone in your voice channel.
-#[poise::command(slash_command, prefix_command, subcommands("start", "expect"), subcommand_required)]
+#[poise::command(
+    slash_command,
+    prefix_command,
+    subcommands("start", "expect"),
+    subcommand_required
+)]
 pub async fn gather(_ctx: Context<'_>) -> Result<(), MusicBotError> {
     Ok(())
 }
 
 /// Gather everyone in your voice channel — they tap "I'm here!" to check in.
-#[poise::command(slash_command, prefix_command, check = "check_author_in_voice_channel")]
+#[poise::command(
+    slash_command,
+    prefix_command,
+    check = "check_author_in_voice_channel"
+)]
 pub async fn start(
     ctx: Context<'_>,
     #[description = "Pre-gather countdown length (e.g. 30s, 2m). Default: 1 minute."] time: Option<String>,

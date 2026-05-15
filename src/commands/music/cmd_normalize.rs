@@ -6,7 +6,12 @@ use crate::service::embed_service::SendEmbed;
 use tokio::sync::RwLockWriteGuard;
 
 /// Toggle session-only cross-track loudness normalization (resets on restart).
-#[poise::command(prefix_command, slash_command, check = "check_author_in_same_voice_channel", aliases("norm", "loudnorm"))]
+#[poise::command(
+    prefix_command,
+    slash_command,
+    check = "check_author_in_same_voice_channel",
+    aliases("norm", "loudnorm")
+)]
 pub async fn normalize(
     ctx: Context<'_>,
     state: Option<String>,

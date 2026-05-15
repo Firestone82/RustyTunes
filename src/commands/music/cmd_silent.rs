@@ -6,7 +6,12 @@ use crate::service::embed_service::SendEmbed;
 use tokio::sync::RwLockWriteGuard;
 
 /// Toggle session-only silent mode — suppresses NowPlaying (resets on restart).
-#[poise::command(prefix_command, slash_command, check = "check_author_in_same_voice_channel", aliases("shh", "quiet"))]
+#[poise::command(
+    prefix_command,
+    slash_command,
+    check = "check_author_in_same_voice_channel",
+    aliases("shh", "quiet")
+)]
 pub async fn silent(
     ctx: Context<'_>,
     state: Option<String>,

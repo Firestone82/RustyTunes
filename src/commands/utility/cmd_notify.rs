@@ -7,13 +7,24 @@ use serenity::all::{Mentionable, User, UserId};
 use tokio::sync::{RwLockReadGuard, RwLockWriteGuard};
 
 /// Manage timed notifications: me, you, list, remove.
-#[poise::command(prefix_command, slash_command, subcommands("me", "you", "list", "remove"), subcommand_required, aliases("remind"))]
+#[poise::command(
+    prefix_command,
+    slash_command,
+    subcommands("me", "you", "list", "remove"),
+    subcommand_required,
+    aliases("remind")
+)]
 pub async fn notify(_ctx: Context<'_>) -> Result<(), MusicBotError> {
     Ok(())
 }
 
 /// Slash-command alias of `/notify` — same `me`/`you`/`list`/`remove` subcommands.
-#[poise::command(prefix_command, slash_command, subcommands("me", "you", "list", "remove"), subcommand_required)]
+#[poise::command(
+    prefix_command,
+    slash_command,
+    subcommands("me", "you", "list", "remove"),
+    subcommand_required
+)]
 pub async fn remind(_ctx: Context<'_>) -> Result<(), MusicBotError> {
     Ok(())
 }

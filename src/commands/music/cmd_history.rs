@@ -11,7 +11,11 @@ use std::time::{Duration, Instant};
 use tokio::sync::RwLockWriteGuard;
 
 /// Show the last 10 played tracks and optionally replay one.
-#[poise::command(prefix_command, slash_command, check = "check_author_in_same_voice_channel")]
+#[poise::command(
+    prefix_command,
+    slash_command,
+    check = "check_author_in_same_voice_channel"
+)]
 pub async fn history(ctx: Context<'_>) -> Result<(), MusicBotError> {
     let player = ctx.data().player.read().await;
     let history: VecDeque<Track> = player.history.clone();

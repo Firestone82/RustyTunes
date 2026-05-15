@@ -7,7 +7,12 @@ use crate::service::embed_service::SendEmbed;
 use tokio::sync::RwLockWriteGuard;
 
 /// Skip the current track. With an empty queue this stops playback instead of erroring.
-#[poise::command(prefix_command, slash_command, check = "check_author_in_same_voice_channel", check = "check_if_player_is_playing")]
+#[poise::command(
+    prefix_command,
+    slash_command,
+    check = "check_author_in_same_voice_channel",
+    check = "check_if_player_is_playing"
+)]
 pub async fn skip(
     ctx: Context<'_>,
     amount: Option<usize>,

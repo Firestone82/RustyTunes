@@ -12,14 +12,23 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 /// Take a break — when the timer runs out, everyone in voice is auto-gathered.
-#[poise::command(slash_command, prefix_command, subcommands("start", "extend"), subcommand_required)]
+#[poise::command(
+    slash_command,
+    prefix_command,
+    subcommands("start", "extend"),
+    subcommand_required
+)]
 pub async fn r#break(_ctx: Context<'_>) -> Result<(), MusicBotError> {
     Ok(())
 }
 
 /// Start a break of the given length. When the timer ends, a gathering is
 /// kicked off automatically.
-#[poise::command(slash_command, prefix_command, check = "check_author_in_voice_channel")]
+#[poise::command(
+    slash_command,
+    prefix_command,
+    check = "check_author_in_voice_channel"
+)]
 pub async fn start(
     ctx: Context<'_>,
     #[description = "Break end time or duration, e.g. `5m`, `1h 30s`, `14:00`."] time: String,

@@ -19,7 +19,14 @@ const PICKER_LIMIT: usize = 25;
 #[poise::command(
     prefix_command,
     slash_command,
-    subcommands("download", "upload", "list", "remove", "play", "rename_track"),
+    subcommands(
+        "download",
+        "upload",
+        "list",
+        "remove",
+        "play",
+        "rename_track"
+    ),
     check = "check_author_in_same_voice_channel"
 )]
 pub async fn local(ctx: Context<'_>) -> Result<(), MusicBotError> {

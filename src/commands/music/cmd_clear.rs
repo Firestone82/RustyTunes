@@ -6,7 +6,12 @@ use crate::player::player::Player;
 use crate::service::embed_service::SendEmbed;
 use tokio::sync::RwLockWriteGuard;
 
-#[poise::command(prefix_command, slash_command, check = "check_author_in_same_voice_channel", check = "check_if_queue_is_not_empty")]
+#[poise::command(
+    prefix_command,
+    slash_command,
+    check = "check_author_in_same_voice_channel",
+    check = "check_if_queue_is_not_empty"
+)]
 pub async fn clear(ctx: Context<'_>) -> Result<(), MusicBotError> {
     let mut player: RwLockWriteGuard<Player> = ctx.data().player.write().await;
 
