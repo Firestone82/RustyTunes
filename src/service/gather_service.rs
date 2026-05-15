@@ -70,126 +70,141 @@ pub async fn start_gather(
         ));
     }
 
-    // Ping all current voice members above the embed.
-    let voice_mentions: String = initial_voice_ids
-        .iter()
-        .map(|id| id.mention().to_string())
-        .collect::<Vec<_>>()
-        .join(" ");
-    let _ = text_channel_id
-        .send_message(&serenity_ctx.http, CreateMessage::new().content(voice_mentions))
-        .await;
-
     // ── Phase 1: pre-gather countdown ──────────────────────────────────────
-    let pregather_ends_at = Instant::now() + pregather_duration;
+    // Skipped when pregather_duration is zero (e.g. auto-gather after a break).
 
-    let mut msg: Message = text_channel_id
-        .send_message(
-            &serenity_ctx.http,
-            CreateMessage::new()
-                .embed(build_pregather_embed(pregather_ends_at, None))
-                .components(pregather_buttons(false)),
-        )
-        .await
-        .map_err(|e| MusicBotError::InternalError(e.to_string()))?;
+    let mut msg: Message;
 
-    let pregather_cancelled = 'pregather: loop {
-        let now = Instant::now();
-        if now >= pregather_ends_at {
-            break false;
-        }
-
-        let wait = pregather_ends_at
-            .saturating_duration_since(now)
-            .min(MIN_EDIT_INTERVAL);
-
-        match msg
-            .await_component_interaction(shard.clone())
-            .timeout(wait)
-            .await
-        {
-            Some(ic) => match ic.data.custom_id.as_str() {
-                BTN_CANCEL => {
-                    if ic.user.id != author_id {
-                        ic.create_response(
-                            &serenity_ctx.http,
-                            CreateInteractionResponse::Message(
-                                CreateInteractionResponseMessage::new()
-                                    .content(
-                                        "Only the person who started the gathering can cancel it.",
-                                    )
-                                    .ephemeral(true),
-                            ),
-                        )
-                        .await
-                        .ok();
-                        continue 'pregather;
-                    }
-                    ic.create_response(
-                        &serenity_ctx.http,
-                        CreateInteractionResponse::Acknowledge,
-                    )
-                    .await
-                    .ok();
-                    break 'pregather true;
-                }
-                BTN_FORCE_START => {
-                    if ic.user.id != author_id {
-                        ic.create_response(
-                            &serenity_ctx.http,
-                            CreateInteractionResponse::Message(
-                                CreateInteractionResponseMessage::new()
-                                    .content(
-                                        "Only the person who started the gathering can skip the countdown.",
-                                    )
-                                    .ephemeral(true),
-                            ),
-                        )
-                        .await
-                        .ok();
-                        continue 'pregather;
-                    }
-                    ic.create_response(
-                        &serenity_ctx.http,
-                        CreateInteractionResponse::Acknowledge,
-                    )
-                    .await
-                    .ok();
-                    break 'pregather false;
-                }
-                _ => {
-                    ic.create_response(
-                        &serenity_ctx.http,
-                        CreateInteractionResponse::Acknowledge,
-                    )
-                    .await
-                    .ok();
-                }
-            },
-            None => {
-                // Timeout: refresh the countdown display.
-                let _ = msg
-                    .edit(
-                        &serenity_ctx.http,
-                        EditMessage::new()
-                            .embed(build_pregather_embed(pregather_ends_at, None))
-                            .components(pregather_buttons(false)),
-                    )
-                    .await;
-            }
-        }
-    };
-
-    if pregather_cancelled {
-        let _ = msg
-            .edit(
-                &serenity_ctx.http,
-                EditMessage::new()
-                    .embed(build_pregather_embed(pregather_ends_at, Some("Cancelled.")))
-                    .components(Vec::new()),
-            )
+    if pregather_duration > Duration::ZERO {
+        // Ping all current voice members above the embed.
+        let voice_mentions: String = initial_voice_ids
+            .iter()
+            .map(|id| id.mention().to_string())
+            .collect::<Vec<_>>()
+            .join(" ");
+        let _ = text_channel_id
+            .send_message(&serenity_ctx.http, CreateMessage::new().content(voice_mentions))
             .await;
-        return Ok(());
+
+        let pregather_ends_at = Instant::now() + pregather_duration;
+
+        msg = text_channel_id
+            .send_message(
+                &serenity_ctx.http,
+                CreateMessage::new()
+                    .embed(build_pregather_embed(pregather_ends_at, None))
+                    .components(pregather_buttons(false)),
+            )
+            .await
+            .map_err(|e| MusicBotError::InternalError(e.to_string()))?;
+
+        let pregather_cancelled = 'pregather: loop {
+            let now = Instant::now();
+            if now >= pregather_ends_at {
+                break false;
+            }
+
+            let wait = pregather_ends_at
+                .saturating_duration_since(now)
+                .min(MIN_EDIT_INTERVAL);
+
+            match msg
+                .await_component_interaction(shard.clone())
+                .timeout(wait)
+                .await
+            {
+                Some(ic) => match ic.data.custom_id.as_str() {
+                    BTN_CANCEL => {
+                        if ic.user.id != author_id {
+                            ic.create_response(
+                                &serenity_ctx.http,
+                                CreateInteractionResponse::Message(
+                                    CreateInteractionResponseMessage::new()
+                                        .content(
+                                            "Only the person who started the gathering can cancel it.",
+                                        )
+                                        .ephemeral(true),
+                                ),
+                            )
+                            .await
+                            .ok();
+                            continue 'pregather;
+                        }
+                        ic.create_response(
+                            &serenity_ctx.http,
+                            CreateInteractionResponse::Acknowledge,
+                        )
+                        .await
+                        .ok();
+                        break 'pregather true;
+                    }
+                    BTN_FORCE_START => {
+                        if ic.user.id != author_id {
+                            ic.create_response(
+                                &serenity_ctx.http,
+                                CreateInteractionResponse::Message(
+                                    CreateInteractionResponseMessage::new()
+                                        .content(
+                                            "Only the person who started the gathering can skip the countdown.",
+                                        )
+                                        .ephemeral(true),
+                                ),
+                            )
+                            .await
+                            .ok();
+                            continue 'pregather;
+                        }
+                        ic.create_response(
+                            &serenity_ctx.http,
+                            CreateInteractionResponse::Acknowledge,
+                        )
+                        .await
+                        .ok();
+                        break 'pregather false;
+                    }
+                    _ => {
+                        ic.create_response(
+                            &serenity_ctx.http,
+                            CreateInteractionResponse::Acknowledge,
+                        )
+                        .await
+                        .ok();
+                    }
+                },
+                None => {
+                    // Timeout: refresh the countdown display.
+                    let _ = msg
+                        .edit(
+                            &serenity_ctx.http,
+                            EditMessage::new()
+                                .embed(build_pregather_embed(pregather_ends_at, None))
+                                .components(pregather_buttons(false)),
+                        )
+                        .await;
+                }
+            }
+        };
+
+        if pregather_cancelled {
+            let _ = msg
+                .edit(
+                    &serenity_ctx.http,
+                    EditMessage::new()
+                        .embed(build_pregather_embed(pregather_ends_at, Some("Cancelled.")))
+                        .components(Vec::new()),
+                )
+                .await;
+            return Ok(());
+        }
+    } else {
+        // No countdown: create a placeholder message that phase 2 will immediately replace.
+        msg = text_channel_id
+            .send_message(
+                &serenity_ctx.http,
+                CreateMessage::new().content("Gathering starting…"),
+            )
+            .await
+            .map_err(|e| MusicBotError::InternalError(e.to_string()))?;
     }
 
     // ── Phase 2: gathering check-in ────────────────────────────────────────
@@ -471,6 +486,19 @@ async fn handle_interaction(
             *last_edit = Instant::now();
         }
         BTN_TOGGLE_SILENT => {
+            if ic.user.id != author_id {
+                ic.create_response(
+                    &serenity_ctx.http,
+                    CreateInteractionResponse::Message(
+                        CreateInteractionResponseMessage::new()
+                            .content("Only the person who started the gathering can mute pings.")
+                            .ephemeral(true),
+                    ),
+                )
+                .await
+                .ok();
+                return;
+            }
             let new_silent = {
                 let mut s = state.silent.lock().unwrap();
                 *s = !*s;

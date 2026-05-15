@@ -4,7 +4,7 @@ use crate::embeds::bot_embeds::BotEmbed;
 use crate::player::notifier::{get_current_time, parse_duration_from_string};
 use crate::service::channel_service;
 use crate::service::embed_service::SendEmbed;
-use crate::service::gather_service::{self, GatherState, PREGATHER_DURATION};
+use crate::service::gather_service::{self, GatherState};
 use serenity::all::{
     ButtonStyle, ChannelId, Color, CreateActionRow, CreateButton, CreateEmbed,
     CreateInteractionResponse, CreateInteractionResponseMessage, CreateMessage, EditMessage,
@@ -63,7 +63,7 @@ pub async fn r#break(_ctx: Context<'_>) -> Result<(), MusicBotError> {
 #[poise::command(slash_command, prefix_command, check = "check_author_in_voice_channel")]
 pub async fn start(
     ctx: Context<'_>,
-    #[description = "Break length, e.g. `5m`, `1h 30s`, `90s`."] time: String,
+    #[description = "Break end time or duration, e.g. `5m`, `1h 30s`, `14:00`."] time: String,
 ) -> Result<(), MusicBotError> {
     let duration = match parse_break_duration(&time) {
         Some(d) if d > Duration::ZERO && d <= MAX_BREAK_DURATION => d,
@@ -83,7 +83,10 @@ pub async fn start(
             CreateEmbed::new()
                 .color(Color::DARK_RED)
                 .title("🚫  Invalid break duration")
-                .description("Use a relative duration like `5m`, `1h 30s`, or `90s`.")
+                .description(
+                    "Use a relative duration like `5m`, `1h 30s`, or `90s`, \
+                     or a clock time like `10:00` or `14:30`.",
+                )
                 .send_context(ctx, true, Some(15))
                 .await?;
             return Ok(());
@@ -268,6 +271,7 @@ pub async fn start(
         .await
         .insert(guild_id, Arc::clone(&gather_state));
 
+    // Skip the pre-gather countdown — break already announced and pinged everyone.
     gather_service::start_gather(
         ctx.serenity_context(),
         guild_id,
@@ -275,7 +279,7 @@ pub async fn start(
         voice_channel_id,
         author_id,
         gather_state,
-        PREGATHER_DURATION,
+        Duration::ZERO,
     )
     .await?;
 
@@ -363,11 +367,39 @@ pub async fn extend(
 }
 
 fn parse_break_duration(text: &str) -> Option<Duration> {
-    let d = parse_duration_from_string(text.trim())?;
-    if d == Duration::ZERO {
+    let text = text.trim();
+
+    // Relative duration: 10m, 1h, 30s, 1h 30m, …
+    if let Some(d) = parse_duration_from_string(text) {
+        if d == Duration::ZERO {
+            return None;
+        }
+        return Some(d);
+    }
+
+    // Clock time: HH:MM or H:MM — break ends at that wall-clock time.
+    let (h_str, m_str) = text.split_once(':')?;
+    let hour: u8 = h_str.trim().parse().ok()?;
+    let minute: u8 = m_str.trim().parse().ok()?;
+    if hour > 23 || minute > 59 {
         return None;
     }
-    Some(d)
+
+    let now = get_current_time();
+    let now_secs = now.hour() as u64 * 3600 + now.minute() as u64 * 60 + now.second() as u64;
+    let target_secs = hour as u64 * 3600 + minute as u64 * 60;
+
+    let until_secs = if target_secs > now_secs {
+        target_secs - now_secs
+    } else {
+        86400 - now_secs + target_secs
+    };
+
+    if until_secs == 0 {
+        return None;
+    }
+
+    Some(Duration::from_secs(until_secs))
 }
 
 fn break_buttons(disabled: bool) -> Vec<CreateActionRow> {
