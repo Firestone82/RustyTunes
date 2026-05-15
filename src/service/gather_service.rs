@@ -57,6 +57,8 @@ pub async fn start_gather(
     text_channel_id: ChannelId,
     voice_channel_id: ChannelId,
     author_id: UserId,
+    author_mention: String,
+    schedule_label: String,
     state: Arc<GatherState>,
     pregather_duration: Duration,
 ) -> Result<(), MusicBotError> {
@@ -95,7 +97,7 @@ pub async fn start_gather(
             .send_message(
                 &serenity_ctx.http,
                 CreateMessage::new()
-                    .embed(build_pregather_embed(pregather_ends_at, pregather_ends_at_wall, None))
+                    .embed(build_pregather_embed(pregather_ends_at, pregather_ends_at_wall, &author_mention, &schedule_label, None))
                     .components(pregather_buttons(false)),
             )
             .await
@@ -180,7 +182,7 @@ pub async fn start_gather(
                         .edit(
                             &serenity_ctx.http,
                             EditMessage::new()
-                                .embed(build_pregather_embed(pregather_ends_at, pregather_ends_at_wall, None))
+                                .embed(build_pregather_embed(pregather_ends_at, pregather_ends_at_wall, &author_mention, &schedule_label, None))
                                 .components(pregather_buttons(false)),
                         )
                         .await;
@@ -193,7 +195,7 @@ pub async fn start_gather(
                 .edit(
                     &serenity_ctx.http,
                     EditMessage::new()
-                        .embed(build_pregather_embed(pregather_ends_at, pregather_ends_at_wall, Some("Cancelled.")))
+                        .embed(build_pregather_embed(pregather_ends_at, pregather_ends_at_wall, &author_mention, &schedule_label, Some("Cancelled.")))
                         .components(Vec::new()),
                 )
                 .await;
@@ -656,20 +658,49 @@ fn pregather_buttons(disabled: bool) -> Vec<CreateActionRow> {
     ])]
 }
 
-fn build_pregather_embed(ends_at: Instant, ends_at_wall: OffsetDateTime, footer: Option<&str>) -> CreateEmbed {
+fn build_pregather_embed(
+    ends_at: Instant,
+    ends_at_wall: OffsetDateTime,
+    author_mention: &str,
+    schedule_label: &str,
+    footer: Option<&str>,
+) -> CreateEmbed {
     let remaining = ends_at.saturating_duration_since(Instant::now());
     let mut builder = CreateEmbed::new()
         .color(Color::DARK_BLUE)
         .title("📣  Voice Channel Gathering")
         .description(format!(
-            "Starting in **{}** — join the voice channel now!\n\nStarts at: `{}`",
-            format_mmss(remaining),
+            "{} scheduled gathering {}.\n\nTime remaining: {}\nStarts at: `{}`\n\nWhen the timer ends, everyone still in voice will be gathered automatically — late arrivals will be tracked.",
+            author_mention,
+            schedule_label,
+            humanize_duration(remaining),
             format_wall_clock(ends_at_wall),
         ));
     if let Some(text) = footer {
         builder = builder.footer(serenity::all::CreateEmbedFooter::new(text));
     }
     builder
+}
+
+pub fn humanize_duration(d: Duration) -> String {
+    let total = d.as_secs();
+    if total == 0 {
+        return "0 seconds".to_string();
+    }
+    let h = total / 3600;
+    let m = (total % 3600) / 60;
+    let s = total % 60;
+    let mut parts: Vec<String> = Vec::new();
+    if h > 0 {
+        parts.push(format!("{} {}", h, if h == 1 { "hour" } else { "hours" }));
+    }
+    if m > 0 {
+        parts.push(format!("{} {}", m, if m == 1 { "minute" } else { "minutes" }));
+    }
+    if s > 0 {
+        parts.push(format!("{} {}", s, if s == 1 { "second" } else { "seconds" }));
+    }
+    parts.join(" ")
 }
 
 fn format_wall_clock(t: OffsetDateTime) -> String {

@@ -4,7 +4,7 @@ use crate::embeds::bot_embeds::BotEmbed;
 use crate::player::notifier::{get_current_time, parse_duration_from_string};
 use crate::service::channel_service;
 use crate::service::embed_service::SendEmbed;
-use crate::service::gather_service::{self, GatherState, PREGATHER_DURATION};
+use crate::service::gather_service::{self, humanize_duration, GatherState, PREGATHER_DURATION};
 use serenity::all::{
     ChannelId, Color, CreateEmbed, CreateInteractionResponse, CreateInteractionResponseMessage,
     GuildId, Mentionable, User,
@@ -44,9 +44,9 @@ pub async fn start(
             }
         };
 
-    let pregather_duration = match time {
-        Some(ref t) => match parse_pregather_duration(t.trim()) {
-            Some(d) => d,
+    let (pregather_duration, schedule_label) = match time {
+        Some(ref t) => match parse_pregather_time(t.trim()) {
+            Some(pair) => pair,
             None => {
                 CreateEmbed::new()
                     .color(Color::DARK_RED)
@@ -60,7 +60,7 @@ pub async fn start(
                 return Ok(());
             }
         },
-        None => PREGATHER_DURATION,
+        None => (PREGATHER_DURATION, format!("in {}", humanize_duration(PREGATHER_DURATION))),
     };
 
     {
@@ -106,6 +106,8 @@ pub async fn start(
         ctx.channel_id(),
         voice_channel_id,
         ctx.author().id,
+        ctx.author().mention().to_string(),
+        schedule_label,
         state,
         pregather_duration,
     )
@@ -183,13 +185,13 @@ pub async fn expect(
 }
 
 /// Parse a pregather countdown from either a relative duration (`10m`, `1h 30m`)
-/// or a clock time (`10:00`, `14:30`).  Clock times use the bot's local timezone
-/// (CET/CEST); if the target time has already passed today, the countdown targets
-/// the same time tomorrow.  Returns `None` for unparseable or zero-length input.
-fn parse_pregather_duration(text: &str) -> Option<Duration> {
+/// or a clock time (`10:00`, `14:30`). Returns `(duration, display_label)` where
+/// the label is "in X minutes" for relative or "at HH:MM" for clock times.
+fn parse_pregather_time(text: &str) -> Option<(Duration, String)> {
     // Relative duration: 10m, 1h, 30s, 1h 30m, …
     if let Some(d) = parse_duration_from_string(text) {
-        return Some(d);
+        let label = format!("in {}", humanize_duration(d));
+        return Some((d, label));
     }
 
     // Clock time: HH:MM or H:MM
@@ -215,5 +217,6 @@ fn parse_pregather_duration(text: &str) -> Option<Duration> {
         return None;
     }
 
-    Some(Duration::from_secs(until_secs))
+    let label = format!("at {:02}:{:02}", hour, minute);
+    Some((Duration::from_secs(until_secs), label))
 }

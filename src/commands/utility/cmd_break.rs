@@ -4,7 +4,7 @@ use crate::embeds::bot_embeds::BotEmbed;
 use crate::player::notifier::{get_current_time, parse_duration_from_string};
 use crate::service::channel_service;
 use crate::service::embed_service::SendEmbed;
-use crate::service::gather_service::{self, GatherState};
+use crate::service::gather_service::{self, humanize_duration, GatherState};
 use serenity::all::{
     ButtonStyle, ChannelId, Color, CreateActionRow, CreateButton, CreateEmbed,
     CreateInteractionResponse, CreateInteractionResponseMessage, CreateMessage, EditMessage,
@@ -288,6 +288,8 @@ pub async fn start(
         text_channel_id,
         voice_channel_id,
         author_id,
+        author_mention,
+        String::new(),
         gather_state,
         Duration::ZERO,
     )
@@ -454,24 +456,23 @@ fn build_break_embed(state: &BreakState, footer: Option<&str>) -> CreateEmbed {
     };
 
     let opening = match &state.clock_time_label {
-        Some(label) => format!("{} started a break until **{}**.", state.author_mention, label),
+        Some(label) => format!("{} started a break until {}.", state.author_mention, label),
         None => format!(
-            "{} started a break of **{}**.",
+            "{} started a break of {}.",
             state.author_mention,
             humanize_duration(state.original_duration)
         ),
     };
 
     let mut description = format!(
-        "{}\n\nTime remaining: **{}**\nEnds at: `{}`",
+        "{}\n\nTime remaining: {}",
         opening,
         humanize_duration(remaining),
-        format_wall_clock(state.ends_at_wall()),
     );
 
     if extension > Duration::ZERO {
         description.push_str(&format!(
-            "\nExtended by: **{}** (total **{}**)",
+            "\nExtended by: {} (total {})",
             humanize_duration(extension),
             humanize_duration(total),
         ));
@@ -492,29 +493,6 @@ fn build_break_embed(state: &BreakState, footer: Option<&str>) -> CreateEmbed {
     }
 
     builder
-}
-
-fn humanize_duration(d: Duration) -> String {
-    let total = d.as_secs();
-    if total == 0 {
-        return "0 seconds".to_string();
-    }
-
-    let h = total / 3600;
-    let m = (total % 3600) / 60;
-    let s = total % 60;
-
-    let mut parts: Vec<String> = Vec::new();
-    if h > 0 {
-        parts.push(format!("{} {}", h, if h == 1 { "hour" } else { "hours" }));
-    }
-    if m > 0 {
-        parts.push(format!("{} {}", m, if m == 1 { "minute" } else { "minutes" }));
-    }
-    if s > 0 {
-        parts.push(format!("{} {}", s, if s == 1 { "second" } else { "seconds" }));
-    }
-    parts.join(" ")
 }
 
 fn format_wall_clock(t: OffsetDateTime) -> String {
