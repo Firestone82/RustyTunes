@@ -8,8 +8,26 @@ use serenity::futures::StreamExt;
 use serenity::http::Http;
 use serenity::prelude::Context as SerenityContext;
 use std::collections::{HashMap, HashSet};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
+
+/// Shared state for an active gathering, written to by `/gather expect`
+/// and read by the running `start_gather` loop.
+pub struct GatherState {
+    /// Users added via `/gather expect` that must check in before gathering ends.
+    pub extra_expected: Mutex<HashSet<UserId>>,
+    /// Users for whom ghost-ping reminders are suppressed.
+    pub no_spam: Mutex<HashSet<UserId>>,
+}
+
+impl Default for GatherState {
+    fn default() -> Self {
+        Self {
+            extra_expected: Mutex::new(HashSet::new()),
+            no_spam: Mutex::new(HashSet::new()),
+        }
+    }
+}
 
 const GRACE_PERIOD: Duration = Duration::from_secs(60);
 const GHOST_PING_INTERVAL: Duration = Duration::from_secs(30);
@@ -30,6 +48,7 @@ pub async fn start_gather(
     text_channel_id: ChannelId,
     voice_channel_id: ChannelId,
     author_id: UserId,
+    state: Arc<GatherState>,
 ) -> Result<(), MusicBotError> {
     let bot_id = serenity_ctx.cache.current_user().id;
 
@@ -144,14 +163,24 @@ pub async fn start_gather(
             expected.insert(id);
         }
 
+        // Merge users added via /gather expect.
+        {
+            let extra = state.extra_expected.lock().unwrap();
+            for id in extra.iter() {
+                expected.insert(*id);
+            }
+        }
+
         // Ghost-ping missing members after grace expires.
         if now >= grace_ends_at && now >= last_ghost_ping + GHOST_PING_INTERVAL {
             last_ghost_ping = now;
+            let no_spam = state.no_spam.lock().unwrap();
             let missing: Vec<UserId> = expected
                 .iter()
-                .filter(|id| !arrivals.contains_key(id))
+                .filter(|id| !arrivals.contains_key(id) && !no_spam.contains(*id))
                 .copied()
                 .collect();
+            drop(no_spam);
             if !missing.is_empty() {
                 tokio::spawn(ghost_ping(
                     serenity_ctx.http.clone(),

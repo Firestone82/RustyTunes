@@ -4,7 +4,7 @@ use crate::embeds::bot_embeds::BotEmbed;
 use crate::player::notifier::{get_current_time, parse_duration_from_string};
 use crate::service::channel_service;
 use crate::service::embed_service::SendEmbed;
-use crate::service::gather_service;
+use crate::service::gather_service::{self, GatherState};
 use serenity::all::{
     ButtonStyle, ChannelId, Color, CreateActionRow, CreateButton, CreateEmbed,
     CreateInteractionResponse, CreateInteractionResponseMessage, CreateMessage, EditMessage,
@@ -254,12 +254,19 @@ pub async fn start(
         )
         .await;
 
-    // Drop the state before handing off to the gather flow.
+    // Drop the break state before handing off to the gather flow.
     ctx.data().breaks.write().await.remove(&guild_id);
 
     if cancelled {
         return Ok(());
     }
+
+    let gather_state = Arc::new(GatherState::default());
+    ctx.data()
+        .gatherings
+        .write()
+        .await
+        .insert(guild_id, Arc::clone(&gather_state));
 
     gather_service::start_gather(
         ctx.serenity_context(),
@@ -267,8 +274,11 @@ pub async fn start(
         text_channel_id,
         voice_channel_id,
         author_id,
+        gather_state,
     )
     .await?;
+
+    ctx.data().gatherings.write().await.remove(&guild_id);
 
     Ok(())
 }

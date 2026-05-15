@@ -1,6 +1,7 @@
 use crate::commands;
 use crate::commands::utility::cmd_break::BreakState;
 use crate::commands::{music, reputation, utility};
+use crate::service::gather_service::GatherState;
 use crate::handlers::error_handler;
 use crate::player::notifier::{Notifier, NotifierError};
 use crate::player::player::{PlaybackError, Player};
@@ -25,6 +26,7 @@ pub struct MusicBotData {
     pub player: Arc<RwLock<Player>>,
     pub notifier: Arc<RwLock<Notifier>>,
     pub breaks: Arc<RwLock<HashMap<GuildId, Arc<BreakState>>>>,
+    pub gatherings: Arc<RwLock<HashMap<GuildId, Arc<GatherState>>>>,
 }
 
 pub type Database = Pool<Sqlite>;
@@ -290,6 +292,7 @@ impl MusicBotClient {
                         player: player_handle,
                         notifier: notifier_handle,
                         breaks: Arc::new(RwLock::new(HashMap::new())),
+                        gatherings: Arc::new(RwLock::new(HashMap::new())),
                     })
                 })
             })
