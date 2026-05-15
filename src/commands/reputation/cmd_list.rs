@@ -11,20 +11,8 @@ pub async fn list_rep(
     ctx: Context<'_>,
     #[description = "User to check reputation for (optional, defaults to yourself)"] user: Option<User>,
 ) -> Result<(), MusicBotError> {
-    let target_user = user.as_ref().unwrap_or_else(|| ctx.author());
+    let target_user = user.as_ref().unwrap_or(ctx.author());
     let target_id = target_user.id.to_string();
-
-    let total_rep: i64 = sqlx::query_scalar!(
-        "
-        SELECT COALESCE(SUM(rep_value), 0)
-        FROM reputation_logs
-        WHERE receiver_id == ?
-        ",
-        target_id
-    )
-    .fetch_one(&*ctx.data().database_pool)
-    .await
-    .map_err(|e| MusicBotError::InternalError(e.to_string()))?;
 
     let logs = sqlx::query_as!(
         Rep,
@@ -39,6 +27,8 @@ pub async fn list_rep(
     .fetch_all(&*ctx.data().database_pool)
     .await
     .map_err(|e| MusicBotError::InternalError(e.to_string()))?;
+
+    let total_rep: i64 = logs.iter().map(|log| log.rep_value).sum();
 
     let items_per_page = 5;
     let total_pages = logs.len().div_ceil(items_per_page).max(1);
@@ -71,16 +61,12 @@ pub async fn list_rep(
         .await
         .map_err(|error| MusicBotError::InternalError(error.to_string()))?;
 
+    let mut collector = ComponentInteractionCollector::new(ctx.serenity_context())
+        .message_id(message.id)
+        .stream();
+
     loop {
-        match tokio::time::timeout(
-            Duration::from_mins(2),
-            ComponentInteractionCollector::new(ctx.serenity_context())
-                .message_id(message.id)
-                .stream()
-                .next(),
-        )
-        .await
-        {
+        match tokio::time::timeout(Duration::from_mins(2), collector.next()).await {
             Ok(Some(interaction)) => {
                 if interaction.user.id != ctx.author().id {
                     interaction
@@ -150,7 +136,7 @@ fn get_nav_components(
     total_pages: usize,
 ) -> Vec<CreateActionRow> {
     let prev_btn = CreateButton::new("page_prev")
-        .label("⬅️ Previews")
+        .label("⬅️ Previous")
         .style(ButtonStyle::Primary)
         .disabled(page == 0);
 
