@@ -65,7 +65,7 @@ pub async fn start(
     ctx: Context<'_>,
     #[description = "Break end time or duration, e.g. `5m`, `1h 30s`, `14:00`."] time: String,
 ) -> Result<(), MusicBotError> {
-    let duration = match parse_break_duration(&time) {
+    let duration = match parse_break_start_time(&time) {
         Some(d) if d > Duration::ZERO && d <= MAX_BREAK_DURATION => d,
         Some(_) => {
             CreateEmbed::new()
@@ -366,7 +366,10 @@ pub async fn extend(
     Ok(())
 }
 
-fn parse_break_duration(text: &str) -> Option<Duration> {
+/// Parse a break start time: relative duration (`5m`, `1h 30s`) or clock time
+/// (`14:00`). Clock times resolve to the duration until that time today (or
+/// tomorrow if already past).
+fn parse_break_start_time(text: &str) -> Option<Duration> {
     let text = text.trim();
 
     // Relative duration: 10m, 1h, 30s, 1h 30m, …
@@ -400,6 +403,17 @@ fn parse_break_duration(text: &str) -> Option<Duration> {
     }
 
     Some(Duration::from_secs(until_secs))
+}
+
+/// Parse a relative-only break extension: `5m`, `1h 30s`, `90s`, etc.
+/// Clock times are intentionally not supported here — an extension must be an
+/// amount of additional time, not an absolute end time.
+fn parse_break_duration(text: &str) -> Option<Duration> {
+    let d = parse_duration_from_string(text.trim())?;
+    if d == Duration::ZERO {
+        return None;
+    }
+    Some(d)
 }
 
 fn break_buttons(disabled: bool) -> Vec<CreateActionRow> {
