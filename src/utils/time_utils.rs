@@ -56,34 +56,18 @@ pub fn format_mmss(d: Duration) -> String {
 }
 
 pub fn format_time(t: OffsetDateTime) -> String {
-    format!(
-        "{:04}-{:02}-{:02} {:02}:{:02}:{:02}",
-        t.year(),
-        t.month() as u8,
-        t.day(),
-        t.hour(),
-        t.minute(),
-        t.second()
-    )
+    format!("{:04}-{:02}-{:02} {:02}:{:02}:{:02}", t.year(), t.month() as u8, t.day(), t.hour(), t.minute(), t.second())
 }
 
 fn parse_offset_secs(text: &str) -> Option<u64> {
-    let re: Regex = Regex::new(
-        r"^(?:(\d+)mo(?:nths?)?)?\s*(?:(\d+)\s*d(?:ays?)?)?\s*(?:(\d+)\s*h(?:ours?)?)?\s*(?:(\d+)\s*m(?:inutes?)?)?\s*(?:(\d+)\s*s(?:econds?)?)?$"
-    ).unwrap();
+    let re: Regex = Regex::new(r"^(?:(\d+)mo(?:nths?)?)?\s*(?:(\d+)\s*d(?:ays?)?)?\s*(?:(\d+)\s*h(?:ours?)?)?\s*(?:(\d+)\s*m(?:inutes?)?)?\s*(?:(\d+)\s*s(?:econds?)?)?$").unwrap();
 
     let captures = re.captures(text)?;
 
     let mut total_secs: u64 = 0;
     let mut matched_any = false;
 
-    let units = [
-        (1u64, 30 * 24 * 3600),
-        (2, 24 * 3600),
-        (3, 3600),
-        (4, 60),
-        (5, 1),
-    ];
+    let units = [(1u64, 30 * 24 * 3600), (2, 24 * 3600), (3, 3600), (4, 60), (5, 1)];
 
     for (group, multiplier) in units {
         if let Some(m) = captures.get(group as usize) {
@@ -129,8 +113,7 @@ pub fn convert_time_date_from_string(text: String) -> Option<OffsetDateTime> {
         return Some(naive.assume_offset(local_offset));
     }
 
-    let datetime_format =
-        time::format_description::parse("[day]-[month]-[year]_[hour]:[minute]").unwrap();
+    let datetime_format = time::format_description::parse("[day]-[month]-[year]_[hour]:[minute]").unwrap();
     if let Ok(datetime) = PrimitiveDateTime::parse(&text, &datetime_format) {
         return Some(datetime.assume_offset(local_offset));
     }

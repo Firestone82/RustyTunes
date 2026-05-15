@@ -10,11 +10,7 @@ use std::path::PathBuf;
 /// (which already carries a content type and filename) or a raw URL we have
 /// to inspect after the fact.
 pub enum DownloadSource {
-    Attachment {
-        url: String,
-        filename: String,
-        content_type: Option<String>,
-    },
+    Attachment { url: String, filename: String, content_type: Option<String> },
     Url(String),
 }
 
@@ -38,22 +34,16 @@ impl DownloadSource {
 /// If `name_override` is given, the file is saved under that name (with the
 /// extension preserved or inferred); otherwise we use the attachment filename
 /// or derive one from the response/URL.
-pub async fn save_to_library(
-    ctx: Context<'_>,
-    source: &DownloadSource,
-    name_override: Option<&str>,
-) -> Result<PathBuf, MusicBotError> {
+pub async fn save_to_library(ctx: Context<'_>, source: &DownloadSource, name_override: Option<&str>) -> Result<PathBuf, MusicBotError> {
     let url = source.url();
 
     if !(url.starts_with("http://") || url.starts_with("https://")) {
-        return Err(MusicBotError::InternalError(
-            "URL must start with http:// or https://".to_string(),
-        ));
+        return Err(MusicBotError::InternalError("URL must start with http:// or https://".to_string()));
     }
 
-    let dir = local_client::ensure_downloads_dir().await.map_err(|e| {
-        MusicBotError::InternalError(format!("Could not create downloads dir: {e}"))
-    })?;
+    let dir = local_client::ensure_downloads_dir()
+        .await
+        .map_err(|e| MusicBotError::InternalError(format!("Could not create downloads dir: {e}")))?;
 
     let response = ctx
         .data()
@@ -64,22 +54,13 @@ pub async fn save_to_library(
         .map_err(|e| MusicBotError::InternalError(format!("Request failed: {e}")))?;
 
     if !response.status().is_success() {
-        return Err(MusicBotError::InternalError(format!(
-            "Server returned {}",
-            response.status()
-        )));
+        return Err(MusicBotError::InternalError(format!("Server returned {}", response.status())));
     }
 
     let auto_name = match source {
-        DownloadSource::Attachment {
-            filename,
-            content_type,
-            ..
-        } => {
+        DownloadSource::Attachment { filename, content_type, .. } => {
             if !is_audio(filename, content_type.as_deref()) {
-                return Err(MusicBotError::InternalError(format!(
-                    "Attachment `{filename}` doesn't look like an audio file."
-                )));
+                return Err(MusicBotError::InternalError(format!("Attachment `{filename}` doesn't look like an audio file.")));
             }
             let mut name = local_client::sanitize_filename(filename);
             // Discord allows audio files without recognized extensions; add
@@ -100,10 +81,7 @@ pub async fn save_to_library(
 
     let target = local_client::unique_path(&dir, &filename).await;
 
-    let bytes = response
-        .bytes()
-        .await
-        .map_err(|e| MusicBotError::InternalError(format!("Failed to read body: {e}")))?;
+    let bytes = response.bytes().await.map_err(|e| MusicBotError::InternalError(format!("Failed to read body: {e}")))?;
 
     tokio::fs::write(&target, &bytes)
         .await
@@ -135,9 +113,7 @@ fn is_audio(filename: &str, content_type: Option<&str>) -> bool {
     if local_client::has_audio_extension(filename) {
         return true;
     }
-    content_type
-        .map(|ct| ct.starts_with("audio/"))
-        .unwrap_or(false)
+    content_type.map(|ct| ct.starts_with("audio/")).unwrap_or(false)
 }
 
 fn audio_ext_from_content_type(ct: Option<&str>) -> Option<&'static str> {
@@ -190,9 +166,7 @@ fn percent_decode(input: &str) -> String {
     let mut i = 0;
     while i < bytes.len() {
         if bytes[i] == b'%' && i + 2 < bytes.len() {
-            if let Ok(byte) =
-                u8::from_str_radix(std::str::from_utf8(&bytes[i + 1..i + 3]).unwrap_or(""), 16)
-            {
+            if let Ok(byte) = u8::from_str_radix(std::str::from_utf8(&bytes[i + 1..i + 3]).unwrap_or(""), 16) {
                 out.push(byte);
                 i += 3;
                 continue;

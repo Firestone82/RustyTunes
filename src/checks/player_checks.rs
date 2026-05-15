@@ -11,10 +11,7 @@ pub async fn check_if_player_is_playing(ctx: Context<'_>) -> Result<bool, MusicB
     if player.is_playing {
         Ok(true)
     } else {
-        PlayerEmbed::NoSongPlaying
-            .to_embed()
-            .send_context(ctx, true, Some(30))
-            .await?;
+        PlayerEmbed::NoSongPlaying.to_embed().send_context(ctx, true, Some(30)).await?;
 
         Ok(false)
     }
@@ -26,10 +23,7 @@ pub async fn check_if_player_is_paused(ctx: Context<'_>) -> Result<bool, MusicBo
     if player.is_paused {
         Ok(true)
     } else {
-        PlayerEmbed::NoSongPlaying
-            .to_embed()
-            .send_context(ctx, true, Some(30))
-            .await?;
+        PlayerEmbed::NoSongPlaying.to_embed().send_context(ctx, true, Some(30)).await?;
 
         Ok(false)
     }
@@ -39,10 +33,7 @@ pub async fn check_if_queue_is_not_empty(ctx: Context<'_>) -> Result<bool, Music
     let player: RwLockReadGuard<Player> = ctx.data().player.read().await;
 
     if player.queue.is_empty() {
-        QueueEmbed::IsEmpty
-            .to_embed()
-            .send_context(ctx, true, Some(30))
-            .await?;
+        QueueEmbed::IsEmpty.to_embed().send_context(ctx, true, Some(30)).await?;
 
         Ok(false)
     } else {

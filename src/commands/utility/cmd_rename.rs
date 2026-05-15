@@ -1,8 +1,6 @@
 use crate::bot::{Context, MusicBotData, MusicBotError};
 use crate::service::embed_service::SendEmbed;
-use serenity::all::{
-    Color, CreateEmbed, EditMember, GuildId, Member, Mentionable, PartialGuild, User,
-};
+use serenity::all::{Color, CreateEmbed, EditMember, GuildId, Member, Mentionable, PartialGuild, User};
 
 #[derive(Debug, poise::Modal)]
 #[name = "Rename"]
@@ -15,20 +13,13 @@ struct RenameModal {
 
 /// Set a user's nickname. Caller's top role must be at-or-above the target's.
 #[poise::command(prefix_command, slash_command, guild_only)]
-pub async fn rename(
-    ctx: Context<'_>,
-    user: User,
-    #[rest] new_name: Option<String>,
-) -> Result<(), MusicBotError> {
+pub async fn rename(ctx: Context<'_>, user: User, #[rest] new_name: Option<String>) -> Result<(), MusicBotError> {
     do_rename(ctx, user, new_name).await
 }
 
 /// Rename a user via right-click → Apps → Rename. Opens a modal for the new nickname.
 #[poise::command(context_menu_command = "Rename", guild_only)]
-pub async fn rename_context(
-    ctx: poise::ApplicationContext<'_, MusicBotData, MusicBotError>,
-    user: User,
-) -> Result<(), MusicBotError> {
+pub async fn rename_context(ctx: poise::ApplicationContext<'_, MusicBotData, MusicBotError>, user: User) -> Result<(), MusicBotError> {
     let data = match poise::Modal::execute(ctx).await? {
         Some(d) => d,
         None => return Ok(()),
@@ -38,20 +29,10 @@ pub async fn rename_context(
     do_rename(poise::Context::Application(ctx), user, new_name).await
 }
 
-async fn do_rename(
-    ctx: Context<'_>,
-    user: User,
-    new_name: Option<String>,
-) -> Result<(), MusicBotError> {
-    let guild_id: GuildId = ctx.guild_id().ok_or_else(|| {
-        MusicBotError::InternalError("Rename is only available in guilds".to_string())
-    })?;
+async fn do_rename(ctx: Context<'_>, user: User, new_name: Option<String>) -> Result<(), MusicBotError> {
+    let guild_id: GuildId = ctx.guild_id().ok_or_else(|| MusicBotError::InternalError("Rename is only available in guilds".to_string()))?;
 
-    let guild: PartialGuild = ctx
-        .http()
-        .get_guild(guild_id)
-        .await
-        .map_err(|e| MusicBotError::InternalError(format!("Failed to fetch guild: {e}")))?;
+    let guild: PartialGuild = ctx.http().get_guild(guild_id).await.map_err(|e| MusicBotError::InternalError(format!("Failed to fetch guild: {e}")))?;
 
     let actor: Member = guild
         .member(ctx.http(), ctx.author().id)
@@ -72,10 +53,7 @@ async fn do_rename(
         CreateEmbed::new()
             .color(Color::DARK_RED)
             .title("🚫  Insufficient role")
-            .description(format!(
-                "You can't rename {} — their top role outranks yours.",
-                target.mention()
-            ))
+            .description(format!("You can't rename {} — their top role outranks yours.", target.mention()))
             .send_context(ctx, true, Some(30))
             .await?;
         return Ok(());
@@ -96,34 +74,21 @@ async fn do_rename(
         EditMember::new().nickname(trimmed)
     };
 
-    let previous = target.nick.clone().unwrap_or_else(|| {
-        target
-            .user
-            .global_name
-            .clone()
-            .unwrap_or_else(|| target.user.name.clone())
-    });
+    let previous = target.nick.clone().unwrap_or_else(|| target.user.global_name.clone().unwrap_or_else(|| target.user.name.clone()));
 
     if let Err(e) = guild_id.edit_member(ctx.http(), target.user.id, edit).await {
         tracing::error!("Failed to rename {}: {:?}", target.user.id, e);
         CreateEmbed::new()
             .color(Color::DARK_RED)
             .title("🚫  Rename failed")
-            .description(format!(
-                "Discord rejected the rename: `{e}`.\nThe bot's role probably sits below {}'s top role.",
-                target.mention()
-            ))
+            .description(format!("Discord rejected the rename: `{e}`.\nThe bot's role probably sits below {}'s top role.", target.mention()))
             .send_context(ctx, true, Some(30))
             .await?;
         return Ok(());
     }
 
     let next = if trimmed.is_empty() {
-        target
-            .user
-            .global_name
-            .clone()
-            .unwrap_or(target.user.name.clone())
+        target.user.global_name.clone().unwrap_or(target.user.name.clone())
     } else {
         trimmed.to_string()
     };
@@ -140,11 +105,5 @@ async fn do_rename(
 }
 
 fn highest_role_position(guild: &PartialGuild, member: &Member) -> u16 {
-    member
-        .roles
-        .iter()
-        .filter_map(|role_id| guild.roles.get(role_id))
-        .map(|role| role.position)
-        .max()
-        .unwrap_or(0)
+    member.roles.iter().filter_map(|role_id| guild.roles.get(role_id)).map(|role| role.position).max().unwrap_or(0)
 }

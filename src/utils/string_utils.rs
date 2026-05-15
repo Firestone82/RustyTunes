@@ -3,10 +3,7 @@ use unicode_segmentation::UnicodeSegmentation;
 pub const MAX_NAME_LEN: usize = 21;
 
 pub fn number_to_emoji(number: usize) -> String {
-    let emoji_numbers = [
-        ":zero:", ":one:", ":two:", ":three:", ":four:", ":five:", ":six:", ":seven:", ":eight:",
-        ":nine:",
-    ];
+    let emoji_numbers = [":zero:", ":one:", ":two:", ":three:", ":four:", ":five:", ":six:", ":seven:", ":eight:", ":nine:"];
 
     number
         .to_string()

@@ -6,12 +6,7 @@ use crate::service::embed_service::SendEmbed;
 use tokio::sync::RwLockWriteGuard;
 
 /// Toggle session-only silent mode — suppresses NowPlaying (resets on restart).
-#[poise::command(
-    prefix_command,
-    slash_command,
-    check = "check_author_in_same_voice_channel",
-    aliases("shh", "quiet")
-)]
+#[poise::command(prefix_command, slash_command, check = "check_author_in_same_voice_channel", aliases("shh", "quiet"))]
 pub async fn silent(ctx: Context<'_>, state: Option<String>) -> Result<(), MusicBotError> {
     let mut player: RwLockWriteGuard<Player> = ctx.data().player.write().await;
 
@@ -21,9 +16,7 @@ pub async fn silent(ctx: Context<'_>, state: Option<String>) -> Result<(), Music
             "on" | "true" | "1" | "yes" | "y" => true,
             "off" | "false" | "0" | "no" | "n" => false,
             _ => {
-                return Err(MusicBotError::InternalError(format!(
-                    "Unknown silent state `{s}`. Use `on` or `off`."
-                )));
+                return Err(MusicBotError::InternalError(format!("Unknown silent state `{s}`. Use `on` or `off`.")));
             }
         },
     };
@@ -31,10 +24,7 @@ pub async fn silent(ctx: Context<'_>, state: Option<String>) -> Result<(), Music
     player.silent = desired;
     drop(player);
 
-    PlayerEmbed::SilentState(desired)
-        .to_embed()
-        .send_context(ctx, true, Some(30))
-        .await?;
+    PlayerEmbed::SilentState(desired).to_embed().send_context(ctx, true, Some(30)).await?;
 
     Ok(())
 }

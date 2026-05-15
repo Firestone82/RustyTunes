@@ -53,9 +53,7 @@ fn env_f32(key: &str, fallback: f32) -> f32 {
                 v
             }
             Err(_) => {
-                tracing::warn!(
-                    "Loudness normalize: ignoring invalid {key}={raw:?}, using default {fallback}"
-                );
+                tracing::warn!("Loudness normalize: ignoring invalid {key}={raw:?}, using default {fallback}");
                 fallback
             }
         },
@@ -164,13 +162,7 @@ async fn gain_db_for_with_lufs(path: &Path) -> Option<(f32, f32)> {
 
     let lufs = measure_with_ffmpeg(path).await?;
     let gain_db = lufs_to_gain_db(lufs);
-    tracing::info!(
-        "Loudness measured: {} → {:.2} LUFS (target {:.2}, gain {:+.2} dB)",
-        path.display(),
-        lufs,
-        target_lufs(),
-        gain_db,
-    );
+    tracing::info!("Loudness measured: {} → {:.2} LUFS (target {:.2}, gain {:+.2} dB)", path.display(), lufs, target_lufs(), gain_db,);
 
     if let Err(e) = write_sidecar(path, lufs).await {
         tracing::debug!("Failed to write LUFS sidecar for {}: {e}", path.display());
@@ -192,12 +184,7 @@ async fn read_sidecar(path: &Path) -> Option<f32> {
 }
 
 async fn write_sidecar(path: &Path, lufs: f32) -> std::io::Result<()> {
-    let sidecar = sidecar_path(path).ok_or_else(|| {
-        std::io::Error::new(
-            std::io::ErrorKind::InvalidInput,
-            "no sidecar path for input",
-        )
-    })?;
+    let sidecar = sidecar_path(path).ok_or_else(|| std::io::Error::new(std::io::ErrorKind::InvalidInput, "no sidecar path for input"))?;
     tokio::fs::write(sidecar, format!("{lufs:.2}")).await
 }
 
@@ -220,11 +207,7 @@ async fn measure_with_ffmpeg(path: &Path) -> Option<f32> {
         .ok()?;
 
     if !output.status.success() {
-        tracing::debug!(
-            "ffmpeg loudnorm failed for {} (status {})",
-            path.display(),
-            output.status
-        );
+        tracing::debug!("ffmpeg loudnorm failed for {} (status {})", path.display(), output.status);
         return None;
     }
 

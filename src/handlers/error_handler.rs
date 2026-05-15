@@ -39,9 +39,7 @@ pub async fn handle(error: poise::FrameworkError<'_, MusicBotData, MusicBotError
         poise::FrameworkError::Command { error, ctx, .. } => {
             tracing::error!("Error in command `{}`: {:?}", ctx.command().name, error);
             let embed = BotEmbed::Error(error).to_embed();
-            let _ = ctx
-                .send(poise::CreateReply::default().embed(embed).reply(true))
-                .await;
+            let _ = ctx.send(poise::CreateReply::default().embed(embed).reply(true)).await;
             schedule_prefix_delete(ctx);
         }
 

@@ -63,8 +63,7 @@ impl Default for YoutubeClient {
 
 impl YoutubeClient {
     pub fn new() -> Self {
-        let youtube_token =
-            var("YOUTUBE_TOKEN").expect("Expected a valid youtube token set in the configuration.");
+        let youtube_token = var("YOUTUBE_TOKEN").expect("Expected a valid youtube token set in the configuration.");
 
         let connector = google_youtube3::hyper_rustls::HttpsConnectorBuilder::new()
             .with_native_roots()
@@ -81,11 +80,7 @@ impl YoutubeClient {
         }
     }
 
-    pub async fn search_track_url(
-        &self,
-        url: String,
-        max_tracks: u32,
-    ) -> Result<YouTubeSearchResult, SearchError> {
+    pub async fn search_track_url(&self, url: String, max_tracks: u32) -> Result<YouTubeSearchResult, SearchError> {
         let request = self
             .youtube
             .search()
@@ -97,9 +92,7 @@ impl YoutubeClient {
 
         let (_, response) = request.doit().await.map_err(map_api_error)?;
 
-        let items: Vec<SearchResult> = response.items.ok_or_else(|| {
-            SearchError::VideoNotFound(format!("No video found for url: {}", url))
-        })?;
+        let items: Vec<SearchResult> = response.items.ok_or_else(|| SearchError::VideoNotFound(format!("No video found for url: {}", url)))?;
 
         let mut tracks: Vec<Track> = items
             .iter()
@@ -128,9 +121,7 @@ impl YoutubeClient {
             .collect::<Result<Vec<Track>, SearchError>>()?;
 
         if tracks.is_empty() {
-            return Err(SearchError::VideoNotFound(format!(
-                "No usable results for: {url}"
-            )));
+            return Err(SearchError::VideoNotFound(format!("No usable results for: {url}")));
         }
 
         match max_tracks {
@@ -139,10 +130,7 @@ impl YoutubeClient {
         }
     }
 
-    pub async fn search_playlist_url(
-        &self,
-        url: String,
-    ) -> Result<YouTubeSearchResult, SearchError> {
+    pub async fn search_playlist_url(&self, url: String) -> Result<YouTubeSearchResult, SearchError> {
         let playlist_id: &str = url.trim_start_matches(PLAYLIST_URI);
 
         let playlist_request = self
@@ -157,10 +145,7 @@ impl YoutubeClient {
 
         if let Some(playlist) = response.items {
             if playlist.is_empty() {
-                return Err(SearchError::PlaylistNotFound(format!(
-                    "No playlist found for url: {}",
-                    url
-                )));
+                return Err(SearchError::PlaylistNotFound(format!("No playlist found for url: {}", url)));
             }
 
             let snippet = playlist.first().unwrap().snippet.as_ref().unwrap();
@@ -178,20 +163,12 @@ impl YoutubeClient {
 
             let (_, response) = tracks_request.doit().await.map_err(map_api_error)?;
 
-            let items: Vec<PlaylistItem> = response.items.ok_or_else(|| {
-                SearchError::VideoNotFound(format!("No video found for url: {}", url))
-            })?;
+            let items: Vec<PlaylistItem> = response.items.ok_or_else(|| SearchError::VideoNotFound(format!("No video found for url: {}", url)))?;
 
             let tracks: Vec<Track> = items
                 .iter()
                 .filter_map(|result| {
-                    let video_id: String = result
-                        .snippet
-                        .as_ref()?
-                        .resource_id
-                        .clone()?
-                        .video_id
-                        .clone()?;
+                    let video_id: String = result.snippet.as_ref()?.resource_id.clone()?.video_id.clone()?;
 
                     let snippet: &PlaylistItemSnippet = result.snippet.as_ref()?;
                     let title: &String = snippet.title.as_ref()?;
@@ -222,20 +199,14 @@ impl YoutubeClient {
                 tracks,
             }))
         } else {
-            Err(SearchError::PlaylistNotFound(format!(
-                "No playlist found for url: {}",
-                url
-            )))
+            Err(SearchError::PlaylistNotFound(format!("No playlist found for url: {}", url)))
         }
     }
 
     /// Enumerate a YouTube playlist using yt-dlp's `--flat-playlist` mode.
     /// Streams results line-by-line so we get track titles immediately from
     /// yt-dlp scraping — zero YouTube Data API quota used.
-    pub async fn fetch_playlist_lazy(
-        &self,
-        url: String,
-    ) -> Result<YouTubeSearchResult, SearchError> {
+    pub async fn fetch_playlist_lazy(&self, url: String) -> Result<YouTubeSearchResult, SearchError> {
         let playlist_id = url.trim_start_matches(PLAYLIST_URI).to_string();
 
         let mut child = tokio::process::Command::new("yt-dlp")
@@ -251,10 +222,7 @@ impl YoutubeClient {
             .spawn()
             .map_err(|e| SearchError::InternalError(format!("Failed to spawn yt-dlp: {e}")))?;
 
-        let stdout = child
-            .stdout
-            .take()
-            .ok_or_else(|| SearchError::InternalError("yt-dlp stdout missing".into()))?;
+        let stdout = child.stdout.take().ok_or_else(|| SearchError::InternalError("yt-dlp stdout missing".into()))?;
 
         let mut lines = BufReader::new(stdout).lines();
 
@@ -279,11 +247,7 @@ impl YoutubeClient {
 
             let Some(id) = v["id"].as_str() else { continue };
             let title = v["title"].as_str().unwrap_or(id).to_string();
-            let channel = v["channel"]
-                .as_str()
-                .or_else(|| v["uploader"].as_str())
-                .unwrap_or("")
-                .to_string();
+            let channel = v["channel"].as_str().or_else(|| v["uploader"].as_str()).unwrap_or("").to_string();
 
             tracks.push(Track {
                 id: id.to_string(),
@@ -303,9 +267,7 @@ impl YoutubeClient {
         let _ = child.wait().await;
 
         if tracks.is_empty() {
-            return Err(SearchError::PlaylistNotFound(format!(
-                "No tracks found in playlist: {url}"
-            )));
+            return Err(SearchError::PlaylistNotFound(format!("No tracks found in playlist: {url}")));
         }
 
         if playlist_title.is_empty() {

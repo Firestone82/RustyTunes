@@ -97,11 +97,7 @@ impl Track {
         // Cache miss: stream now. The caller fires off the cache write.
         // `play_url` lets sources (like Spotify) ship a yt-dlp-friendly input
         // string while keeping `track_url` set to the user-facing permalink.
-        let input_url = self
-            .metadata
-            .play_url
-            .clone()
-            .unwrap_or_else(|| self.metadata.track_url.clone());
+        let input_url = self.metadata.play_url.clone().unwrap_or_else(|| self.metadata.track_url.clone());
         (YoutubeDl::new(req_client.clone(), input_url).into(), None)
     }
 }

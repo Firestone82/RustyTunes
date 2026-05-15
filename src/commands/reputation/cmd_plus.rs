@@ -20,10 +20,10 @@ pub async fn add_rep(
             reason,
             overall_rep,
         })
-            .to_embed()
-            .send_context(ctx, false, None)
-            .await
-            .map_err(|e| MusicBotError::InternalError(e.to_string()))?;
+        .to_embed()
+        .send_context(ctx, false, None)
+        .await
+        .map_err(|e| MusicBotError::InternalError(e.to_string()))?;
     }
 
     Ok(())

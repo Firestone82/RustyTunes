@@ -21,11 +21,9 @@ pub async fn join_user_channel(ctx: Context<'_>) -> Result<ChannelId, MusicBotEr
         }
     };
 
-    let manager: Arc<Songbird> = songbird::get(ctx.serenity_context()).await.ok_or_else(|| {
-        MusicBotError::InternalError(
-            "Could not locate voice channel. Songbird manager does not exist".to_owned(),
-        )
-    })?;
+    let manager: Arc<Songbird> = songbird::get(ctx.serenity_context())
+        .await
+        .ok_or_else(|| MusicBotError::InternalError("Could not locate voice channel. Songbird manager does not exist".to_owned()))?;
 
     match manager.join(guild_id, chanel_id).await {
         Ok(handle_lock) => {
@@ -53,9 +51,9 @@ pub async fn leave_channel(ctx: Context<'_>) -> Result<(), MusicBotError> {
         MusicBotError::InternalError("Could not locate voice channel. Guild ID is none".to_owned())
     })?;
 
-    let manager: Arc<Songbird> = songbird::get(ctx.serenity_context()).await.ok_or_else(|| {
-        MusicBotError::InternalError("Songbird manager not registered".to_owned())
-    })?;
+    let manager: Arc<Songbird> = songbird::get(ctx.serenity_context())
+        .await
+        .ok_or_else(|| MusicBotError::InternalError("Songbird manager not registered".to_owned()))?;
 
     let _ = ctx.data().player.write().await.stop_playback().await;
 
@@ -67,9 +65,7 @@ pub async fn leave_channel(ctx: Context<'_>) -> Result<(), MusicBotError> {
 
         if let Err(error) = manager.remove(guild_id).await {
             tracing::error!("Could not remove songbird call: {:?}", error);
-            return Err(MusicBotError::InternalError(
-                "Could not leave voice channel".to_owned(),
-            ));
+            return Err(MusicBotError::InternalError("Could not leave voice channel".to_owned()));
         }
     } else {
         tracing::debug!("/leave called but no active songbird call; treating as no-op");
@@ -79,8 +75,5 @@ pub async fn leave_channel(ctx: Context<'_>) -> Result<(), MusicBotError> {
 }
 
 pub fn get_user_voice_channel(ctx: Context<'_>, user_id: &UserId) -> Option<ChannelId> {
-    ctx.guild()
-        .as_ref()
-        .and_then(|guild| guild.voice_states.get(user_id))
-        .and_then(|voice_state| voice_state.channel_id)
+    ctx.guild().as_ref().and_then(|guild| guild.voice_states.get(user_id)).and_then(|voice_state| voice_state.channel_id)
 }

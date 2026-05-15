@@ -50,13 +50,10 @@ impl Player {
     pub async fn new(guild_id: GuildId, database: Arc<Database>) -> Self {
         let guild_id_map: i64 = guild_id.get() as i64;
 
-        let volume = sqlx::query!("SELECT * FROM guilds WHERE guild_id = $1", guild_id_map)
-            .fetch_one(&*database)
-            .await
-            .map_err(|e| {
-                tracing::error!("Failed to fetch volume from database: {:?}", e);
-                crate::bot::MusicBotError::InternalError(e.to_string())
-            });
+        let volume = sqlx::query!("SELECT * FROM guilds WHERE guild_id = $1", guild_id_map).fetch_one(&*database).await.map_err(|e| {
+            tracing::error!("Failed to fetch volume from database: {:?}", e);
+            crate::bot::MusicBotError::InternalError(e.to_string())
+        });
 
         let volume: f32 = match volume {
             Ok(volume) => volume.volume.unwrap_or(0.5) as f32,
@@ -93,17 +90,8 @@ impl Player {
         }
     }
 
-    pub async fn add_playlist_to_queue(
-        &mut self,
-        ctx: Context<'_>,
-        playlist: Playlist,
-        top: bool,
-    ) -> Result<(), PlaybackError> {
-        tracing::info!(
-            "Adding playlist to queue (top={}), tracks: {}",
-            top,
-            playlist.tracks.len()
-        );
+    pub async fn add_playlist_to_queue(&mut self, ctx: Context<'_>, playlist: Playlist, top: bool) -> Result<(), PlaybackError> {
+        tracing::info!("Adding playlist to queue (top={}), tracks: {}", top, playlist.tracks.len());
 
         self.inactivity_cancel.store(true, Ordering::SeqCst);
         if top {
@@ -116,17 +104,8 @@ impl Player {
         self.kick_off_playback(ctx, top).await
     }
 
-    pub async fn add_track_to_queue(
-        &mut self,
-        ctx: Context<'_>,
-        track: Track,
-        top: bool,
-    ) -> Result<(), PlaybackError> {
-        tracing::info!(
-            "Adding track to queue (top={}): {}",
-            top,
-            track.metadata.track_url
-        );
+    pub async fn add_track_to_queue(&mut self, ctx: Context<'_>, track: Track, top: bool) -> Result<(), PlaybackError> {
+        tracing::info!("Adding track to queue (top={}): {}", top, track.metadata.track_url);
 
         self.inactivity_cancel.store(true, Ordering::SeqCst);
         if top {
@@ -144,11 +123,7 @@ impl Player {
     /// - paused + !top:   resume the currently-paused track
     /// - idle:            start playback from the head of the queue
     /// - already playing: nothing to do
-    async fn kick_off_playback(
-        &mut self,
-        ctx: Context<'_>,
-        top: bool,
-    ) -> Result<(), PlaybackError> {
+    async fn kick_off_playback(&mut self, ctx: Context<'_>, top: bool) -> Result<(), PlaybackError> {
         if self.is_paused {
             if top {
                 self.is_paused = false;
@@ -214,18 +189,14 @@ impl Player {
 
         let guild_id: GuildId = ctx.guild_id().ok_or_else(|| {
             tracing::error!("Could not locate voice channel: guild ID is none");
-            PlaybackError::InternalError(
-                "Could not locate voice channel. Guild ID is none".to_owned(),
-            )
+            PlaybackError::InternalError("Could not locate voice channel. Guild ID is none".to_owned())
         })?;
 
         let manager: Arc<Mutex<Call>> = songbird::get(ctx.serenity_context())
             .await
             .ok_or_else(|| {
                 tracing::error!("Could not locate voice channel: guild ID is none");
-                PlaybackError::InternalError(
-                    "Could not locate voice channel. Guild ID is none".to_owned(),
-                )
+                PlaybackError::InternalError("Could not locate voice channel. Guild ID is none".to_owned())
             })?
             .get_or_insert(guild_id);
 
@@ -233,24 +204,16 @@ impl Player {
             self.stop_track().await?;
         }
 
-        let next = if self.queue.is_empty() {
-            None
-        } else {
-            Some(self.queue.remove(0))
-        };
+        let next = if self.queue.is_empty() { None } else { Some(self.queue.remove(0)) };
         match next {
             Some(next_track) => {
                 tracing::info!("Found: {}", next_track.metadata.title);
 
                 if !self.silent {
-                    PlayerEmbed::NowPlaying(&next_track)
-                        .to_embed()
-                        .send_context(ctx, false, Some(30))
-                        .await?;
+                    PlayerEmbed::NowPlaying(&next_track).to_embed().send_context(ctx, false, Some(30)).await?;
                 }
 
-                let (input, source_path) =
-                    next_track.resolve_input(&ctx.data().request_client).await;
+                let (input, source_path) = next_track.resolve_input(&ctx.data().request_client).await;
 
                 let mut guard: MutexGuard<Call> = manager.lock().await;
                 let track_handle: TrackHandle = guard.play(input.into());
@@ -265,20 +228,11 @@ impl Player {
                 match source_path {
                     Some(path) => {
                         if self.should_normalize() {
-                            schedule_normalization_apply(
-                                ctx.data().player.clone(),
-                                track_handle.clone(),
-                                path,
-                                next_track.id.clone(),
-                            );
+                            schedule_normalization_apply(ctx.data().player.clone(), track_handle.clone(), path, next_track.id.clone());
                         }
                     }
                     None => {
-                        spawn_cache_and_apply(
-                            next_track.clone(),
-                            ctx.data().player.clone(),
-                            track_handle.clone(),
-                        );
+                        spawn_cache_and_apply(next_track.clone(), ctx.data().player.clone(), track_handle.clone());
                     }
                 }
 
@@ -354,14 +308,10 @@ impl Player {
 
         let guild_id_map: i64 = self.guild_id.get() as i64;
 
-        sqlx::query!(
-            "UPDATE guilds SET volume = $1 WHERE guild_id = $2",
-            volume,
-            guild_id_map
-        )
-        .execute(&*self.database)
-        .await
-        .expect("TODO: panic message");
+        sqlx::query!("UPDATE guilds SET volume = $1 WHERE guild_id = $2", volume, guild_id_map)
+            .execute(&*self.database)
+            .await
+            .expect("TODO: panic message");
 
         self.volume = volume;
         Ok(())
@@ -375,9 +325,7 @@ impl Player {
             return Err(PlaybackError::PlaybackAlreadyPaused);
         }
         if let Some(track_handle) = &self.track_handle {
-            track_handle
-                .pause()
-                .map_err(|e| PlaybackError::InternalError(e.to_string()))?;
+            track_handle.pause().map_err(|e| PlaybackError::InternalError(e.to_string()))?;
         }
         self.is_paused = true;
         Ok(())
@@ -388,9 +336,7 @@ impl Player {
             return Err(PlaybackError::PlaybackNotPaused);
         }
         if let Some(track_handle) = &self.track_handle {
-            track_handle
-                .play()
-                .map_err(|e| PlaybackError::InternalError(e.to_string()))?;
+            track_handle.play().map_err(|e| PlaybackError::InternalError(e.to_string()))?;
         }
         self.is_paused = false;
         Ok(())
@@ -403,10 +349,7 @@ impl Player {
 
                 if let Err(error) = track_handle.stop() {
                     tracing::error!("Error stopping track: {:?}", error);
-                    return Err(PlaybackError::InternalError(format!(
-                        "Error stopping track: {:?}",
-                        error
-                    )));
+                    return Err(PlaybackError::InternalError(format!("Error stopping track: {:?}", error)));
                 }
             }
         }
@@ -433,35 +376,19 @@ impl Player {
 /// multiplier to `handle` provided the player is still on `track_id` and the
 /// normalize toggle is still on by the time the measurement returns. Used
 /// both when a track starts and when `!normalize` is flipped mid-track.
-pub fn schedule_normalization_apply(
-    player_arc: Arc<tokio::sync::RwLock<Player>>,
-    handle: TrackHandle,
-    path: PathBuf,
-    track_id: String,
-) {
+pub fn schedule_normalization_apply(player_arc: Arc<tokio::sync::RwLock<Player>>, handle: TrackHandle, path: PathBuf, track_id: String) {
     tokio::spawn(async move {
         let measurement = normalize_service::measurement_for(&path).await;
         let mut player = player_arc.write().await;
-        let still_current = player
-            .current_track
-            .as_ref()
-            .map(|t| t.id == track_id)
-            .unwrap_or(false);
+        let still_current = player.current_track.as_ref().map(|t| t.id == track_id).unwrap_or(false);
         if !still_current || !player.should_normalize() {
             return;
         }
-        let title = player
-            .current_track
-            .as_ref()
-            .map(|t| t.metadata.title.clone())
-            .unwrap_or_default();
+        let title = player.current_track.as_ref().map(|t| t.metadata.title.clone()).unwrap_or_default();
         player.current_gain = measurement.multiplier;
         let effective = player.volume * measurement.multiplier;
         let _ = handle.set_volume(effective);
-        let lufs_str = measurement
-            .lufs
-            .map(|l| format!("{l:.2} LUFS"))
-            .unwrap_or_else(|| "unknown LUFS".to_string());
+        let lufs_str = measurement.lufs.map(|l| format!("{l:.2} LUFS")).unwrap_or_else(|| "unknown LUFS".to_string());
         tracing::info!(
             "Normalize applied: '{}' — {} → gain {:+.2} dB (×{:.3}); volume {:.0}% × gain = {:.3} effective",
             title,
@@ -479,11 +406,7 @@ pub fn schedule_normalization_apply(
 /// measurement so normalization can apply to the currently playing track
 /// without having to wait for the next play. A no-op for tracks that aren't
 /// cacheable (local files, or anything missing an id).
-pub fn spawn_cache_and_apply(
-    track: Track,
-    player_arc: Arc<tokio::sync::RwLock<Player>>,
-    handle: TrackHandle,
-) {
+pub fn spawn_cache_and_apply(track: Track, player_arc: Arc<tokio::sync::RwLock<Player>>, handle: TrackHandle) {
     if !cache_service::is_cacheable(&track) {
         return;
     }
@@ -496,11 +419,7 @@ pub fn spawn_cache_and_apply(
                 // but only if the user hasn't already skipped to another track.
                 {
                     let mut player = player_arc.write().await;
-                    let still_current = player
-                        .current_track
-                        .as_ref()
-                        .map(|t| t.id == track.id)
-                        .unwrap_or(false);
+                    let still_current = player.current_track.as_ref().map(|t| t.id == track.id).unwrap_or(false);
                     if still_current {
                         player.current_source_path = Some(path.clone());
                     }
@@ -516,11 +435,7 @@ pub fn spawn_cache_and_apply(
 /// Set the bot's Discord activity. We bake the "Playing " word into the label
 /// itself because some Discord clients hide the activity-type prefix on bots.
 pub fn set_now_playing(ctx: &serenity_prelude::Context, track: &Track) {
-    let label = format!(
-        "Playing {} · {}",
-        track.metadata.title,
-        track.source.label()
-    );
+    let label = format!("Playing {} · {}", track.metadata.title, track.source.label());
     ctx.set_activity(Some(ActivityData::playing(label)));
 }
 

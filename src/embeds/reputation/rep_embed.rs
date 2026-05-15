@@ -1,7 +1,6 @@
 use crate::commands::reputation::Rep;
 use serenity::all::{CreateEmbed, CreateEmbedFooter, User};
 
-
 pub enum ReputationEmbed<'a> {
     SelfError,
     SpamError,
@@ -30,9 +29,7 @@ impl ReputationEmbed<'_> {
                 .field("Amount", "+1 💚", true)
                 .field(" ", " ", true)
                 .field("Current rep", format!("`{}`", rep.overall_rep), true)
-                .field("Reason", format!(">>> {}", rep.reason), false)
-            ,
-
+                .field("Reason", format!(">>> {}", rep.reason), false),
             ReputationEmbed::MinusRep(rep) => CreateEmbed::new()
                 .color(serenity::all::Color::DARK_RED)
                 .title("❌  Reputation Decreased")
@@ -42,17 +39,12 @@ impl ReputationEmbed<'_> {
                 .field("Amount", "-1 💔", true)
                 .field(" ", " ", true)
                 .field("Current rep", format!("`{}`", rep.overall_rep), true)
-                .field("Reason", format!(">>> {}", rep.reason), false)
-            ,
-
+                .field("Reason", format!(">>> {}", rep.reason), false),
             ReputationEmbed::List(reps, for_user, calculated_rep, rep_count) => {
                 let mut embed = CreateEmbed::new()
                     .color(serenity::all::Color::DARK_BLUE)
                     .title("📜  Reputation logs")
-                    .description(format!(
-                        "**👤 User:** <@{}>",
-                        for_user
-                    ));
+                    .description(format!("**👤 User:** <@{}>", for_user));
 
                 match reps.is_empty() {
                     false => {
@@ -63,11 +55,7 @@ impl ReputationEmbed<'_> {
                                 .field("Date", format!("`{}`", rep.created_at.date()), true)
                                 .field("Reason", format!(">>> {}", rep.reason), false);
                         }
-                        embed = embed.footer(CreateEmbedFooter::new(format!(
-                            "📊 Overall rep: {} | 📑 Logs: {}",
-                            calculated_rep,
-                            rep_count,
-                        )));
+                        embed = embed.footer(CreateEmbedFooter::new(format!("📊 Overall rep: {} | 📑 Logs: {}", calculated_rep, rep_count,)));
                     }
                     true => {
                         embed = embed.footer(CreateEmbedFooter::new("This user has no reputation logs yet."));

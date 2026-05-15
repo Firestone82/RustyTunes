@@ -1,10 +1,7 @@
 use crate::bot::{Context, Database};
 use crate::embeds::utility::notify_embeds::NotifyEmbed;
 use crate::utils::time_utils::{get_current_time, TimeParseError};
-use serenity::all::{
-    ChannelId, CreateMessage, GuildChannel, GuildId, Mentionable, MessageId, MessageReference,
-    UserId,
-};
+use serenity::all::{ChannelId, CreateMessage, GuildChannel, GuildId, Mentionable, MessageId, MessageReference, UserId};
 use sqlx::types::time::OffsetDateTime;
 use std::sync::Arc;
 
@@ -103,11 +100,7 @@ pub fn encode_targets(targets: &[UserId], note: &str) -> String {
 pub fn extract_targets(note: &str) -> (Vec<UserId>, String) {
     if let Some(rest) = note.strip_prefix("[T:") {
         if let Some(end) = rest.find(']') {
-            let ids: Vec<UserId> = rest[..end]
-                .split(',')
-                .filter_map(|s| s.parse::<u64>().ok())
-                .map(UserId::new)
-                .collect();
+            let ids: Vec<UserId> = rest[..end].split(',').filter_map(|s| s.parse::<u64>().ok()).map(UserId::new).collect();
             return (ids, rest[end + 1..].to_string());
         }
     }
@@ -121,10 +114,7 @@ pub struct Notifier {
 }
 
 impl Notifier {
-    pub async fn new(
-        serenity_context: serenity::prelude::Context,
-        database: Arc<Database>,
-    ) -> Self {
+    pub async fn new(serenity_context: serenity::prelude::Context, database: Arc<Database>) -> Self {
         let rows: Vec<MessageNotifyRow> = sqlx::query_as(
             "
             SELECT id, guild_id, channel_id, user_id, message_id, created_at, notify_at, note
@@ -137,37 +127,18 @@ impl Notifier {
 
         let messages: Vec<MessageNotify> = rows.into_iter().map(MessageNotify::from).collect();
 
-        Notifier {
-            messages,
-            database,
-            serenity_context,
-        }
+        Notifier { messages, database, serenity_context }
     }
 
-    pub async fn add_message(
-        &mut self,
-        ctx: Context<'_>,
-        notify_at: OffsetDateTime,
-        note: Option<String>,
-    ) -> Result<MessageNotify, NotifierError> {
-        let guild_id = ctx.guild_id().ok_or_else(|| {
-            NotifierError::InternalError("Notify is only available in guilds".to_string())
-        })?;
+    pub async fn add_message(&mut self, ctx: Context<'_>, notify_at: OffsetDateTime, note: Option<String>) -> Result<MessageNotify, NotifierError> {
+        let guild_id = ctx.guild_id().ok_or_else(|| NotifierError::InternalError("Notify is only available in guilds".to_string()))?;
 
         let source_message_id: Option<MessageId> = match ctx {
             Context::Prefix(prefix) => Some(prefix.msg.id),
             _ => None,
         };
 
-        self.add_message_for_user(
-            guild_id,
-            ctx.channel_id(),
-            ctx.author().id,
-            source_message_id,
-            notify_at,
-            note,
-        )
-        .await
+        self.add_message_for_user(guild_id, ctx.channel_id(), ctx.author().id, source_message_id, notify_at, note).await
     }
 
     pub async fn add_message_for_user(
@@ -218,12 +189,7 @@ impl Notifier {
         Ok(notify)
     }
 
-    pub async fn remove_for_user(
-        &mut self,
-        user_id: UserId,
-        guild_id: GuildId,
-        id: i64,
-    ) -> Result<MessageNotify, NotifierError> {
+    pub async fn remove_for_user(&mut self, user_id: UserId, guild_id: GuildId, id: i64) -> Result<MessageNotify, NotifierError> {
         let position = self
             .messages
             .iter()
@@ -242,49 +208,27 @@ impl Notifier {
     }
 
     pub fn list_for_user(&self, user_id: UserId, guild_id: GuildId) -> Vec<MessageNotify> {
-        let mut out: Vec<MessageNotify> = self
-            .messages
-            .iter()
-            .filter(|m| m.user_id == user_id && m.guild_id == guild_id)
-            .cloned()
-            .collect();
+        let mut out: Vec<MessageNotify> = self.messages.iter().filter(|m| m.user_id == user_id && m.guild_id == guild_id).cloned().collect();
         out.sort_by_key(|m| m.notify_at);
         out
     }
 
     pub async fn check_messages(&mut self) {
         let now = get_current_time();
-        let due: Vec<MessageNotify> = self
-            .messages
-            .iter()
-            .filter(|m| m.notify_at <= now)
-            .cloned()
-            .collect();
+        let due: Vec<MessageNotify> = self.messages.iter().filter(|m| m.notify_at <= now).cloned().collect();
 
         for message in due {
-            let guild_channel: GuildChannel = match self
-                .serenity_context
-                .http
-                .get_channel(message.channel_id)
-                .await
-            {
+            let guild_channel: GuildChannel = match self.serenity_context.http.get_channel(message.channel_id).await {
                 Ok(ch) => match ch.guild() {
                     Some(gc) => gc,
                     None => {
-                        tracing::error!(
-                            "Notification channel {} is not a guild channel",
-                            message.channel_id
-                        );
+                        tracing::error!("Notification channel {} is not a guild channel", message.channel_id);
                         self.drop_notification(message.id).await;
                         continue;
                     }
                 },
                 Err(e) => {
-                    tracing::error!(
-                        "Failed to fetch notification channel {}: {:?}",
-                        message.channel_id,
-                        e
-                    );
+                    tracing::error!("Failed to fetch notification channel {}: {:?}", message.channel_id, e);
                     self.drop_notification(message.id).await;
                     continue;
                 }
@@ -294,11 +238,7 @@ impl Notifier {
             let content = if targets.is_empty() {
                 format!("||{}||", message.user_id.mention())
             } else {
-                targets
-                    .iter()
-                    .map(|u| u.mention().to_string())
-                    .collect::<Vec<_>>()
-                    .join(" ")
+                targets.iter().map(|u| u.mention().to_string()).collect::<Vec<_>>().join(" ")
             };
 
             let embed = NotifyEmbed::Notification(&message).to_embed();

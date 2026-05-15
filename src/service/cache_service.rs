@@ -134,40 +134,23 @@ async fn find_in_dir(dir: &Path, stem: &str) -> Option<PathBuf> {
 /// Download `track` through yt-dlp into the cache, returning the final path.
 /// No-op (returns existing path) if a cached copy already exists.
 pub async fn cache_track(track: &Track) -> std::io::Result<PathBuf> {
-    let stem = cache_stem_for(track).ok_or_else(|| {
-        std::io::Error::new(std::io::ErrorKind::InvalidInput, "track is not cacheable")
-    })?;
+    let stem = cache_stem_for(track).ok_or_else(|| std::io::Error::new(std::io::ErrorKind::InvalidInput, "track is not cacheable"))?;
 
     if let Some(existing) = find_cached(track).await {
         return Ok(existing);
     }
 
-    let dir = cache_dir_for(&track.source).ok_or_else(|| {
-        std::io::Error::new(
-            std::io::ErrorKind::InvalidInput,
-            "track has no cache directory",
-        )
-    })?;
+    let dir = cache_dir_for(&track.source).ok_or_else(|| std::io::Error::new(std::io::ErrorKind::InvalidInput, "track has no cache directory"))?;
     ensure_dir(&dir).await?;
 
-    let input_url = track
-        .metadata
-        .play_url
-        .clone()
-        .unwrap_or_else(|| track.metadata.track_url.clone());
+    let input_url = track.metadata.play_url.clone().unwrap_or_else(|| track.metadata.track_url.clone());
 
     // Write to `<stem>.part.<ext>` first so a half-downloaded file isn't
     // picked up by `find_cached` on a concurrent lookup.
     let output_template = dir.join(format!("{stem}.part.%(ext)s"));
 
     let output = Command::new("yt-dlp")
-        .args([
-            "--no-warnings",
-            "--no-playlist",
-            "-f",
-            "bestaudio/best",
-            "-o",
-        ])
+        .args(["--no-warnings", "--no-playlist", "-f", "bestaudio/best", "-o"])
         .arg(&output_template)
         .arg(&input_url)
         .stdout(Stdio::null())
@@ -178,19 +161,8 @@ pub async fn cache_track(track: &Track) -> std::io::Result<PathBuf> {
     if !output.status.success() {
         cleanup_part_files(&dir, &stem).await;
         let stderr = String::from_utf8_lossy(&output.stderr);
-        let tail = stderr
-            .lines()
-            .rev()
-            .take(5)
-            .collect::<Vec<_>>()
-            .into_iter()
-            .rev()
-            .collect::<Vec<_>>()
-            .join(" | ");
-        return Err(std::io::Error::other(format!(
-            "yt-dlp failed ({}): {}",
-            output.status, tail
-        )));
+        let tail = stderr.lines().rev().take(5).collect::<Vec<_>>().into_iter().rev().collect::<Vec<_>>().join(" | ");
+        return Err(std::io::Error::other(format!("yt-dlp failed ({}): {}", output.status, tail)));
     }
 
     // yt-dlp picked the extension based on whatever stream it grabbed; find
@@ -216,9 +188,7 @@ pub async fn cache_track(track: &Track) -> std::io::Result<PathBuf> {
         return Ok(final_path);
     }
 
-    Err(std::io::Error::other(
-        "yt-dlp reported success but produced no output file",
-    ))
+    Err(std::io::Error::other("yt-dlp reported success but produced no output file"))
 }
 
 /// Delete any leftover `<stem>.part.*` files in `dir`. Called when yt-dlp

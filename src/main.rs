@@ -24,25 +24,17 @@ async fn main() -> Result<(), MusicBotError> {
 
     let (file_writer, _guard) = tracing_appender::non_blocking(file_appender);
 
-    let env_filter = EnvFilter::try_from_default_env()
-        .unwrap_or_else(|_| EnvFilter::new("warn,rust_tunes=debug,RustTunes=debug"));
+    let env_filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("warn,rust_tunes=debug,RustTunes=debug"));
 
     tracing_subscriber::registry()
         .with(env_filter)
         .with(fmt::layer().with_target(false))
-        .with(
-            fmt::layer()
-                .with_target(false)
-                .with_ansi(false)
-                .with_writer(file_writer),
-        )
+        .with(fmt::layer().with_target(false).with_ansi(false).with_writer(file_writer))
         .init();
 
     tracing::info!("Starting server.");
 
-    rustls::crypto::ring::default_provider()
-        .install_default()
-        .expect("Failed to install rustls ring CryptoProvider");
+    rustls::crypto::ring::default_provider().install_default().expect("Failed to install rustls ring CryptoProvider");
 
     MusicBotClient::new().await.start().await?;
 

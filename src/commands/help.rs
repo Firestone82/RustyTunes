@@ -1,13 +1,7 @@
 use crate::bot::{Context, MusicBotError};
 
 /// Show command help.
-#[poise::command(
-    rename = "help",
-    prefix_command,
-    slash_command,
-    track_edits,
-    aliases("h")
-)]
+#[poise::command(rename = "help", prefix_command, slash_command, track_edits, aliases("h"))]
 pub async fn help(
     ctx: Context<'_>,
     #[description = "Specific command to show help about"]
@@ -18,8 +12,7 @@ pub async fn help(
         ctx,
         command.as_deref(),
         poise::builtins::HelpConfiguration {
-            extra_text_at_bottom:
-                "RustyTunes (Rusty) created by Pavel Mikula as VŠB-TUO project. :)",
+            extra_text_at_bottom: "RustyTunes (Rusty) created by Pavel Mikula as VŠB-TUO project. :)",
             ..Default::default()
         },
     )

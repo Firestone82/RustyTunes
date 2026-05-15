@@ -141,9 +141,7 @@ impl SpotifyClient {
         //   https://open.spotify.com/playlist/<id>?si=...
         //   spotify:track:<id>
         //   spotify:playlist:<id>
-        let re = Regex::new(
-            r"(?:https?://open\.spotify\.com/(?:intl-[a-zA-Z-]+/)?(track|playlist)/|spotify:(track|playlist):)([A-Za-z0-9]+)"
-        ).ok()?;
+        let re = Regex::new(r"(?:https?://open\.spotify\.com/(?:intl-[a-zA-Z-]+/)?(track|playlist)/|spotify:(track|playlist):)([A-Za-z0-9]+)").ok()?;
         let caps = re.captures(url)?;
         let kind_str = caps.get(1).or_else(|| caps.get(2))?.as_str();
         let id = caps.get(3)?.as_str().to_string();
@@ -161,10 +159,7 @@ impl SpotifyClient {
 
     async fn access_token(&self) -> Result<String, SpotifyError> {
         let id = self.client_id.as_ref().ok_or(SpotifyError::NotConfigured)?;
-        let secret = self
-            .client_secret
-            .as_ref()
-            .ok_or(SpotifyError::NotConfigured)?;
+        let secret = self.client_secret.as_ref().ok_or(SpotifyError::NotConfigured)?;
 
         let mut guard = self.token.lock().await;
         if let Some(cached) = guard.as_ref() {
@@ -185,9 +180,7 @@ impl SpotifyClient {
         if !response.status().is_success() {
             let status = response.status();
             let body = response.text().await.unwrap_or_default();
-            return Err(SpotifyError::ApiError(format!(
-                "token request failed: {status} {body}"
-            )));
+            return Err(SpotifyError::ApiError(format!("token request failed: {status} {body}")));
         }
 
         let token: TokenResponse = response.json().await?;
@@ -201,12 +194,7 @@ impl SpotifyClient {
 
     async fn fetch_track(&self, id: &str) -> Result<SpTrack, SpotifyError> {
         let token = self.access_token().await?;
-        let response = self
-            .http
-            .get(format!("{SPOTIFY_API}/tracks/{id}"))
-            .bearer_auth(token)
-            .send()
-            .await?;
+        let response = self.http.get(format!("{SPOTIFY_API}/tracks/{id}")).bearer_auth(token).send().await?;
 
         if response.status() == reqwest::StatusCode::NOT_FOUND {
             return Err(SpotifyError::TrackNotFound(id.to_string()));
@@ -214,9 +202,7 @@ impl SpotifyClient {
         if !response.status().is_success() {
             let status = response.status();
             let body = response.text().await.unwrap_or_default();
-            return Err(SpotifyError::ApiError(format!(
-                "track fetch failed: {status} {body}"
-            )));
+            return Err(SpotifyError::ApiError(format!("track fetch failed: {status} {body}")));
         }
 
         Ok(response.json().await?)
@@ -241,9 +227,7 @@ impl SpotifyClient {
         let status = response.status();
         let body = response.text().await.unwrap_or_default();
         if !status.is_success() {
-            return Err(SpotifyError::ApiError(format!(
-                "playlist fetch failed: {status} {body}"
-            )));
+            return Err(SpotifyError::ApiError(format!("playlist fetch failed: {status} {body}")));
         }
 
         serde_json::from_str(&body).map_err(|e| {
@@ -259,22 +243,16 @@ impl SpotifyClient {
         let status = response.status();
         let body = response.text().await.unwrap_or_default();
         if !status.is_success() {
-            return Err(SpotifyError::ApiError(format!(
-                "playlist page failed: {status} {body}"
-            )));
+            return Err(SpotifyError::ApiError(format!("playlist page failed: {status} {body}")));
         }
         serde_json::from_str(&body).map_err(|e| {
-            tracing::error!(
-                "Failed to decode playlist page: {e}; body snippet: {}",
-                body.chars().take(400).collect::<String>()
-            );
+            tracing::error!("Failed to decode playlist page: {e}; body snippet: {}", body.chars().take(400).collect::<String>());
             SpotifyError::ApiError(format!("decode playlist page failed: {e}"))
         })
     }
 
     pub async fn search(&self, url: &str) -> Result<SpotifySearchResult, SpotifyError> {
-        let (kind, id) = Self::parse_url(url)
-            .ok_or_else(|| SpotifyError::ApiError(format!("Unsupported Spotify URL: {url}")))?;
+        let (kind, id) = Self::parse_url(url).ok_or_else(|| SpotifyError::ApiError(format!("Unsupported Spotify URL: {url}")))?;
 
         match kind {
             SpotifyKind::Track => {
@@ -298,9 +276,7 @@ impl SpotifyClient {
                 let tracks: Vec<Track> = sp_tracks.iter().map(build_track).collect();
 
                 if tracks.is_empty() {
-                    return Err(SpotifyError::PlaylistNotFound(format!(
-                        "Playlist {id} has no playable tracks"
-                    )));
+                    return Err(SpotifyError::PlaylistNotFound(format!("Playlist {id} has no playable tracks")));
                 }
 
                 Ok(SpotifySearchResult::Playlist(Playlist {
@@ -340,12 +316,7 @@ fn extract_tracks(items: Vec<JsonValue>) -> Vec<SpTrack> {
 
 fn track_query(track: &SpTrack) -> String {
     let name = track.name.as_deref().unwrap_or("");
-    let artists = track
-        .artists
-        .iter()
-        .map(|a| a.name.as_str())
-        .collect::<Vec<_>>()
-        .join(", ");
+    let artists = track.artists.iter().map(|a| a.name.as_str()).collect::<Vec<_>>().join(", ");
     if artists.is_empty() {
         name.to_string()
     } else {
@@ -363,18 +334,10 @@ fn track_query(track: &SpTrack) -> String {
 // holds the `ytsearch1:` query that yt-dlp actually consumes.
 fn build_track(sp: &SpTrack) -> Track {
     let query = track_query(sp);
-    let channel = sp
-        .artists
-        .iter()
-        .map(|a| a.name.clone())
-        .collect::<Vec<_>>()
-        .join(", ");
+    let channel = sp.artists.iter().map(|a| a.name.clone()).collect::<Vec<_>>().join(", ");
     let title = sp.name.clone().unwrap_or_else(|| query.clone());
     let (id, track_url) = match &sp.id {
-        Some(spotify_id) => (
-            spotify_id.clone(),
-            format!("https://open.spotify.com/track/{spotify_id}"),
-        ),
+        Some(spotify_id) => (spotify_id.clone(), format!("https://open.spotify.com/track/{spotify_id}")),
         None => (query.clone(), String::new()),
     };
     Track {

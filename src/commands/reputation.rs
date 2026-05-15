@@ -50,13 +50,7 @@ async fn spam_protection(ctx: Context<'_>, receiver_id: String) -> Result<bool, 
     Ok(false)
 }
 
-async fn apply_rep_db(
-    pool: &sqlx::Pool<sqlx::Sqlite>,
-    giver_id: &str,
-    receiver_id: &str,
-    rep_value: i64,
-    reason: &str,
-) -> Result<i64, sqlx::Error> {
+async fn apply_rep_db(pool: &sqlx::Pool<sqlx::Sqlite>, giver_id: &str, receiver_id: &str, rep_value: i64, reason: &str) -> Result<i64, sqlx::Error> {
     sqlx::query!(
         "
         INSERT INTO reputation_logs (giver_id, receiver_id, rep_value, reason)
@@ -85,12 +79,7 @@ async fn apply_rep_db(
 }
 
 /// process reputation
-async fn process_rep(
-    ctx: Context<'_>,
-    user: User,
-    reason: String,
-    rep_value: i64,
-) -> Result<Option<i64>, MusicBotError> {
+async fn process_rep(ctx: Context<'_>, user: User, reason: String, rep_value: i64) -> Result<Option<i64>, MusicBotError> {
     // self check
     if user.id == ctx.author().id {
         ReputationEmbed::SelfError

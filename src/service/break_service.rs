@@ -1,12 +1,7 @@
 use crate::bot::MusicBotError;
-use crate::embeds::activity::break_embed::{
-    break_buttons, BreakEmbed, BTN_BREAK_CANCEL, BTN_BREAK_SKIP,
-};
+use crate::embeds::activity::break_embed::{break_buttons, BreakEmbed, BTN_BREAK_CANCEL, BTN_BREAK_SKIP};
 use crate::utils::time_utils::{get_current_time, parse_duration_from_string};
-use serenity::all::{
-    ChannelId, CreateInteractionResponse, CreateInteractionResponseMessage, CreateMessage,
-    EditMessage, GuildId, Mentionable, Message, UserId,
-};
+use serenity::all::{ChannelId, CreateInteractionResponse, CreateInteractionResponseMessage, CreateMessage, EditMessage, GuildId, Mentionable, Message, UserId};
 use serenity::prelude::Context as SerenityContext;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
@@ -50,13 +45,7 @@ impl BreakState {
 /// Runs the break timer for an existing `BreakState`. Returns `Ok(true)` if the
 /// break was cancelled (so the caller should skip auto-gather), `Ok(false)` if
 /// it ran to completion.
-pub async fn run_break(
-    serenity_ctx: &SerenityContext,
-    guild_id: GuildId,
-    text_channel_id: ChannelId,
-    voice_channel_id: ChannelId,
-    state: Arc<BreakState>,
-) -> Result<bool, MusicBotError> {
+pub async fn run_break(serenity_ctx: &SerenityContext, guild_id: GuildId, text_channel_id: ChannelId, voice_channel_id: ChannelId, state: Arc<BreakState>) -> Result<bool, MusicBotError> {
     let bot_id = serenity_ctx.cache.current_user().id;
 
     // Ping all voice members in a separate message above the embed.
@@ -74,18 +63,11 @@ pub async fn run_break(
         })
         .unwrap_or_default();
     if !voice_mentions.is_empty() {
-        let _ = text_channel_id
-            .send_message(&serenity_ctx.http, CreateMessage::new().content(voice_mentions))
-            .await;
+        let _ = text_channel_id.send_message(&serenity_ctx.http, CreateMessage::new().content(voice_mentions)).await;
     }
 
     let mut msg: Message = text_channel_id
-        .send_message(
-            &serenity_ctx.http,
-            CreateMessage::new()
-                .embed(progress_embed(&state, None))
-                .components(break_buttons(false)),
-        )
+        .send_message(&serenity_ctx.http, CreateMessage::new().embed(progress_embed(&state, None)).components(break_buttons(false)))
         .await
         .map_err(|e| MusicBotError::InternalError(e.to_string()))?;
 
@@ -103,10 +85,7 @@ pub async fn run_break(
         let remaining = ends_at.saturating_duration_since(now);
         let wait = remaining.min(MIN_EDIT_INTERVAL);
 
-        let interaction = msg
-            .await_component_interaction(shard.clone())
-            .timeout(wait)
-            .await;
+        let interaction = msg.await_component_interaction(shard.clone()).timeout(wait).await;
 
         if let Some(ic) = interaction {
             match ic.data.custom_id.as_str() {
@@ -114,19 +93,13 @@ pub async fn run_break(
                     if ic.user.id != state.author_id {
                         ic.create_response(
                             &serenity_ctx.http,
-                            CreateInteractionResponse::Message(
-                                CreateInteractionResponseMessage::new()
-                                    .content("Only the person who started the break can do that.")
-                                    .ephemeral(true),
-                            ),
+                            CreateInteractionResponse::Message(CreateInteractionResponseMessage::new().content("Only the person who started the break can do that.").ephemeral(true)),
                         )
                         .await
                         .ok();
                         continue;
                     }
-                    ic.create_response(&serenity_ctx.http, CreateInteractionResponse::Acknowledge)
-                        .await
-                        .ok();
+                    ic.create_response(&serenity_ctx.http, CreateInteractionResponse::Acknowledge).await.ok();
                     if ic.data.custom_id == BTN_BREAK_CANCEL {
                         cancelled = true;
                     }
@@ -141,28 +114,14 @@ pub async fn run_break(
         }
         last_edit = Instant::now();
         let _ = msg
-            .edit(
-                &serenity_ctx.http,
-                EditMessage::new()
-                    .embed(progress_embed(&state, None))
-                    .components(break_buttons(false)),
-            )
+            .edit(&serenity_ctx.http, EditMessage::new().embed(progress_embed(&state, None)).components(break_buttons(false)))
             .await;
     }
 
-    let footer = if cancelled {
-        "Break cancelled."
-    } else {
-        "Break is over — starting gathering."
-    };
+    let footer = if cancelled { "Break cancelled." } else { "Break is over — starting gathering." };
 
     let _ = msg
-        .edit(
-            &serenity_ctx.http,
-            EditMessage::new()
-                .embed(progress_embed(&state, Some(footer)))
-                .components(Vec::new()),
-        )
+        .edit(&serenity_ctx.http, EditMessage::new().embed(progress_embed(&state, Some(footer))).components(Vec::new()))
         .await;
 
     Ok(cancelled)
@@ -213,11 +172,7 @@ pub fn parse_break_start_time(text: &str) -> Option<(Duration, Option<String>)> 
     let now_secs = now.hour() as u64 * 3600 + now.minute() as u64 * 60 + now.second() as u64;
     let target_secs = hour as u64 * 3600 + minute as u64 * 60;
 
-    let until_secs = if target_secs > now_secs {
-        target_secs - now_secs
-    } else {
-        86400 - now_secs + target_secs
-    };
+    let until_secs = if target_secs > now_secs { target_secs - now_secs } else { 86400 - now_secs + target_secs };
 
     if until_secs == 0 {
         return None;

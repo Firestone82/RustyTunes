@@ -3,10 +3,7 @@ use crate::embeds::music::player_embed::PlayerEmbed;
 use crate::embeds::music::queue_embed::QueueEmbed;
 use crate::player::player::Player;
 use crate::service::embed_service::SendEmbed;
-use serenity::all::{
-    ButtonStyle, CreateActionRow, CreateButton, CreateEmbed, CreateInteractionResponse,
-    CreateInteractionResponseMessage, EditMessage,
-};
+use serenity::all::{ButtonStyle, CreateActionRow, CreateButton, CreateEmbed, CreateInteractionResponse, CreateInteractionResponseMessage, EditMessage};
 use std::collections::HashMap;
 use std::time::{Duration, Instant};
 use tokio::sync::RwLockReadGuard;
@@ -15,14 +12,8 @@ const ITEMS_PER_PAGE: usize = 10;
 
 fn nav_buttons(page: usize, total_pages: usize) -> Vec<CreateActionRow> {
     vec![CreateActionRow::Buttons(vec![
-        CreateButton::new("queue_prev")
-            .label("◀")
-            .style(ButtonStyle::Secondary)
-            .disabled(page <= 1),
-        CreateButton::new("queue_next")
-            .label("▶")
-            .style(ButtonStyle::Secondary)
-            .disabled(page >= total_pages),
+        CreateButton::new("queue_prev").label("◀").style(ButtonStyle::Secondary).disabled(page <= 1),
+        CreateButton::new("queue_next").label("▶").style(ButtonStyle::Secondary).disabled(page >= total_pages),
     ])]
 }
 
@@ -37,13 +28,7 @@ fn build_embeds(player: &Player, page: usize) -> Vec<CreateEmbed> {
     }
 
     if !player.queue.is_empty() {
-        embeds.push(
-            QueueEmbed::Current {
-                queue: &player.queue,
-                page,
-            }
-            .to_embed(),
-        );
+        embeds.push(QueueEmbed::Current { queue: &player.queue, page }.to_embed());
     }
 
     embeds
@@ -56,10 +41,7 @@ pub async fn queue(ctx: Context<'_>, page: Option<usize>) -> Result<(), MusicBot
 
     if player.queue.is_empty() && player.current_track.is_none() {
         drop(player);
-        QueueEmbed::IsEmpty
-            .to_embed()
-            .send_context(ctx, true, Some(30))
-            .await?;
+        QueueEmbed::IsEmpty.to_embed().send_context(ctx, true, Some(30)).await?;
         return Ok(());
     }
 
@@ -77,9 +59,7 @@ pub async fn queue(ctx: Context<'_>, page: Option<usize>) -> Result<(), MusicBot
     }
 
     if !needs_pagination {
-        ctx.send(reply)
-            .await
-            .map_err(|e| MusicBotError::InternalError(e.to_string()))?;
+        ctx.send(reply).await.map_err(|e| MusicBotError::InternalError(e.to_string()))?;
         return Ok(());
     }
 
@@ -88,58 +68,45 @@ pub async fn queue(ctx: Context<'_>, page: Option<usize>) -> Result<(), MusicBot
         .await
         .map_err(|e| MusicBotError::InternalError(e.to_string()))?;
 
-    let mut message = reply_handle
-        .into_message()
-        .await
-        .map_err(|e| MusicBotError::InternalError(e.to_string()))?;
+    let mut message = reply_handle.into_message().await.map_err(|e| MusicBotError::InternalError(e.to_string()))?;
 
     let http = ctx.serenity_context().http.clone();
     let mut cooldowns: HashMap<serenity::all::UserId, Instant> = HashMap::new();
 
     loop {
-        let interaction = message
-            .await_component_interaction(ctx.serenity_context().shard.clone())
-            .timeout(Duration::from_secs(60))
-            .await;
+        let interaction = message.await_component_interaction(ctx.serenity_context().shard.clone()).timeout(Duration::from_secs(60)).await;
 
         match interaction {
             Some(interaction) => {
                 if interaction.user.id != ctx.author().id {
                     let now = Instant::now();
-                    let on_cooldown = cooldowns
-                        .get(&interaction.user.id)
-                        .map(|&last| now.duration_since(last) < Duration::from_secs(5))
-                        .unwrap_or(false);
+                    let on_cooldown = cooldowns.get(&interaction.user.id).map(|&last| now.duration_since(last) < Duration::from_secs(5)).unwrap_or(false);
                     if on_cooldown {
                         interaction.defer(&http).await.ok();
                     } else {
                         cooldowns.insert(interaction.user.id, now);
-                        interaction.create_response(&http, CreateInteractionResponse::Message(
-                            CreateInteractionResponseMessage::new()
-                                .content("Only the person who ran this command can navigate the queue.")
-                                .ephemeral(true)
-                        )).await.ok();
+                        interaction
+                            .create_response(
+                                &http,
+                                CreateInteractionResponse::Message(
+                                    CreateInteractionResponseMessage::new()
+                                        .content("Only the person who ran this command can navigate the queue.")
+                                        .ephemeral(true),
+                                ),
+                            )
+                            .await
+                            .ok();
                     }
                     continue;
                 }
 
-                interaction
-                    .defer(&http)
-                    .await
-                    .map_err(|e| MusicBotError::InternalError(e.to_string()))?;
+                interaction.defer(&http).await.map_err(|e| MusicBotError::InternalError(e.to_string()))?;
 
                 let player = ctx.data().player.read().await;
 
                 if player.queue.is_empty() && player.current_track.is_none() {
                     drop(player);
-                    let _ = message
-                        .edit(
-                            &http,
-                            EditMessage::new()
-                                .embeds(vec![QueueEmbed::IsEmpty.to_embed()])
-                                .components(vec![]),
-                        )
-                        .await;
+                    let _ = message.edit(&http, EditMessage::new().embeds(vec![QueueEmbed::IsEmpty.to_embed()]).components(vec![])).await;
                     break;
                 }
 

@@ -131,6 +131,14 @@ src/
    state) belongs in `service/`. Split long files in `player/` by topic
    (state machine vs. data types) rather than letting them grow.
 
+## Formatting
+
+`rustfmt.toml` pins `max_width = 200`. A GitHub Action
+(`.github/workflows/fmt.yml`) runs `cargo fmt --all` on every push to
+`master` and auto-commits any changes as `style: cargo fmt`. Feature
+branches don't need to be perfectly formatted — that gets ironed out on
+merge — but running `cargo fmt` locally keeps diffs small.
+
 ## Adding a feature: checklist
 
 - Embeds go in `embeds/<area>/<feature>_embed.rs`.
