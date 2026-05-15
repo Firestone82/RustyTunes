@@ -1,7 +1,7 @@
 use crate::bot::{Context, MusicBotError};
 use crate::checks::channel_checks::check_author_in_voice_channel;
 use crate::embeds::bot_embeds::BotEmbed;
-use crate::player::notifier::parse_duration_from_string;
+use crate::player::notifier::{get_current_time, parse_duration_from_string};
 use crate::service::channel_service;
 use crate::service::embed_service::SendEmbed;
 use crate::service::gather_service::{self, GatherState, PREGATHER_DURATION};
@@ -10,6 +10,7 @@ use serenity::all::{
     GuildId, Mentionable, User,
 };
 use std::sync::Arc;
+use std::time::Duration;
 
 /// Gathering commands — gather everyone in your voice channel.
 #[poise::command(
@@ -44,13 +45,16 @@ pub async fn start(
         };
 
     let pregather_duration = match time {
-        Some(ref t) => match parse_duration_from_string(t.trim()) {
-            Some(d) if d.as_secs() > 0 => d,
-            _ => {
+        Some(ref t) => match parse_pregather_duration(t.trim()) {
+            Some(d) => d,
+            None => {
                 CreateEmbed::new()
                     .color(Color::DARK_RED)
-                    .title("🚫  Invalid duration")
-                    .description("Use a relative duration like `30s`, `2m`, or `1m 30s`.")
+                    .title("🚫  Invalid time")
+                    .description(
+                        "Use a relative duration like `10m` or `1h 30m`, \
+                         or a clock time like `10:00` or `14:30`.",
+                    )
                     .send_context(ctx, true, Some(15))
                     .await?;
                 return Ok(());
@@ -176,4 +180,40 @@ pub async fn expect(
         .await?;
 
     Ok(())
+}
+
+/// Parse a pregather countdown from either a relative duration (`10m`, `1h 30m`)
+/// or a clock time (`10:00`, `14:30`).  Clock times use the bot's local timezone
+/// (CET/CEST); if the target time has already passed today, the countdown targets
+/// the same time tomorrow.  Returns `None` for unparseable or zero-length input.
+fn parse_pregather_duration(text: &str) -> Option<Duration> {
+    // Relative duration: 10m, 1h, 30s, 1h 30m, …
+    if let Some(d) = parse_duration_from_string(text) {
+        return Some(d);
+    }
+
+    // Clock time: HH:MM or H:MM
+    let (h_str, m_str) = text.split_once(':')?;
+    let hour: u8 = h_str.trim().parse().ok()?;
+    let minute: u8 = m_str.trim().parse().ok()?;
+    if hour > 23 || minute > 59 {
+        return None;
+    }
+
+    let now = get_current_time();
+    let now_secs = now.hour() as u64 * 3600 + now.minute() as u64 * 60 + now.second() as u64;
+    let target_secs = hour as u64 * 3600 + minute as u64 * 60;
+
+    let until_secs = if target_secs > now_secs {
+        target_secs - now_secs
+    } else {
+        // Time has already passed today — target tomorrow.
+        86400 - now_secs + target_secs
+    };
+
+    if until_secs == 0 {
+        return None;
+    }
+
+    Some(Duration::from_secs(until_secs))
 }
