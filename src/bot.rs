@@ -3,7 +3,6 @@ use crate::commands::{activity, music, reputation, utility};
 use crate::handlers::{error_handler, voice_handler};
 use crate::player::player::Player;
 use crate::player::track::PlaybackError;
-use crate::service::break_service::BreakState;
 use crate::service::gather_service::GatherState;
 use crate::service::notifier_service::{Notifier, NotifierError};
 use crate::sources::spotify_player::{SpotifyClient, SpotifyError};
@@ -26,7 +25,6 @@ pub struct MusicBotData {
     pub database_pool: Arc<Database>,
     pub player: Arc<RwLock<Player>>,
     pub notifier: Arc<RwLock<Notifier>>,
-    pub breaks: Arc<RwLock<HashMap<GuildId, Arc<BreakState>>>>,
     pub gatherings: Arc<RwLock<HashMap<GuildId, Arc<GatherState>>>>,
 }
 
@@ -126,7 +124,6 @@ impl MusicBotClient {
                     utility::cmd_uwu::uwu(),
                     utility::cmd_uwu::uwu_me(),
                     activity::cmd_gather::gather(),
-                    activity::cmd_break::r#break(),
                     utility::cmd_notify::notify(),
                     utility::cmd_notify::remind(),
                     utility::cmd_wakeup::wakeup(),
@@ -234,7 +231,6 @@ impl MusicBotClient {
                         database_pool: database,
                         player: player_handle,
                         notifier: notifier_handle,
-                        breaks: Arc::new(RwLock::new(HashMap::new())),
                         gatherings: Arc::new(RwLock::new(HashMap::new())),
                     })
                 })
