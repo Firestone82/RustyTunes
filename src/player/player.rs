@@ -122,6 +122,32 @@ impl Player {
         self.kick_off_playback(ctx, top).await
     }
 
+    /// Stop the current track (if any) and immediately start `track`, inserting
+    /// it at the front of the queue so it plays next.
+    pub async fn force_play_track(
+        &mut self,
+        ctx: Context<'_>,
+        track: Track,
+    ) -> Result<(), PlaybackError> {
+        self.inactivity_cancel.store(true, Ordering::SeqCst);
+        self.queue.insert(0, track);
+        self.next_track(ctx).await?;
+        Ok(())
+    }
+
+    /// Stop the current track (if any) and immediately start the first track of
+    /// `playlist`, inserting the whole playlist at the front of the queue.
+    pub async fn force_play_playlist(
+        &mut self,
+        ctx: Context<'_>,
+        playlist: Playlist,
+    ) -> Result<(), PlaybackError> {
+        self.inactivity_cancel.store(true, Ordering::SeqCst);
+        self.queue.splice(0..0, playlist.tracks);
+        self.next_track(ctx).await?;
+        Ok(())
+    }
+
     pub async fn add_track_to_queue(
         &mut self,
         ctx: Context<'_>,

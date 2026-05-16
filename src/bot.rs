@@ -105,6 +105,7 @@ impl MusicBotClient {
                     commands::help::help(),
                     music::cmd_play::play(),
                     music::cmd_play::play_top(),
+                    music::cmd_play::play_now(),
                     music::cmd_pause::pause(),
                     music::cmd_resume::resume(),
                     music::cmd_skip::skip(),
