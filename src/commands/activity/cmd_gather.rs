@@ -4,7 +4,7 @@ use crate::embeds::activity::gather_embed::GatherEmbed;
 use crate::embeds::bot::bot_embeds::BotEmbed;
 use crate::service::channel_service;
 use crate::service::embed_service::SendEmbed;
-use crate::service::gather_service::{self, GatherState, MAX_PREGATHER_DURATION, PREGATHER_DURATION};
+use crate::service::gather_service::{self, GatherState, MAX_PREGATHER_DURATION};
 use crate::utils::time_utils::{get_current_time, humanize_duration, parse_duration_from_string};
 use serenity::all::{ChannelId, CreateInteractionResponse, CreateInteractionResponseMessage, GuildId, Mentionable, User};
 use std::sync::Arc;
@@ -55,10 +55,11 @@ pub async fn start(
                 return Ok(());
             }
         },
-        None => (
-            PREGATHER_DURATION,
-            format!("in {}", humanize_duration(PREGATHER_DURATION)),
-        ),
+        // No time supplied → skip the pre-gather countdown and start the
+        // check-in phase immediately. The `schedule_label` is unused in this
+        // path (start_gather only renders the pregather embed when the
+        // countdown is > 0).
+        None => (Duration::ZERO, String::new()),
     };
 
     {
