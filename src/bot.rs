@@ -126,7 +126,6 @@ impl MusicBotClient {
                     utility::cmd_uwu::uwu_me(),
                     activity::cmd_gather::gather(),
                     utility::cmd_notify::notify(),
-                    utility::cmd_notify::remind(),
                     utility::cmd_wakeup::wakeup(),
                     utility::cmd_wakeup::wakeup_context(),
                     utility::cmd_rename::rename(),

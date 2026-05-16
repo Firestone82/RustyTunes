@@ -18,17 +18,6 @@ pub async fn notify(_ctx: Context<'_>) -> Result<(), MusicBotError> {
     Ok(())
 }
 
-/// Slash-command alias of `/notify` — same `me`/`you`/`list`/`remove` subcommands.
-#[poise::command(
-    prefix_command,
-    slash_command,
-    subcommands("me", "you", "list", "remove"),
-    subcommand_required
-)]
-pub async fn remind(_ctx: Context<'_>) -> Result<(), MusicBotError> {
-    Ok(())
-}
-
 /// Schedule a notification for yourself: `/notify me 10s drink water`.
 #[poise::command(prefix_command, slash_command)]
 pub async fn me(
