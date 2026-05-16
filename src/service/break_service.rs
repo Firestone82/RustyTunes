@@ -58,30 +58,13 @@ pub async fn run_break(
     voice_channel_id: ChannelId,
     state: Arc<BreakState>,
 ) -> Result<bool, MusicBotError> {
-    let bot_id = serenity_ctx.cache.current_user().id;
-
-    // Voice members are pinged in the embed message's content field so the
-    // @mentions stay glued to the embed (separate messages above tended to get
-    // visually orphaned as the break embed refreshed).
-    let voice_mentions: String = serenity_ctx
-        .cache
-        .guild(guild_id)
-        .as_ref()
-        .map(|g| {
-            g.voice_states
-                .values()
-                .filter(|vs| vs.channel_id == Some(voice_channel_id) && vs.user_id != bot_id)
-                .map(|vs| vs.user_id.mention().to_string())
-                .collect::<Vec<_>>()
-                .join(" ")
-        })
-        .unwrap_or_default();
-
+    // Break intentionally does not ping anyone — it's a quiet "we'll be back
+    // in a bit" message. The auto-gather that runs when the break ends does
+    // the pinging.
     let mut msg: Message = text_channel_id
         .send_message(
             &serenity_ctx.http,
             CreateMessage::new()
-                .content(voice_mentions)
                 .embeds(break_message_embeds(
                     serenity_ctx,
                     guild_id,
@@ -181,8 +164,8 @@ pub async fn run_break(
     Ok(cancelled)
 }
 
-/// Returns the embed pair posted on the break message: the countdown
-/// progress embed, followed by the live attendee list.
+/// Returns the embed pair posted on the break message: the live attendee
+/// list on top, followed by the countdown progress embed below.
 fn break_message_embeds(
     serenity_ctx: &SerenityContext,
     guild_id: GuildId,
@@ -190,11 +173,11 @@ fn break_message_embeds(
     state: &BreakState,
     footer: Option<&str>,
 ) -> Vec<CreateEmbed> {
-    let main = progress_embed(state, footer, expected_mentions_text(state).as_deref());
     let extra = state.extra_expected.lock().unwrap().clone();
     let forgotten = state.forgotten.lock().unwrap().clone();
     let attendees = attendance_service::attendees_embed(serenity_ctx, guild_id, voice_channel_id, &extra, &forgotten);
-    vec![main, attendees]
+    let progress = progress_embed(state, footer, expected_mentions_text(state).as_deref());
+    vec![attendees, progress]
 }
 
 fn progress_embed(
