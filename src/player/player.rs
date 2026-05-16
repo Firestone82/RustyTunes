@@ -1,7 +1,7 @@
 use crate::bot::{Context, Database};
 use crate::embeds::music::player_embed::PlayerEmbed;
 use crate::handlers::queue_handler::QueueHandler;
-use crate::player::track::{PlaybackError, Playlist, Track};
+use crate::player::track::{PlaybackError, Playlist, Track, MAX_TRACK_DURATION};
 use crate::service::cache_service;
 use crate::service::embed_service::SendEmbed;
 use crate::service::normalize_service;
@@ -244,7 +244,41 @@ impl Player {
             self.stop_track().await?;
         }
 
-        let next = if self.queue.is_empty() { None } else { Some(self.queue.remove(0)) };
+        // Pop tracks until we land on one within the length cap. Tracks with a
+        // known duration from their source (Spotify, lazy YouTube playlist)
+        // are already filtered at queue-add; this loop catches the YouTube
+        // Data API path where duration isn't known until yt-dlp probes it.
+        let next = loop {
+            let candidate = if self.queue.is_empty() { None } else { Some(self.queue.remove(0)) };
+            let Some(mut track) = candidate else {
+                break None;
+            };
+
+            if track.duration().is_none() {
+                if let Some(d) = cache_service::probe_duration(&track).await {
+                    track.metadata.duration = Some(d);
+                }
+            }
+
+            if track.is_known_too_long() {
+                tracing::info!(
+                    "Skipping '{}' — duration exceeds {}s cap",
+                    track.metadata.title,
+                    MAX_TRACK_DURATION.as_secs()
+                );
+                PlayerEmbed::TrackTooLong {
+                    title: track.metadata.title.clone(),
+                    cap: MAX_TRACK_DURATION,
+                }
+                .to_embed()
+                .send_context(ctx, false, Some(30))
+                .await?;
+                continue;
+            }
+
+            break Some(track);
+        };
+
         match next {
             Some(next_track) => {
                 tracing::info!("Found: {}", next_track.metadata.title);
@@ -497,6 +531,15 @@ pub fn spawn_cache_and_apply(
     handle: TrackHandle,
 ) {
     if !cache_service::is_cacheable(&track) {
+        return;
+    }
+    if track.is_known_long_form() {
+        // Long-form audio (>10 min) streams but never lands on disk — the cache
+        // is meant for replayable songs, not hour-long sets or podcasts.
+        tracing::info!(
+            "Skipping cache for '{}' — duration exceeds the cache threshold",
+            track.metadata.title
+        );
         return;
     }
     tokio::spawn(async move {

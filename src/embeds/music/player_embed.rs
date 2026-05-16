@@ -38,6 +38,7 @@ pub enum PlayerEmbed<'a> {
     SearchCancelled,
     NoResults(String),
     QuotaExceeded,
+    TrackTooLong { title: String, cap: std::time::Duration },
     PlaybackErrorEmbed(String),
     InactivityLeave,
     History(&'a VecDeque<Track>),
@@ -179,6 +180,14 @@ impl<'a> PlayerEmbed<'a> {
                 .color(Color::DARK_GOLD)
                 .title("🚧  YouTube API quota exceeded")
                 .description("The bot has hit YouTube's daily search quota. Please try again later or ask the owner to provide a fresh API key."),
+            PlayerEmbed::TrackTooLong { title, cap } => CreateEmbed::new()
+                .color(Color::DARK_RED)
+                .title("🚫  Track too long")
+                .description(format!(
+                    "**{}** exceeds the {}-minute maximum and was not added to the queue.",
+                    title,
+                    cap.as_secs() / 60,
+                )),
             PlayerEmbed::PlaybackErrorEmbed(message) => CreateEmbed::new()
                 .color(Color::DARK_RED)
                 .title("🚫  Playback error")

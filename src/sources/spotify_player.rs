@@ -68,6 +68,8 @@ struct SpTrack {
     name: Option<String>,
     #[serde(default)]
     artists: Vec<SpArtist>,
+    #[serde(default)]
+    duration_ms: Option<u64>,
 }
 
 #[derive(Deserialize)]
@@ -394,6 +396,7 @@ fn build_track(sp: &SpTrack) -> Track {
             channel,
             track_url,
             play_url: Some(format!("ytsearch1:{query}")),
+            duration: sp.duration_ms.map(std::time::Duration::from_millis),
         },
         added_by: String::new(),
         source: crate::player::track::TrackSource::Spotify,

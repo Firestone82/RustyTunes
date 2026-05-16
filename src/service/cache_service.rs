@@ -14,6 +14,7 @@ use crate::player::track::{Track, TrackSource};
 use crate::service::normalize_service;
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
+use std::time::Duration;
 use tokio::process::Command;
 
 // `cache_track` is the only public write entrypoint now — callers spawn the
@@ -242,4 +243,38 @@ async fn cleanup_part_files(
 /// work for tracks we can't cache (local files, or sources missing an id).
 pub fn is_cacheable(track: &Track) -> bool {
     cache_stem_for(track).is_some()
+}
+
+/// Ask yt-dlp how long `track` is without downloading it. Returns `None`
+/// if the probe fails or yt-dlp can't determine a duration (livestreams,
+/// region-blocked content, malformed URLs). Used to gate playback for
+/// tracks whose source didn't carry duration at resolution time.
+pub async fn probe_duration(track: &Track) -> Option<Duration> {
+    if matches!(track.source, TrackSource::Local(_)) {
+        return None;
+    }
+    let input_url = track
+        .metadata
+        .play_url
+        .clone()
+        .unwrap_or_else(|| track.metadata.track_url.clone());
+
+    let output = Command::new("yt-dlp")
+        .args(["--no-warnings", "--no-playlist", "--print", "%(duration)s"])
+        .arg(&input_url)
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .output()
+        .await
+        .ok()?;
+    if !output.status.success() {
+        return None;
+    }
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let seconds: f64 = stdout.trim().parse().ok()?;
+    if !seconds.is_finite() || seconds <= 0.0 {
+        return None;
+    }
+    Some(Duration::from_secs(seconds as u64))
 }

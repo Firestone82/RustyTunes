@@ -3,7 +3,7 @@ use crate::checks::channel_checks::check_author_in_same_voice_channel;
 use crate::embeds::music::player_embed::PlayerEmbed;
 use crate::embeds::music::queue_embed::QueueEmbed;
 use crate::player::player::Player;
-use crate::player::track::Track;
+use crate::player::track::{Track, MAX_TRACK_DURATION};
 use crate::service::channel_service;
 use crate::service::embed_service::SendEmbed;
 use crate::service::picker_service::{self, PickerOutcome};
@@ -91,6 +91,17 @@ async fn do_play(
 
     match result {
         Ok(YouTubeSearchResult::Track(mut track)) => {
+            if track.is_known_too_long() {
+                PlayerEmbed::TrackTooLong {
+                    title: track.metadata.title.clone(),
+                    cap: MAX_TRACK_DURATION,
+                }
+                .to_embed()
+                .send_context(ctx, true, Some(30))
+                .await?;
+                return Ok(());
+            }
+
             track.added_by = ctx.author().name.clone();
             let mut player: RwLockWriteGuard<Player> = ctx.data().player.write().await;
 
@@ -125,6 +136,16 @@ async fn do_play(
             match outcome {
                 PickerOutcome::Selected(track_index) => {
                     let mut track: Track = tracks.swap_remove(track_index);
+                    if track.is_known_too_long() {
+                        PlayerEmbed::TrackTooLong {
+                            title: track.metadata.title.clone(),
+                            cap: MAX_TRACK_DURATION,
+                        }
+                        .to_embed()
+                        .send_context(ctx, true, Some(30))
+                        .await?;
+                        return Ok(());
+                    }
                     track.added_by = ctx.author().name.clone();
 
                     let mut player: RwLockWriteGuard<Player> = ctx.data().player.write().await;
@@ -157,6 +178,10 @@ async fn do_play(
 
         Ok(YouTubeSearchResult::Playlist(mut playlist)) => {
             let added_by = ctx.author().name.clone();
+            // Strip out tracks already known to exceed the length cap (Spotify
+            // and yt-dlp lazy playlists carry duration; YouTube Data API does
+            // not, so those slip through and get gated again at playback).
+            playlist.tracks.retain(|t| !t.is_known_too_long());
             for track in &mut playlist.tracks {
                 track.added_by = added_by.clone();
             }
