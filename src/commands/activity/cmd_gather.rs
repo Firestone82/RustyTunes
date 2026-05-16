@@ -4,7 +4,7 @@ use crate::embeds::activity::gather_embed::GatherEmbed;
 use crate::embeds::bot::bot_embeds::BotEmbed;
 use crate::service::channel_service;
 use crate::service::embed_service::SendEmbed;
-use crate::service::gather_service::{self, GatherState, PREGATHER_DURATION};
+use crate::service::gather_service::{self, GatherState, MAX_PREGATHER_DURATION, PREGATHER_DURATION};
 use crate::utils::time_utils::{get_current_time, humanize_duration, parse_duration_from_string};
 use serenity::all::{ChannelId, CreateInteractionResponse, CreateInteractionResponseMessage, GuildId, Mentionable, User};
 use std::sync::Arc;
@@ -14,7 +14,7 @@ use std::time::Duration;
 #[poise::command(
     slash_command,
     prefix_command,
-    subcommands("start", "expect"),
+    subcommands("start", "expect", "forget", "extend"),
     subcommand_required
 )]
 pub async fn gather(_ctx: Context<'_>) -> Result<(), MusicBotError> {
@@ -149,8 +149,10 @@ pub async fn expect(
 
     {
         let mut extra = state.extra_expected.lock().unwrap();
+        let mut forgotten = state.forgotten.lock().unwrap();
         for u in &users {
             extra.insert(u.id);
+            forgotten.remove(&u.id);
         }
     }
 
@@ -164,6 +166,152 @@ pub async fn expect(
         .to_embed()
         .send_context(ctx, true, Some(15))
         .await?;
+
+    Ok(())
+}
+
+/// Remove users from the wait list — gathering won't wait for them anymore.
+#[poise::command(slash_command, prefix_command)]
+pub async fn forget(
+    ctx: Context<'_>,
+    #[description = "User to stop waiting for"] user1: User,
+    #[description = "Second user to stop waiting for"] user2: Option<User>,
+    #[description = "Third user to stop waiting for"] user3: Option<User>,
+    #[description = "Fourth user to stop waiting for"] user4: Option<User>,
+    #[description = "Fifth user to stop waiting for"] user5: Option<User>,
+) -> Result<(), MusicBotError> {
+    let guild_id = ctx.guild_id().ok_or(MusicBotError::NoGuildIdError)?;
+
+    let state = {
+        let gatherings = ctx.data().gatherings.read().await;
+        gatherings.get(&guild_id).cloned()
+    };
+
+    let state = match state {
+        Some(s) => s,
+        None => {
+            GatherEmbed::NoActiveGathering
+                .to_embed()
+                .send_context(ctx, true, Some(15))
+                .await?;
+            return Ok(());
+        }
+    };
+
+    let users: Vec<&User> = [Some(&user1), user2.as_ref(), user3.as_ref(), user4.as_ref(), user5.as_ref()]
+        .into_iter()
+        .flatten()
+        .collect();
+
+    {
+        let mut extra = state.extra_expected.lock().unwrap();
+        let mut forgotten = state.forgotten.lock().unwrap();
+        for u in &users {
+            extra.remove(&u.id);
+            forgotten.insert(u.id);
+        }
+    }
+
+    let names = users
+        .iter()
+        .map(|u| u.mention().to_string())
+        .collect::<Vec<_>>()
+        .join(", ");
+
+    GatherEmbed::UsersForgotten { names: &names }
+        .to_embed()
+        .send_context(ctx, true, Some(15))
+        .await?;
+
+    Ok(())
+}
+
+/// Extend the pre-gather countdown by the given amount of time.
+#[poise::command(slash_command, prefix_command)]
+pub async fn extend(
+    ctx: Context<'_>,
+    #[description = "Extra time to add, e.g. `5m`, `30s`, `1h 30s`."] time: String,
+) -> Result<(), MusicBotError> {
+    let extra = match parse_duration_from_string(time.trim()) {
+        Some(d) if d > Duration::ZERO => d,
+        _ => {
+            GatherEmbed::InvalidExtension
+                .to_embed()
+                .send_context(ctx, true, Some(15))
+                .await?;
+            return Ok(());
+        }
+    };
+
+    let guild_id: GuildId = ctx.guild_id().ok_or(MusicBotError::NoGuildIdError)?;
+
+    let state = {
+        let gatherings = ctx.data().gatherings.read().await;
+        gatherings.get(&guild_id).cloned()
+    };
+
+    let state = match state {
+        Some(s) => s,
+        None => {
+            GatherEmbed::NoActiveGathering
+                .to_embed()
+                .send_context(ctx, true, Some(15))
+                .await?;
+            return Ok(());
+        }
+    };
+
+    // Only extendable while the pre-gather countdown is still running.
+    let pregather_info: Option<(Duration, time::OffsetDateTime)> = state
+        .pregather
+        .lock()
+        .unwrap()
+        .as_ref()
+        .map(|p| (p.original_duration, p.started_at_wall));
+
+    let (original_duration, started_at_wall) = match pregather_info {
+        Some(pair) => pair,
+        None => {
+            GatherEmbed::NotInPregather
+                .to_embed()
+                .send_context(ctx, true, Some(15))
+                .await?;
+            return Ok(());
+        }
+    };
+
+    let new_total = {
+        let current = *state.pregather_extension.lock().unwrap();
+        original_duration + current + extra
+    };
+    if new_total > MAX_PREGATHER_DURATION {
+        GatherEmbed::ExceedsCap {
+            new_total,
+            cap: MAX_PREGATHER_DURATION,
+        }
+        .to_embed()
+        .send_context(ctx, true, Some(15))
+        .await?;
+        return Ok(());
+    }
+
+    let (total, ends_at_wall) = {
+        let mut ext = state.pregather_extension.lock().unwrap();
+        *ext += extra;
+        let total = original_duration + *ext;
+        (total, started_at_wall + total)
+    };
+
+    let author_mention = ctx.author().mention().to_string();
+    GatherEmbed::Extended {
+        author_mention: &author_mention,
+        extra,
+        total,
+        ends_at: ends_at_wall,
+    }
+    .to_embed()
+    .send_context(ctx, false, None)
+    .await?;
 
     Ok(())
 }

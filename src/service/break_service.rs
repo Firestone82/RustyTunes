@@ -3,6 +3,7 @@ use crate::embeds::activity::break_embed::{break_buttons, BreakEmbed, BTN_BREAK_
 use crate::utils::time_utils::{get_current_time, parse_duration_from_string};
 use serenity::all::{ChannelId, CreateInteractionResponse, CreateInteractionResponseMessage, CreateMessage, EditMessage, GuildId, Mentionable, Message, UserId};
 use serenity::prelude::Context as SerenityContext;
+use std::collections::HashSet;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 use time::OffsetDateTime;
@@ -22,6 +23,10 @@ pub struct BreakState {
     /// Set when the break was started with a clock time (e.g. "17:10") rather
     /// than a relative duration. Controls the embed wording.
     pub clock_time_label: Option<String>,
+    /// Users added via `/break expect` — forwarded to the gathering started when the break ends.
+    pub extra_expected: Mutex<HashSet<UserId>>,
+    /// Users removed via `/break forget` — forwarded to the gathering so they're dropped from expectations.
+    pub forgotten: Mutex<HashSet<UserId>>,
 }
 
 impl BreakState {
@@ -81,7 +86,11 @@ pub async fn run_break(
         .send_message(
             &serenity_ctx.http,
             CreateMessage::new()
-                .embed(progress_embed(&state, None))
+                .embed(progress_embed(
+                    &state,
+                    None,
+                    expected_mentions_text(&state).as_deref(),
+                ))
                 .components(break_buttons(false)),
         )
         .await
@@ -142,7 +151,11 @@ pub async fn run_break(
             .edit(
                 &serenity_ctx.http,
                 EditMessage::new()
-                    .embed(progress_embed(&state, None))
+                    .embed(progress_embed(
+                        &state,
+                        None,
+                        expected_mentions_text(&state).as_deref(),
+                    ))
                     .components(break_buttons(false)),
             )
             .await;
@@ -154,7 +167,11 @@ pub async fn run_break(
         .edit(
             &serenity_ctx.http,
             EditMessage::new()
-                .embed(progress_embed(&state, Some(footer)))
+                .embed(progress_embed(
+                    &state,
+                    Some(footer),
+                    expected_mentions_text(&state).as_deref(),
+                ))
                 .components(Vec::new()),
         )
         .await;
@@ -165,6 +182,7 @@ pub async fn run_break(
 fn progress_embed(
     state: &BreakState,
     footer: Option<&str>,
+    expected_mentions: Option<&str>,
 ) -> serenity::all::CreateEmbed {
     let now = Instant::now();
     let ends_at = state.ends_at_instant();
@@ -179,9 +197,25 @@ fn progress_embed(
         remaining,
         extension,
         total,
+        expected_mentions,
         footer,
     }
     .to_embed()
+}
+
+/// Comma-separated mentions of users `/break expect` has queued, or `None` if empty.
+pub fn expected_mentions_text(state: &BreakState) -> Option<String> {
+    let extra = state.extra_expected.lock().unwrap();
+    if extra.is_empty() {
+        return None;
+    }
+    Some(
+        extra
+            .iter()
+            .map(|id| id.mention().to_string())
+            .collect::<Vec<_>>()
+            .join(", "),
+    )
 }
 
 /// Parse a break start time: relative duration (`5m`, `1h 30s`) or clock time

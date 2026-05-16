@@ -7,7 +7,8 @@ use crate::service::channel_service;
 use crate::service::embed_service::SendEmbed;
 use crate::service::gather_service::{self, GatherState};
 use crate::utils::time_utils::get_current_time;
-use serenity::all::{ChannelId, CreateInteractionResponse, CreateInteractionResponseMessage, GuildId, Mentionable, UserId};
+use serenity::all::{ChannelId, CreateInteractionResponse, CreateInteractionResponseMessage, GuildId, Mentionable, User, UserId};
+use std::collections::HashSet;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
@@ -15,7 +16,7 @@ use std::time::{Duration, Instant};
 #[poise::command(
     slash_command,
     prefix_command,
-    subcommands("start", "extend"),
+    subcommands("start", "extend", "expect", "forget"),
     subcommand_required
 )]
 pub async fn r#break(_ctx: Context<'_>) -> Result<(), MusicBotError> {
@@ -102,6 +103,8 @@ pub async fn start(
         extension: Mutex::new(Duration::ZERO),
         author_mention: author_mention.clone(),
         clock_time_label,
+        extra_expected: Mutex::new(HashSet::new()),
+        forgotten: Mutex::new(HashSet::new()),
     });
 
     ctx.data()
@@ -127,6 +130,21 @@ pub async fn start(
     }
 
     let gather_state = Arc::new(GatherState::new(voice_channel_id));
+    // Carry forward who the break was waiting on.
+    {
+        let break_extra = state.extra_expected.lock().unwrap();
+        let mut gather_extra = gather_state.extra_expected.lock().unwrap();
+        for id in break_extra.iter() {
+            gather_extra.insert(*id);
+        }
+    }
+    {
+        let break_forgotten = state.forgotten.lock().unwrap();
+        let mut gather_forgotten = gather_state.forgotten.lock().unwrap();
+        for id in break_forgotten.iter() {
+            gather_forgotten.insert(*id);
+        }
+    }
     ctx.data()
         .gatherings
         .write()
@@ -148,6 +166,118 @@ pub async fn start(
     .await?;
 
     ctx.data().gatherings.write().await.remove(&guild_id);
+
+    Ok(())
+}
+
+/// Add users to wait for — the gathering after the break will wait for them too.
+#[poise::command(slash_command, prefix_command)]
+pub async fn expect(
+    ctx: Context<'_>,
+    #[description = "User to wait for"] user1: User,
+    #[description = "Second user to wait for"] user2: Option<User>,
+    #[description = "Third user to wait for"] user3: Option<User>,
+    #[description = "Fourth user to wait for"] user4: Option<User>,
+    #[description = "Fifth user to wait for"] user5: Option<User>,
+) -> Result<(), MusicBotError> {
+    let guild_id = ctx.guild_id().ok_or(MusicBotError::NoGuildIdError)?;
+
+    let state = {
+        let breaks = ctx.data().breaks.read().await;
+        breaks.get(&guild_id).cloned()
+    };
+
+    let state = match state {
+        Some(s) => s,
+        None => {
+            BreakEmbed::NoActiveBreak
+                .to_embed()
+                .send_context(ctx, true, Some(15))
+                .await?;
+            return Ok(());
+        }
+    };
+
+    let users: Vec<&User> = [Some(&user1), user2.as_ref(), user3.as_ref(), user4.as_ref(), user5.as_ref()]
+        .into_iter()
+        .flatten()
+        .collect();
+
+    {
+        let mut extra = state.extra_expected.lock().unwrap();
+        let mut forgotten = state.forgotten.lock().unwrap();
+        for u in &users {
+            extra.insert(u.id);
+            forgotten.remove(&u.id);
+        }
+    }
+
+    let names = users
+        .iter()
+        .map(|u| u.mention().to_string())
+        .collect::<Vec<_>>()
+        .join(", ");
+
+    BreakEmbed::UsersExpected { names: &names }
+        .to_embed()
+        .send_context(ctx, true, Some(15))
+        .await?;
+
+    Ok(())
+}
+
+/// Remove users from the wait list — the gathering after the break won't wait for them.
+#[poise::command(slash_command, prefix_command)]
+pub async fn forget(
+    ctx: Context<'_>,
+    #[description = "User to stop waiting for"] user1: User,
+    #[description = "Second user to stop waiting for"] user2: Option<User>,
+    #[description = "Third user to stop waiting for"] user3: Option<User>,
+    #[description = "Fourth user to stop waiting for"] user4: Option<User>,
+    #[description = "Fifth user to stop waiting for"] user5: Option<User>,
+) -> Result<(), MusicBotError> {
+    let guild_id = ctx.guild_id().ok_or(MusicBotError::NoGuildIdError)?;
+
+    let state = {
+        let breaks = ctx.data().breaks.read().await;
+        breaks.get(&guild_id).cloned()
+    };
+
+    let state = match state {
+        Some(s) => s,
+        None => {
+            BreakEmbed::NoActiveBreak
+                .to_embed()
+                .send_context(ctx, true, Some(15))
+                .await?;
+            return Ok(());
+        }
+    };
+
+    let users: Vec<&User> = [Some(&user1), user2.as_ref(), user3.as_ref(), user4.as_ref(), user5.as_ref()]
+        .into_iter()
+        .flatten()
+        .collect();
+
+    {
+        let mut extra = state.extra_expected.lock().unwrap();
+        let mut forgotten = state.forgotten.lock().unwrap();
+        for u in &users {
+            extra.remove(&u.id);
+            forgotten.insert(u.id);
+        }
+    }
+
+    let names = users
+        .iter()
+        .map(|u| u.mention().to_string())
+        .collect::<Vec<_>>()
+        .join(", ");
+
+    BreakEmbed::UsersForgotten { names: &names }
+        .to_embed()
+        .send_context(ctx, true, Some(15))
+        .await?;
 
     Ok(())
 }

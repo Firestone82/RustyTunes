@@ -21,16 +21,34 @@ pub struct CheckInRow {
 
 pub enum GatherEmbed<'a> {
     InvalidPregatherTime,
+    InvalidExtension,
     AlreadyRunning,
     NoActiveGathering,
+    NotInPregather,
+    ExceedsCap {
+        new_total: Duration,
+        cap: Duration,
+    },
     UsersExpected {
         names: &'a str,
+    },
+    UsersForgotten {
+        names: &'a str,
+    },
+    Extended {
+        author_mention: &'a str,
+        extra: Duration,
+        total: Duration,
+        ends_at: OffsetDateTime,
     },
     Pregather {
         ends_at: Instant,
         ends_at_wall: OffsetDateTime,
         author_mention: &'a str,
         schedule_label: &'a str,
+        extension: Duration,
+        original_duration: Duration,
+        expected_mentions: Option<&'a str>,
         footer: Option<&'a str>,
     },
     CheckIn {
@@ -52,6 +70,10 @@ impl<'a> GatherEmbed<'a> {
                     "Use a relative duration like `10m` or `1h 30m`, \
                      or a clock time like `10:00` or `14:30`.",
                 ),
+            GatherEmbed::InvalidExtension => CreateEmbed::new()
+                .color(Color::DARK_RED)
+                .title("🚫  Invalid extension")
+                .description("Use a relative duration like `5m`, `1h 30s`, or `90s`."),
             GatherEmbed::AlreadyRunning => CreateEmbed::new()
                 .color(Color::DARK_RED)
                 .title("🚫  Gathering already running")
@@ -60,32 +82,82 @@ impl<'a> GatherEmbed<'a> {
                 .color(Color::DARK_RED)
                 .title("🚫  No active gathering")
                 .description("There's no gathering running right now. Start one with `/gather start`."),
+            GatherEmbed::NotInPregather => CreateEmbed::new()
+                .color(Color::DARK_RED)
+                .title("🚫  Gathering already started")
+                .description("The pre-gather countdown is already over — there's nothing left to extend."),
+            GatherEmbed::ExceedsCap { new_total, cap } => CreateEmbed::new()
+                .color(Color::DARK_RED)
+                .title("🚫  Extension would exceed cap")
+                .description(format!(
+                    "Total pre-gather length would be `{}`, over the {} cap.",
+                    humanize_duration(*new_total),
+                    humanize_duration(*cap),
+                )),
             GatherEmbed::UsersExpected { names } => CreateEmbed::new()
                 .color(Color::DARK_GREEN)
                 .title("✅  Users expected")
                 .description(format!("{} added to the gathering.", names)),
+            GatherEmbed::UsersForgotten { names } => CreateEmbed::new()
+                .color(Color::DARK_GREEN)
+                .title("✅  Users forgotten")
+                .description(format!("{} removed from the gathering.", names)),
+            GatherEmbed::Extended {
+                author_mention,
+                extra,
+                total,
+                ends_at,
+            } => CreateEmbed::new()
+                .color(Color::DARK_GREEN)
+                .title("⏱️  Gathering extended")
+                .description(format!(
+                    "{} extended the pre-gather countdown by **{}**.\n\n\
+                     New total: **{}**\n\
+                     Starts at: `{}`",
+                    author_mention,
+                    humanize_duration(*extra),
+                    humanize_duration(*total),
+                    format_wall_clock(*ends_at),
+                )),
             GatherEmbed::Pregather {
                 ends_at,
                 ends_at_wall,
                 author_mention,
                 schedule_label,
+                extension,
+                original_duration,
+                expected_mentions,
                 footer,
             } => {
                 let remaining = ends_at.saturating_duration_since(Instant::now());
+                let mut description = format!(
+                    "{} scheduled gathering {}.\n\n\
+                     Time remaining: **{}**\n\
+                     Starts at: `{}`",
+                    author_mention,
+                    schedule_label,
+                    humanize_duration(remaining),
+                    format_wall_clock(*ends_at_wall),
+                );
+                if *extension > Duration::ZERO {
+                    description.push_str(&format!(
+                        "\nExtended by: **{}** (total **{}**)",
+                        humanize_duration(*extension),
+                        humanize_duration(*original_duration + *extension),
+                    ));
+                }
+                if let Some(mentions) = expected_mentions {
+                    description.push_str(&format!("\nExpecting: {}", mentions));
+                }
+                description.push_str(
+                    "\n\nWhen the timer ends, everyone still in voice will be gathered automatically \
+                     — late arrivals will be tracked.",
+                );
+
                 let mut builder = CreateEmbed::new()
                     .color(Color::DARK_BLUE)
                     .title("📣  Voice Channel Gathering")
-                    .description(format!(
-                        "{} scheduled gathering {}.
-                        \nTime remaining: **{}**
-                        Starts at: `{}`
-                        nWhen the timer ends, everyone still in voice will be gathered automatically
-                        — late arrivals will be tracked.",
-                        author_mention,
-                        schedule_label,
-                        humanize_duration(remaining),
-                        format_wall_clock(*ends_at_wall),
-                    ));
+                    .description(description);
                 if let Some(text) = footer {
                     builder = builder.footer(CreateEmbedFooter::new(*text));
                 }

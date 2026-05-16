@@ -9,6 +9,16 @@ use serenity::prelude::Context as SerenityContext;
 use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
+use time::OffsetDateTime;
+
+/// Tracks the running pre-gather countdown. `None` once the check-in phase
+/// has started or the countdown was skipped (e.g. break → gather hand-off),
+/// so `/gather extend` knows whether there's still a countdown to grow.
+pub struct PregatherInfo {
+    pub started_at: Instant,
+    pub started_at_wall: OffsetDateTime,
+    pub original_duration: Duration,
+}
 
 /// Shared state for an active gathering.
 pub struct GatherState {
@@ -16,10 +26,17 @@ pub struct GatherState {
     pub voice_channel_id: ChannelId,
     /// Users added via `/gather expect` that must check in before gathering ends.
     pub extra_expected: Mutex<HashSet<UserId>>,
+    /// Users removed via `/gather forget` — drained by the check-in loop to drop
+    /// them from the `expected` working set (unless they've already arrived).
+    pub forgotten: Mutex<HashSet<UserId>>,
     /// Users who joined the gathering voice channel while expected — processed on the next loop tick.
     pub auto_arrived: Mutex<HashSet<UserId>>,
     /// When true, ghost-ping reminders are suppressed for everyone.
     pub silent: Mutex<bool>,
+    /// Set while the pre-gather countdown is active; cleared once it ends.
+    pub pregather: Mutex<Option<PregatherInfo>>,
+    /// Total time `/gather extend` has added to the pre-gather countdown.
+    pub pregather_extension: Mutex<Duration>,
 }
 
 impl GatherState {
@@ -27,13 +44,17 @@ impl GatherState {
         Self {
             voice_channel_id,
             extra_expected: Mutex::new(HashSet::new()),
+            forgotten: Mutex::new(HashSet::new()),
             auto_arrived: Mutex::new(HashSet::new()),
             silent: Mutex::new(false),
+            pregather: Mutex::new(None),
+            pregather_extension: Mutex::new(Duration::ZERO),
         }
     }
 }
 
 pub const PREGATHER_DURATION: Duration = Duration::from_secs(60);
+pub const MAX_PREGATHER_DURATION: Duration = Duration::from_secs(60 * 60 * 2);
 const GHOST_PING_INTERVAL: Duration = Duration::from_secs(30);
 const MAX_GATHER_DURATION: Duration = Duration::from_secs(60 * 30);
 const GHOST_PING_LIFETIME: Duration = Duration::from_millis(700);
@@ -80,23 +101,27 @@ pub async fn start_gather(
             )
             .await;
 
-        let pregather_ends_at = Instant::now() + pregather_duration;
-        let pregather_ends_at_wall = get_current_time() + pregather_duration;
+        let pregather_started_at = Instant::now();
+        let pregather_started_at_wall = get_current_time();
+        *state.pregather.lock().unwrap() = Some(PregatherInfo {
+            started_at: pregather_started_at,
+            started_at_wall: pregather_started_at_wall,
+            original_duration: pregather_duration,
+        });
 
         msg = text_channel_id
             .send_message(
                 &serenity_ctx.http,
                 CreateMessage::new()
-                    .embed(
-                        GatherEmbed::Pregather {
-                            ends_at: pregather_ends_at,
-                            ends_at_wall: pregather_ends_at_wall,
-                            author_mention: &author_mention,
-                            schedule_label: &schedule_label,
-                            footer: None,
-                        }
-                        .to_embed(),
-                    )
+                    .embed(pregather_embed(
+                        &state,
+                        pregather_started_at,
+                        pregather_started_at_wall,
+                        pregather_duration,
+                        &author_mention,
+                        &schedule_label,
+                        None,
+                    ))
                     .components(pregather_buttons(false)),
             )
             .await
@@ -104,11 +129,12 @@ pub async fn start_gather(
 
         let pregather_cancelled = 'pregather: loop {
             let now = Instant::now();
-            if now >= pregather_ends_at {
+            let ends_at = pregather_started_at + pregather_duration + *state.pregather_extension.lock().unwrap();
+            if now >= ends_at {
                 break false;
             }
 
-            let wait = pregather_ends_at
+            let wait = ends_at
                 .saturating_duration_since(now)
                 .min(MIN_EDIT_INTERVAL);
 
@@ -163,21 +189,20 @@ pub async fn start_gather(
                     }
                 },
                 None => {
-                    // Timeout: refresh the countdown display.
+                    // Timeout: refresh the countdown display (also reflects /gather extend, /gather expect, /gather forget).
                     let _ = msg
                         .edit(
                             &serenity_ctx.http,
                             EditMessage::new()
-                                .embed(
-                                    GatherEmbed::Pregather {
-                                        ends_at: pregather_ends_at,
-                                        ends_at_wall: pregather_ends_at_wall,
-                                        author_mention: &author_mention,
-                                        schedule_label: &schedule_label,
-                                        footer: None,
-                                    }
-                                    .to_embed(),
-                                )
+                                .embed(pregather_embed(
+                                    &state,
+                                    pregather_started_at,
+                                    pregather_started_at_wall,
+                                    pregather_duration,
+                                    &author_mention,
+                                    &schedule_label,
+                                    None,
+                                ))
                                 .components(pregather_buttons(false)),
                         )
                         .await;
@@ -185,21 +210,23 @@ pub async fn start_gather(
             }
         };
 
+        // Pre-gather phase done — `/gather extend` is rejected from here on.
+        *state.pregather.lock().unwrap() = None;
+
         if pregather_cancelled {
             let _ = msg
                 .edit(
                     &serenity_ctx.http,
                     EditMessage::new()
-                        .embed(
-                            GatherEmbed::Pregather {
-                                ends_at: pregather_ends_at,
-                                ends_at_wall: pregather_ends_at_wall,
-                                author_mention: &author_mention,
-                                schedule_label: &schedule_label,
-                                footer: Some("Cancelled."),
-                            }
-                            .to_embed(),
-                        )
+                        .embed(pregather_embed(
+                            &state,
+                            pregather_started_at,
+                            pregather_started_at_wall,
+                            pregather_duration,
+                            &author_mention,
+                            &schedule_label,
+                            Some("Cancelled."),
+                        ))
                         .components(Vec::new()),
                 )
                 .await;
@@ -320,6 +347,16 @@ pub async fn start_gather(
             let extra = state.extra_expected.lock().unwrap();
             for id in extra.iter() {
                 expected.insert(*id);
+            }
+        }
+
+        // `/gather forget` queues drops here — applied unless the user has already arrived.
+        {
+            let forgotten: Vec<UserId> = state.forgotten.lock().unwrap().drain().collect();
+            for id in forgotten {
+                if !arrivals.contains_key(&id) {
+                    expected.remove(&id);
+                }
             }
         }
 
@@ -663,6 +700,48 @@ fn user_in_voice(
         .and_then(|g| g.voice_states.get(&user_id))
         .and_then(|vs| vs.channel_id)
         == Some(voice_channel_id)
+}
+
+#[allow(clippy::too_many_arguments)]
+fn pregather_embed(
+    state: &GatherState,
+    pregather_started_at: Instant,
+    pregather_started_at_wall: OffsetDateTime,
+    original_duration: Duration,
+    author_mention: &str,
+    schedule_label: &str,
+    footer: Option<&str>,
+) -> serenity::all::CreateEmbed {
+    let extension = *state.pregather_extension.lock().unwrap();
+    let total = original_duration + extension;
+    let mentions = expected_mentions_text(state);
+    GatherEmbed::Pregather {
+        ends_at: pregather_started_at + total,
+        ends_at_wall: pregather_started_at_wall + total,
+        author_mention,
+        schedule_label,
+        extension,
+        original_duration,
+        expected_mentions: mentions.as_deref(),
+        footer,
+    }
+    .to_embed()
+}
+
+/// Comma-separated mentions of the users `/expect` has queued, or `None` if
+/// the list is empty.
+pub fn expected_mentions_text(state: &GatherState) -> Option<String> {
+    let extra = state.extra_expected.lock().unwrap();
+    if extra.is_empty() {
+        return None;
+    }
+    Some(
+        extra
+            .iter()
+            .map(|id| id.mention().to_string())
+            .collect::<Vec<_>>()
+            .join(", "),
+    )
 }
 
 async fn ghost_ping(

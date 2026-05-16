@@ -18,6 +18,12 @@ pub enum BreakEmbed<'a> {
         new_total: Duration,
         cap: Duration,
     },
+    UsersExpected {
+        names: &'a str,
+    },
+    UsersForgotten {
+        names: &'a str,
+    },
     Extended {
         author_mention: &'a str,
         extra: Duration,
@@ -31,6 +37,7 @@ pub enum BreakEmbed<'a> {
         remaining: Duration,
         extension: Duration,
         total: Duration,
+        expected_mentions: Option<&'a str>,
         footer: Option<&'a str>,
     },
 }
@@ -75,6 +82,14 @@ impl<'a> BreakEmbed<'a> {
                     humanize_duration(*new_total),
                     humanize_duration(*cap),
                 )),
+            BreakEmbed::UsersExpected { names } => CreateEmbed::new()
+                .color(Color::DARK_GREEN)
+                .title("✅  Users expected")
+                .description(format!("{} added to the break.", names)),
+            BreakEmbed::UsersForgotten { names } => CreateEmbed::new()
+                .color(Color::DARK_GREEN)
+                .title("✅  Users forgotten")
+                .description(format!("{} removed from the break.", names)),
             BreakEmbed::Extended {
                 author_mention,
                 extra,
@@ -99,6 +114,7 @@ impl<'a> BreakEmbed<'a> {
                 remaining,
                 extension,
                 total,
+                expected_mentions,
                 footer,
             } => {
                 let color = if footer.is_some() { Color::DARK_GREEN } else { Color::DARK_GOLD };
@@ -126,9 +142,13 @@ impl<'a> BreakEmbed<'a> {
                     ));
                 }
 
+                if let Some(mentions) = expected_mentions {
+                    description.push_str(&format!("\nExpecting: {}", mentions));
+                }
+
                 description.push_str(
-                    "\n\nWhen the timer ends, everyone still in voice will be gathered automatically
-                    — late arrivals will be tracked.",
+                    "\n\nWhen the timer ends, everyone still in voice will be gathered automatically \
+                     — late arrivals will be tracked.",
                 );
 
                 let mut builder = CreateEmbed::new()
