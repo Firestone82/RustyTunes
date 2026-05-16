@@ -1,5 +1,5 @@
 use crate::bot::MusicBotError;
-use crate::embeds::activity::gather_embed::{gather_buttons, pregather_buttons, CheckInRow, GatherEmbed, BTN_CANCEL, BTN_FORCE_START, BTN_HERE, BTN_TOGGLE_SILENT, GRACE_PERIOD};
+use crate::embeds::activity::gather_embed::{gather_buttons, pregather_buttons, CheckInRow, GatherEmbed, BTN_CANCEL, BTN_FORCE_START, BTN_HERE, BTN_JOIN, BTN_LEAVE, BTN_TOGGLE_SILENT, GRACE_PERIOD};
 use crate::service::attendance_service;
 use crate::utils::string_utils::sanitize_name;
 use crate::utils::time_utils::get_current_time;
@@ -188,6 +188,62 @@ pub async fn start_gather(
                             .await
                             .ok();
                         break 'pregather false;
+                    }
+                    BTN_JOIN => {
+                        {
+                            let mut extra = state.extra_expected.lock().unwrap();
+                            let mut forgotten = state.forgotten.lock().unwrap();
+                            extra.insert(ic.user.id);
+                            forgotten.remove(&ic.user.id);
+                        }
+                        let response = CreateInteractionResponseMessage::new()
+                            .embeds(pregather_message_embeds(
+                                serenity_ctx,
+                                guild_id,
+                                voice_channel_id,
+                                &state,
+                                pregather_started_at,
+                                pregather_started_at_wall,
+                                pregather_duration,
+                                &author_mention,
+                                &schedule_label,
+                                None,
+                            ))
+                            .components(pregather_buttons(false));
+                        ic.create_response(
+                            &serenity_ctx.http,
+                            CreateInteractionResponse::UpdateMessage(response),
+                        )
+                        .await
+                        .ok();
+                    }
+                    BTN_LEAVE => {
+                        {
+                            let mut extra = state.extra_expected.lock().unwrap();
+                            let mut forgotten = state.forgotten.lock().unwrap();
+                            extra.remove(&ic.user.id);
+                            forgotten.insert(ic.user.id);
+                        }
+                        let response = CreateInteractionResponseMessage::new()
+                            .embeds(pregather_message_embeds(
+                                serenity_ctx,
+                                guild_id,
+                                voice_channel_id,
+                                &state,
+                                pregather_started_at,
+                                pregather_started_at_wall,
+                                pregather_duration,
+                                &author_mention,
+                                &schedule_label,
+                                None,
+                            ))
+                            .components(pregather_buttons(false));
+                        ic.create_response(
+                            &serenity_ctx.http,
+                            CreateInteractionResponse::UpdateMessage(response),
+                        )
+                        .await
+                        .ok();
                     }
                     _ => {
                         ic.create_response(&serenity_ctx.http, CreateInteractionResponse::Acknowledge)

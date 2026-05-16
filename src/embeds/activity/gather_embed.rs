@@ -8,6 +8,8 @@ pub const BTN_HERE: &str = "gather_im_here";
 pub const BTN_CANCEL: &str = "gather_cancel";
 pub const BTN_FORCE_START: &str = "gather_force_start";
 pub const BTN_TOGGLE_SILENT: &str = "gather_toggle_silent";
+pub const BTN_JOIN: &str = "gather_join";
+pub const BTN_LEAVE: &str = "gather_leave";
 
 pub const GRACE_PERIOD: Duration = Duration::from_secs(60);
 
@@ -285,16 +287,28 @@ fn build_check_in_embed(
 }
 
 pub fn pregather_buttons(disabled: bool) -> Vec<CreateActionRow> {
-    vec![CreateActionRow::Buttons(vec![
-        CreateButton::new(BTN_FORCE_START)
-            .label("Start now")
-            .style(ButtonStyle::Primary)
-            .disabled(disabled),
-        CreateButton::new(BTN_CANCEL)
-            .label("Cancel")
-            .style(ButtonStyle::Danger)
-            .disabled(disabled),
-    ])]
+    vec![
+        CreateActionRow::Buttons(vec![
+            CreateButton::new(BTN_FORCE_START)
+                .label("Start now")
+                .style(ButtonStyle::Primary)
+                .disabled(disabled),
+            CreateButton::new(BTN_CANCEL)
+                .label("Cancel")
+                .style(ButtonStyle::Danger)
+                .disabled(disabled),
+        ]),
+        CreateActionRow::Buttons(vec![
+            CreateButton::new(BTN_JOIN)
+                .label("Join gathering")
+                .style(ButtonStyle::Success)
+                .disabled(disabled),
+            CreateButton::new(BTN_LEAVE)
+                .label("Leave gathering")
+                .style(ButtonStyle::Secondary)
+                .disabled(disabled),
+        ]),
+    ]
 }
 
 pub fn gather_buttons(
