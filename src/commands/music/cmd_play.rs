@@ -61,6 +61,8 @@ pub async fn play_now(
         return Ok(());
     }
 
+    ctx.defer().await?;
+
     let result = resolve_source(ctx, &source).await?;
 
     match result {
@@ -223,6 +225,10 @@ async fn do_play(
             .await?;
         return Ok(());
     }
+
+    // Defer the interaction before any async work so Discord doesn't expire
+    // it during the yt-dlp metadata probe that may happen in next_track.
+    ctx.defer().await?;
 
     let result = resolve_source(ctx, &track_source).await?;
 

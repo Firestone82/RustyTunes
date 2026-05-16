@@ -245,41 +245,18 @@ pub fn is_cacheable(track: &Track) -> bool {
     cache_stem_for(track).is_some()
 }
 
-/// Ask yt-dlp whether `track` is a live broadcast. Returns `true` when
-/// yt-dlp confirms the video is live; returns `false` on any error or when
-/// the track is a local file (local files are never livestreams).
-pub async fn probe_is_live(track: &Track) -> bool {
-    if matches!(track.source, TrackSource::Local(_)) {
-        return false;
-    }
-    let input_url = track
-        .metadata
-        .play_url
-        .clone()
-        .unwrap_or_else(|| track.metadata.track_url.clone());
-
-    let output = Command::new("yt-dlp")
-        .args(["--no-warnings", "--no-playlist", "--print", "%(is_live)s"])
-        .arg(&input_url)
-        .stdout(Stdio::piped())
-        .stderr(Stdio::null())
-        .output()
-        .await;
-
-    match output {
-        Ok(out) if out.status.success() => {
-            let stdout = String::from_utf8_lossy(&out.stdout);
-            stdout.trim().eq_ignore_ascii_case("true")
-        }
-        _ => false,
-    }
+/// Result of a single combined yt-dlp metadata probe.
+pub struct TrackProbe {
+    /// Finite duration when yt-dlp could determine one; `None` for livestreams,
+    /// region-blocked content, or any probe failure.
+    pub duration: Option<Duration>,
+    /// `true` when yt-dlp explicitly reports the video as a live broadcast.
+    pub is_live: bool,
 }
 
-/// Ask yt-dlp how long `track` is without downloading it. Returns `None`
-/// if the probe fails or yt-dlp can't determine a duration (livestreams,
-/// region-blocked content, malformed URLs). Used to gate playback for
-/// tracks whose source didn't carry duration at resolution time.
-pub async fn probe_duration(track: &Track) -> Option<Duration> {
+/// Probe `track` with a single yt-dlp invocation, fetching both duration and
+/// live-status at once. Returns `None` for local files (no probe needed).
+pub async fn probe_track(track: &Track) -> Option<TrackProbe> {
     if matches!(track.source, TrackSource::Local(_)) {
         return None;
     }
@@ -290,21 +267,39 @@ pub async fn probe_duration(track: &Track) -> Option<Duration> {
         .unwrap_or_else(|| track.metadata.track_url.clone());
 
     let output = Command::new("yt-dlp")
-        .args(["--no-warnings", "--no-playlist", "--print", "%(duration)s"])
+        .args([
+            "--no-warnings",
+            "--no-playlist",
+            "--print",
+            "%(duration)s",
+            "--print",
+            "%(is_live)s",
+        ])
         .arg(&input_url)
         .stdout(Stdio::piped())
         .stderr(Stdio::null())
         .output()
         .await
         .ok()?;
+
     if !output.status.success() {
         return None;
     }
 
     let stdout = String::from_utf8_lossy(&output.stdout);
-    let seconds: f64 = stdout.trim().parse().ok()?;
-    if !seconds.is_finite() || seconds <= 0.0 {
-        return None;
-    }
-    Some(Duration::from_secs(seconds as u64))
+    let mut lines = stdout.lines();
+    let duration_line = lines.next().unwrap_or("").trim().to_owned();
+    let is_live_line = lines.next().unwrap_or("").trim().to_owned();
+
+    let duration = duration_line.parse::<f64>().ok().and_then(|s| {
+        if s.is_finite() && s > 0.0 {
+            Some(Duration::from_secs(s as u64))
+        } else {
+            None
+        }
+    });
+    let is_live = is_live_line.eq_ignore_ascii_case("true");
+
+    Some(TrackProbe { duration, is_live })
 }
+
