@@ -99,7 +99,11 @@ pub async fn you(
         .add_message_for_user(
             guild_id,
             ctx.channel_id(),
-            ctx.author().id,
+            // Owned by the primary target so it shows up in their `/notify list`
+            // and they can `/notify remove` it — not the person scheduling it.
+            // Additional targets (user2, user3) live in the encoded note and
+            // still get pinged when the reminder fires.
+            user1.id,
             None,
             notify_at,
             Some(stored_note),
