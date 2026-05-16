@@ -1,8 +1,11 @@
 use crate::bot::MusicBotError;
 use crate::embeds::activity::gather_embed::{gather_buttons, pregather_buttons, CheckInRow, GatherEmbed, BTN_CANCEL, BTN_FORCE_START, BTN_HERE, BTN_TOGGLE_SILENT, GRACE_PERIOD};
+use crate::service::attendance_service;
 use crate::utils::string_utils::sanitize_name;
 use crate::utils::time_utils::get_current_time;
-use serenity::all::{ChannelId, ComponentInteractionCollector, CreateInteractionResponse, CreateInteractionResponseMessage, CreateMessage, EditMessage, GuildId, Mentionable, Message, UserId};
+use serenity::all::{
+    ChannelId, ComponentInteractionCollector, CreateEmbed, CreateInteractionResponse, CreateInteractionResponseMessage, CreateMessage, EditMessage, GuildId, Mentionable, Message, UserId,
+};
 use serenity::futures::StreamExt;
 use serenity::http::Http;
 use serenity::prelude::Context as SerenityContext;
@@ -113,7 +116,10 @@ pub async fn start_gather(
             .send_message(
                 &serenity_ctx.http,
                 CreateMessage::new()
-                    .embed(pregather_embed(
+                    .embeds(pregather_message_embeds(
+                        serenity_ctx,
+                        guild_id,
+                        voice_channel_id,
                         &state,
                         pregather_started_at,
                         pregather_started_at_wall,
@@ -194,7 +200,10 @@ pub async fn start_gather(
                         .edit(
                             &serenity_ctx.http,
                             EditMessage::new()
-                                .embed(pregather_embed(
+                                .embeds(pregather_message_embeds(
+                                    serenity_ctx,
+                                    guild_id,
+                                    voice_channel_id,
                                     &state,
                                     pregather_started_at,
                                     pregather_started_at_wall,
@@ -218,7 +227,10 @@ pub async fn start_gather(
                 .edit(
                     &serenity_ctx.http,
                     EditMessage::new()
-                        .embed(pregather_embed(
+                        .embeds(pregather_message_embeds(
+                            serenity_ctx,
+                            guild_id,
+                            voice_channel_id,
                             &state,
                             pregather_started_at,
                             pregather_started_at_wall,
@@ -274,9 +286,11 @@ pub async fn start_gather(
             &serenity_ctx.http,
             EditMessage::new()
                 .content("")
-                .embed(check_in_embed(
+                .embeds(check_in_message_embeds(
                     serenity_ctx,
                     guild_id,
+                    voice_channel_id,
+                    &state,
                     &expected,
                     &arrivals,
                     started_at,
@@ -402,9 +416,11 @@ pub async fn start_gather(
                 .edit(
                     &serenity_ctx.http,
                     EditMessage::new()
-                        .embed(check_in_embed(
+                        .embeds(check_in_message_embeds(
                             serenity_ctx,
                             guild_id,
+                            voice_channel_id,
+                            &state,
                             &expected,
                             &arrivals,
                             started_at,
@@ -431,9 +447,11 @@ pub async fn start_gather(
         .edit(
             &serenity_ctx.http,
             EditMessage::new()
-                .embed(check_in_embed(
+                .embeds(check_in_message_embeds(
                     serenity_ctx,
                     guild_id,
+                    voice_channel_id,
+                    &state,
                     &expected,
                     &arrivals,
                     started_at,
@@ -503,9 +521,11 @@ async fn handle_interaction(
                 &serenity_ctx.http,
                 CreateInteractionResponse::UpdateMessage(
                     CreateInteractionResponseMessage::new()
-                        .embed(check_in_embed(
+                        .embeds(check_in_message_embeds(
                             serenity_ctx,
                             guild_id,
+                            voice_channel_id,
+                            state,
                             expected,
                             arrivals,
                             started_at,
@@ -543,9 +563,11 @@ async fn handle_interaction(
                 &serenity_ctx.http,
                 CreateInteractionResponse::UpdateMessage(
                     CreateInteractionResponseMessage::new()
-                        .embed(check_in_embed(
+                        .embeds(check_in_message_embeds(
                             serenity_ctx,
                             guild_id,
+                            voice_channel_id,
+                            state,
                             expected,
                             arrivals,
                             started_at,
@@ -604,9 +626,11 @@ async fn handle_interaction(
                 &serenity_ctx.http,
                 CreateInteractionResponse::UpdateMessage(
                     CreateInteractionResponseMessage::new()
-                        .embed(check_in_embed(
+                        .embeds(check_in_message_embeds(
                             serenity_ctx,
                             guild_id,
+                            voice_channel_id,
+                            state,
                             expected,
                             arrivals,
                             started_at,
@@ -700,6 +724,78 @@ fn user_in_voice(
         .and_then(|g| g.voice_states.get(&user_id))
         .and_then(|vs| vs.channel_id)
         == Some(voice_channel_id)
+}
+
+/// Returns the embed pair posted on the gathering message during the
+/// pre-gather countdown: the main countdown embed, followed by the live
+/// attendee list (current voice channel members + `/expect`d users).
+#[allow(clippy::too_many_arguments)]
+fn pregather_message_embeds(
+    serenity_ctx: &SerenityContext,
+    guild_id: GuildId,
+    voice_channel_id: ChannelId,
+    state: &GatherState,
+    pregather_started_at: Instant,
+    pregather_started_at_wall: OffsetDateTime,
+    original_duration: Duration,
+    author_mention: &str,
+    schedule_label: &str,
+    footer: Option<&str>,
+) -> Vec<CreateEmbed> {
+    let main = pregather_embed(
+        state,
+        pregather_started_at,
+        pregather_started_at_wall,
+        original_duration,
+        author_mention,
+        schedule_label,
+        footer,
+    );
+    let attendees = state_attendees_embed(serenity_ctx, guild_id, voice_channel_id, state);
+    vec![main, attendees]
+}
+
+/// Returns the embed pair posted on the gathering message during check-in:
+/// the arrival table, followed by the live attendee list.
+#[allow(clippy::too_many_arguments)]
+fn check_in_message_embeds(
+    serenity_ctx: &SerenityContext,
+    guild_id: GuildId,
+    voice_channel_id: ChannelId,
+    state: &GatherState,
+    expected: &HashSet<UserId>,
+    arrivals: &HashMap<UserId, Duration>,
+    started_at: Instant,
+    grace_ends_at: Instant,
+    silent: bool,
+    footer: Option<&str>,
+) -> Vec<CreateEmbed> {
+    let main = check_in_embed(
+        serenity_ctx,
+        guild_id,
+        expected,
+        arrivals,
+        started_at,
+        grace_ends_at,
+        silent,
+        footer,
+    );
+    let attendees = state_attendees_embed(serenity_ctx, guild_id, voice_channel_id, state);
+    vec![main, attendees]
+}
+
+/// Build the attendees embed for the current state — a thin wrapper that
+/// holds the locks on `extra_expected` and `forgotten` only long enough to
+/// hand a snapshot to `attendance_service`.
+fn state_attendees_embed(
+    serenity_ctx: &SerenityContext,
+    guild_id: GuildId,
+    voice_channel_id: ChannelId,
+    state: &GatherState,
+) -> CreateEmbed {
+    let extra = state.extra_expected.lock().unwrap().clone();
+    let forgotten = state.forgotten.lock().unwrap().clone();
+    attendance_service::attendees_embed(serenity_ctx, guild_id, voice_channel_id, &extra, &forgotten)
 }
 
 #[allow(clippy::too_many_arguments)]

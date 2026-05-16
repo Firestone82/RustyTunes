@@ -1,7 +1,8 @@
 use crate::bot::MusicBotError;
 use crate::embeds::activity::break_embed::{break_buttons, BreakEmbed, BTN_BREAK_CANCEL, BTN_BREAK_SKIP};
+use crate::service::attendance_service;
 use crate::utils::time_utils::{get_current_time, parse_duration_from_string};
-use serenity::all::{ChannelId, CreateInteractionResponse, CreateInteractionResponseMessage, CreateMessage, EditMessage, GuildId, Mentionable, Message, UserId};
+use serenity::all::{ChannelId, CreateEmbed, CreateInteractionResponse, CreateInteractionResponseMessage, CreateMessage, EditMessage, GuildId, Mentionable, Message, UserId};
 use serenity::prelude::Context as SerenityContext;
 use std::collections::HashSet;
 use std::sync::{Arc, Mutex};
@@ -86,10 +87,12 @@ pub async fn run_break(
         .send_message(
             &serenity_ctx.http,
             CreateMessage::new()
-                .embed(progress_embed(
+                .embeds(break_message_embeds(
+                    serenity_ctx,
+                    guild_id,
+                    voice_channel_id,
                     &state,
                     None,
-                    expected_mentions_text(&state).as_deref(),
                 ))
                 .components(break_buttons(false)),
         )
@@ -167,10 +170,12 @@ pub async fn run_break(
         .edit(
             &serenity_ctx.http,
             EditMessage::new()
-                .embed(progress_embed(
+                .embeds(break_message_embeds(
+                    serenity_ctx,
+                    guild_id,
+                    voice_channel_id,
                     &state,
                     Some(footer),
-                    expected_mentions_text(&state).as_deref(),
                 ))
                 .components(Vec::new()),
         )
@@ -179,11 +184,27 @@ pub async fn run_break(
     Ok(cancelled)
 }
 
+/// Returns the embed pair posted on the break message: the countdown
+/// progress embed, followed by the live attendee list.
+fn break_message_embeds(
+    serenity_ctx: &SerenityContext,
+    guild_id: GuildId,
+    voice_channel_id: ChannelId,
+    state: &BreakState,
+    footer: Option<&str>,
+) -> Vec<CreateEmbed> {
+    let main = progress_embed(state, footer, expected_mentions_text(state).as_deref());
+    let extra = state.extra_expected.lock().unwrap().clone();
+    let forgotten = state.forgotten.lock().unwrap().clone();
+    let attendees = attendance_service::attendees_embed(serenity_ctx, guild_id, voice_channel_id, &extra, &forgotten);
+    vec![main, attendees]
+}
+
 fn progress_embed(
     state: &BreakState,
     footer: Option<&str>,
     expected_mentions: Option<&str>,
-) -> serenity::all::CreateEmbed {
+) -> CreateEmbed {
     let now = Instant::now();
     let ends_at = state.ends_at_instant();
     let remaining = ends_at.saturating_duration_since(now);
