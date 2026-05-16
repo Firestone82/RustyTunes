@@ -284,14 +284,20 @@ fn local_listing_embed(
     description: &str,
     files: &[PathBuf],
 ) -> CreateEmbed {
-    let mut embed = CreateEmbed::new()
+    let mut body = String::from(description);
+    if !files.is_empty() {
+        body.push_str("\n\n");
+        for (i, path) in files.iter().enumerate() {
+            let name = path.file_name().and_then(|n| n.to_str()).unwrap_or("?");
+            if i > 0 {
+                body.push('\n');
+            }
+            body.push_str(&format!("`{}.` {}", i + 1, name));
+        }
+    }
+
+    CreateEmbed::new()
         .color(Color::DARK_BLUE)
         .title(title.to_string())
-        .description(description.to_string());
-
-    for (i, path) in files.iter().enumerate() {
-        let name = path.file_name().and_then(|n| n.to_str()).unwrap_or("?");
-        embed = embed.field(format!("{}. {}", i + 1, name), "\u{200b}", false);
-    }
-    embed
+        .description(body)
 }
