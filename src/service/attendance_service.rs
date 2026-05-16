@@ -28,7 +28,7 @@ pub fn attendee_rows(
         })
         .unwrap_or_default();
 
-    let mut all: HashSet<UserId> = voice_ids.clone();
+    let mut all: HashSet<UserId> = voice_ids;
     for id in extra_expected {
         all.insert(*id);
     }
@@ -37,10 +37,7 @@ pub fn attendee_rows(
     }
 
     all.into_iter()
-        .map(|id| AttendeeRow {
-            mention: id.mention().to_string(),
-            in_voice: voice_ids.contains(&id),
-        })
+        .map(|id| AttendeeRow { mention: id.mention().to_string() })
         .collect()
 }
 

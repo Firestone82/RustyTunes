@@ -4,7 +4,6 @@ use serenity::all::{Color, CreateEmbed};
 /// never has to touch the serenity cache.
 pub struct AttendeeRow {
     pub mention: String,
-    pub in_voice: bool,
 }
 
 pub struct AttendeesEmbed<'a> {
@@ -17,17 +16,14 @@ impl<'a> AttendeesEmbed<'a> {
         let description = if self.rows.is_empty() {
             "_No attendees yet — join the voice channel or wait for `/expect`._".to_string()
         } else {
-            let mut lines: Vec<String> = self
-                .rows
+            let mut mentions: Vec<String> = self.rows.iter().map(|row| row.mention.clone()).collect();
+            mentions.sort();
+            mentions
                 .iter()
-                .map(|row| {
-                    let icon = if row.in_voice { "🔊" } else { "⏳" };
-                    let label = if row.in_voice { "in voice" } else { "expected" };
-                    format!("{} {} — {}", icon, row.mention, label)
-                })
-                .collect();
-            lines.sort();
-            lines.join("\n")
+                .enumerate()
+                .map(|(i, m)| format!("{}. {}", i + 1, m))
+                .collect::<Vec<_>>()
+                .join("\n")
         };
 
         CreateEmbed::new()

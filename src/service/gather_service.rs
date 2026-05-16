@@ -767,7 +767,6 @@ fn pregather_embed(
 ) -> serenity::all::CreateEmbed {
     let extension = *state.pregather_extension.lock().unwrap();
     let total = original_duration + extension;
-    let mentions = expected_mentions_text(state);
     GatherEmbed::Pregather {
         ends_at: pregather_started_at + total,
         ends_at_wall: pregather_started_at_wall + total,
@@ -775,26 +774,9 @@ fn pregather_embed(
         schedule_label,
         extension,
         original_duration,
-        expected_mentions: mentions.as_deref(),
         footer,
     }
     .to_embed()
-}
-
-/// Comma-separated mentions of the users `/expect` has queued, or `None` if
-/// the list is empty.
-pub fn expected_mentions_text(state: &GatherState) -> Option<String> {
-    let extra = state.extra_expected.lock().unwrap();
-    if extra.is_empty() {
-        return None;
-    }
-    Some(
-        extra
-            .iter()
-            .map(|id| id.mention().to_string())
-            .collect::<Vec<_>>()
-            .join(", "),
-    )
 }
 
 async fn ghost_ping(

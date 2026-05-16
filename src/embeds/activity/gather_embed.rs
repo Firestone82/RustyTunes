@@ -48,7 +48,6 @@ pub enum GatherEmbed<'a> {
         schedule_label: &'a str,
         extension: Duration,
         original_duration: Duration,
-        expected_mentions: Option<&'a str>,
         footer: Option<&'a str>,
     },
     CheckIn {
@@ -126,7 +125,6 @@ impl<'a> GatherEmbed<'a> {
                 schedule_label,
                 extension,
                 original_duration,
-                expected_mentions,
                 footer,
             } => {
                 let remaining = ends_at.saturating_duration_since(Instant::now());
@@ -145,9 +143,6 @@ impl<'a> GatherEmbed<'a> {
                         humanize_duration(*extension),
                         humanize_duration(*original_duration + *extension),
                     ));
-                }
-                if let Some(mentions) = expected_mentions {
-                    description.push_str(&format!("\nExpecting: {}", mentions));
                 }
                 description.push_str(
                     "\n\nWhen the timer ends, everyone still in voice will be gathered automatically \
