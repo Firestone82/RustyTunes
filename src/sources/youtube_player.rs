@@ -115,6 +115,10 @@ impl YoutubeClient {
                     channel: decode_html_entities(channel).to_string(),
                     track_url: format!("{SINGLE_URI}{}", video_id),
                     play_url: None,
+                    // YouTube Data API search/playlist responses don't carry
+                    // duration; we'd need a separate videos.list call. Probed
+                    // lazily via yt-dlp before playback instead.
+                    duration: None,
                 };
 
                 Some(Ok(Track {
@@ -202,6 +206,7 @@ impl YoutubeClient {
                         channel: decode_html_entities(channel).to_string(),
                         track_url: format!("{SINGLE_URI}{}", video_id),
                         play_url: None,
+                        duration: None,
                     };
 
                     Some(Ok(Track {
@@ -283,6 +288,10 @@ impl YoutubeClient {
                 .or_else(|| v["uploader"].as_str())
                 .unwrap_or("")
                 .to_string();
+            let duration = v["duration"]
+                .as_f64()
+                .filter(|d| d.is_finite() && *d > 0.0)
+                .map(|d| std::time::Duration::from_secs(d as u64));
 
             tracks.push(Track {
                 id: id.to_string(),
@@ -292,6 +301,7 @@ impl YoutubeClient {
                     channel,
                     track_url: format!("{SINGLE_URI}{id}"),
                     play_url: None,
+                    duration,
                 },
                 added_by: String::new(),
                 source: crate::player::track::TrackSource::YouTube,

@@ -1,7 +1,7 @@
 use crate::bot::{Context, MusicBotError};
 use crate::embeds::utility::notify_embeds::NotifyEmbed;
 use crate::service::embed_service::SendEmbed;
-use crate::service::notifier_service::{encode_targets, MessageNotify, Notifier, NotifierError};
+use crate::service::notifier_service::{encode_metadata, MessageNotify, Notifier, NotifierError};
 use crate::utils::time_utils::{parse_text, TimeParseError};
 use serenity::all::{Mentionable, User, UserId};
 use tokio::sync::{RwLockReadGuard, RwLockWriteGuard};
@@ -15,17 +15,6 @@ use tokio::sync::{RwLockReadGuard, RwLockWriteGuard};
     aliases("remind")
 )]
 pub async fn notify(_ctx: Context<'_>) -> Result<(), MusicBotError> {
-    Ok(())
-}
-
-/// Slash-command alias of `/notify` — same `me`/`you`/`list`/`remove` subcommands.
-#[poise::command(
-    prefix_command,
-    slash_command,
-    subcommands("me", "you", "list", "remove"),
-    subcommand_required
-)]
-pub async fn remind(_ctx: Context<'_>) -> Result<(), MusicBotError> {
     Ok(())
 }
 
@@ -92,14 +81,18 @@ pub async fn you(
     let target_ids: Vec<UserId> = targets.iter().map(|u| u.id).collect();
 
     let user_note = note.unwrap_or_default();
-    let stored_note = encode_targets(&target_ids, &user_note);
+    let stored_note = encode_metadata(Some(ctx.author().id), &target_ids, &user_note);
 
     let mut notifier: RwLockWriteGuard<Notifier> = ctx.data().notifier.write().await;
     let created: MessageNotify = notifier
         .add_message_for_user(
             guild_id,
             ctx.channel_id(),
-            ctx.author().id,
+            // Owned by the primary target so it shows up in their `/notify list`
+            // and they can `/notify remove` it — not the person scheduling it.
+            // Additional targets (user2, user3) live in the encoded note and
+            // still get pinged when the reminder fires.
+            user1.id,
             None,
             notify_at,
             Some(stored_note),

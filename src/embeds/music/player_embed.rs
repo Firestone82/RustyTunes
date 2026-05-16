@@ -37,7 +37,9 @@ pub enum PlayerEmbed<'a> {
     SearchExpired,
     SearchCancelled,
     NoResults(String),
+    MissingQuery,
     QuotaExceeded,
+    TrackTooLong { title: String, cap: std::time::Duration },
     PlaybackErrorEmbed(String),
     InactivityLeave,
     History(&'a VecDeque<Track>),
@@ -175,10 +177,22 @@ impl<'a> PlayerEmbed<'a> {
                 .color(Color::DARK_GOLD)
                 .title("🔎  No results")
                 .description(format!("No tracks found for: **{}**", query)),
+            PlayerEmbed::MissingQuery => CreateEmbed::new()
+                .color(Color::DARK_RED)
+                .title("🚫  Missing search query")
+                .description("Usage: `!play <url or search terms>`. Provide a YouTube/Spotify URL or some text to search for."),
             PlayerEmbed::QuotaExceeded => CreateEmbed::new()
                 .color(Color::DARK_GOLD)
                 .title("🚧  YouTube API quota exceeded")
                 .description("The bot has hit YouTube's daily search quota. Please try again later or ask the owner to provide a fresh API key."),
+            PlayerEmbed::TrackTooLong { title, cap } => CreateEmbed::new()
+                .color(Color::DARK_RED)
+                .title("🚫  Track too long")
+                .description(format!(
+                    "**{}** exceeds the {}-minute maximum and was not added to the queue.",
+                    title,
+                    cap.as_secs() / 60,
+                )),
             PlayerEmbed::PlaybackErrorEmbed(message) => CreateEmbed::new()
                 .color(Color::DARK_RED)
                 .title("🚫  Playback error")
@@ -270,14 +284,20 @@ fn local_listing_embed(
     description: &str,
     files: &[PathBuf],
 ) -> CreateEmbed {
-    let mut embed = CreateEmbed::new()
+    let mut body = String::from(description);
+    if !files.is_empty() {
+        body.push_str("\n\n");
+        for (i, path) in files.iter().enumerate() {
+            let name = path.file_name().and_then(|n| n.to_str()).unwrap_or("?");
+            if i > 0 {
+                body.push('\n');
+            }
+            body.push_str(&format!("`{}.` {}", i + 1, name));
+        }
+    }
+
+    CreateEmbed::new()
         .color(Color::DARK_BLUE)
         .title(title.to_string())
-        .description(description.to_string());
-
-    for (i, path) in files.iter().enumerate() {
-        let name = path.file_name().and_then(|n| n.to_str()).unwrap_or("?");
-        embed = embed.field(format!("{}. {}", i + 1, name), "\u{200b}", false);
-    }
-    embed
+        .description(body)
 }

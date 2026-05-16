@@ -1,6 +1,14 @@
 use crate::service::cache_service;
 use songbird::input::{File, Input, YoutubeDl};
 use std::path::PathBuf;
+use std::time::Duration;
+
+/// Tracks longer than this are rejected outright — too long to be a music
+/// queue item (typically full DJ sets, podcasts, lectures).
+pub const MAX_TRACK_DURATION: Duration = Duration::from_secs(60 * 60);
+/// Tracks longer than this are streamed but never cached to disk, so the
+/// cache doesn't bloat with long-form audio that's unlikely to be replayed.
+pub const STREAM_ONLY_DURATION: Duration = Duration::from_secs(60 * 10);
 
 #[derive(Debug, thiserror::Error)]
 pub enum PlaybackError {
@@ -118,4 +126,27 @@ pub struct TrackMetadata {
     /// Optional override used by `build_input`. For Spotify this is the
     /// `ytsearch1:` query, while `track_url` stays the Spotify permalink.
     pub play_url: Option<String>,
+    /// Reported track length, when the source knew it at resolution time.
+    /// `None` means we never asked — sources without cheap duration info
+    /// (YouTube Data API search) leave this unset until a yt-dlp probe runs.
+    pub duration: Option<Duration>,
+}
+
+impl Track {
+    pub fn duration(&self) -> Option<Duration> {
+        self.metadata.duration
+    }
+
+    /// True when the track is known to be over the hard length cap. Returns
+    /// false if duration is unknown — callers should probe before assuming
+    /// the track is acceptable.
+    pub fn is_known_too_long(&self) -> bool {
+        self.duration().is_some_and(|d| d > MAX_TRACK_DURATION)
+    }
+
+    /// True when the track is known to be too long for caching. Returns
+    /// false if duration is unknown.
+    pub fn is_known_long_form(&self) -> bool {
+        self.duration().is_some_and(|d| d > STREAM_ONLY_DURATION)
+    }
 }

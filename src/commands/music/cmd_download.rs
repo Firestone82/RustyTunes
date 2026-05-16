@@ -219,6 +219,7 @@ pub fn build_local_track(
             channel: "Local file".to_string(),
             track_url: display_url,
             play_url: None,
+            duration: None,
         },
         added_by,
         source: TrackSource::Local(path),
