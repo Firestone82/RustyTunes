@@ -245,6 +245,36 @@ pub fn is_cacheable(track: &Track) -> bool {
     cache_stem_for(track).is_some()
 }
 
+/// Ask yt-dlp whether `track` is a live broadcast. Returns `true` when
+/// yt-dlp confirms the video is live; returns `false` on any error or when
+/// the track is a local file (local files are never livestreams).
+pub async fn probe_is_live(track: &Track) -> bool {
+    if matches!(track.source, TrackSource::Local(_)) {
+        return false;
+    }
+    let input_url = track
+        .metadata
+        .play_url
+        .clone()
+        .unwrap_or_else(|| track.metadata.track_url.clone());
+
+    let output = Command::new("yt-dlp")
+        .args(["--no-warnings", "--no-playlist", "--print", "%(is_live)s"])
+        .arg(&input_url)
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .output()
+        .await;
+
+    match output {
+        Ok(out) if out.status.success() => {
+            let stdout = String::from_utf8_lossy(&out.stdout);
+            stdout.trim().eq_ignore_ascii_case("true")
+        }
+        _ => false,
+    }
+}
+
 /// Ask yt-dlp how long `track` is without downloading it. Returns `None`
 /// if the probe fails or yt-dlp can't determine a duration (livestreams,
 /// region-blocked content, malformed URLs). Used to gate playback for
