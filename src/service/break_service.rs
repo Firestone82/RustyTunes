@@ -60,7 +60,9 @@ pub async fn run_break(
 ) -> Result<bool, MusicBotError> {
     let bot_id = serenity_ctx.cache.current_user().id;
 
-    // Ping all voice members in a separate message above the embed.
+    // Voice members are pinged in the embed message's content field so the
+    // @mentions stay glued to the embed (separate messages above tended to get
+    // visually orphaned as the break embed refreshed).
     let voice_mentions: String = serenity_ctx
         .cache
         .guild(guild_id)
@@ -74,19 +76,12 @@ pub async fn run_break(
                 .join(" ")
         })
         .unwrap_or_default();
-    if !voice_mentions.is_empty() {
-        let _ = text_channel_id
-            .send_message(
-                &serenity_ctx.http,
-                CreateMessage::new().content(voice_mentions),
-            )
-            .await;
-    }
 
     let mut msg: Message = text_channel_id
         .send_message(
             &serenity_ctx.http,
             CreateMessage::new()
+                .content(voice_mentions)
                 .embeds(break_message_embeds(
                     serenity_ctx,
                     guild_id,

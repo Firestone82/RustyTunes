@@ -91,18 +91,14 @@ pub async fn start_gather(
     let mut msg: Message;
 
     if pregather_duration > Duration::ZERO {
-        // Ping voice members in a separate message above the embed.
+        // Voice members are pinged in the embed message's content field so the
+        // @mentions stay glued to the embed (separate messages tended to get
+        // visually orphaned as the embed refreshed).
         let voice_mentions: String = initial_voice_ids
             .iter()
             .map(|id| id.mention().to_string())
             .collect::<Vec<_>>()
             .join(" ");
-        let _ = text_channel_id
-            .send_message(
-                &serenity_ctx.http,
-                CreateMessage::new().content(voice_mentions),
-            )
-            .await;
 
         let pregather_started_at = Instant::now();
         let pregather_started_at_wall = get_current_time();
@@ -116,6 +112,7 @@ pub async fn start_gather(
             .send_message(
                 &serenity_ctx.http,
                 CreateMessage::new()
+                    .content(voice_mentions)
                     .embeds(pregather_message_embeds(
                         serenity_ctx,
                         guild_id,
@@ -285,7 +282,9 @@ pub async fn start_gather(
         .edit(
             &serenity_ctx.http,
             EditMessage::new()
-                .content("")
+                // Leave `.content` untouched — the @mentions seeded on the
+                // initial send fire the ping once and remain visible above
+                // the embed for the rest of the gathering.
                 .embeds(check_in_message_embeds(
                     serenity_ctx,
                     guild_id,
