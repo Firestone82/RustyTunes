@@ -7,6 +7,7 @@ use time::OffsetDateTime;
 pub const BTN_HERE: &str = "gather_im_here";
 pub const BTN_CANCEL: &str = "gather_cancel";
 pub const BTN_FORCE_START: &str = "gather_force_start";
+pub const BTN_NOT_COMING: &str = "gather_not_coming";
 pub const BTN_TOGGLE_SILENT: &str = "gather_toggle_silent";
 pub const BTN_JOIN: &str = "gather_join";
 pub const BTN_LEAVE: &str = "gather_leave";
@@ -19,6 +20,8 @@ pub struct CheckInRow {
     pub display_name: String,
     /// `None` = not arrived, `Some(ZERO)` = on time, `Some(d>0)` = late by `d`.
     pub arrived: Option<Duration>,
+    /// User explicitly pressed "I'm out" and won't be coming.
+    pub opted_out: bool,
 }
 
 pub enum GatherEmbed<'a> {
@@ -182,24 +185,31 @@ fn build_check_in_embed(
     let in_grace = now < grace_ends_at;
     let grace_remaining = grace_ends_at.saturating_duration_since(now);
 
-    // Sort: arrived first by lateness ascending; missing alphabetically.
+    // Sort: arrived (by lateness) → opted-out → missing (alphabetically within each group).
     let mut sorted: Vec<&CheckInRow> = rows.iter().collect();
-    sorted.sort_by(|a, b| match (a.arrived, b.arrived) {
-        (Some(da), Some(db)) => da
-            .cmp(&db)
-            .then_with(|| a.display_name.cmp(&b.display_name)),
-        (Some(_), None) => std::cmp::Ordering::Less,
-        (None, Some(_)) => std::cmp::Ordering::Greater,
-        (None, None) => a.display_name.cmp(&b.display_name),
+    sorted.sort_by(|a, b| {
+        let rank = |r: &&CheckInRow| match (r.arrived, r.opted_out) {
+            (Some(_), _) => 0,
+            (None, true) => 1,
+            (None, false) => 2,
+        };
+        rank(a).cmp(&rank(b)).then_with(|| match (a.arrived, b.arrived) {
+            (Some(da), Some(db)) => da.cmp(&db),
+            _ => a.display_name.cmp(&b.display_name),
+        })
     });
 
     let cells: Vec<(String, String)> = sorted
         .iter()
         .map(|row| {
-            let status = match row.arrived {
-                Some(d) if d.is_zero() => "ON TIME".to_string(),
-                Some(d) => format!("+{}", format_mmss(d)),
-                None => "--:--".to_string(),
+            let status = if row.opted_out {
+                "OUT".to_string()
+            } else {
+                match row.arrived {
+                    Some(d) if d.is_zero() => "ON TIME".to_string(),
+                    Some(d) => format!("+{}", format_mmss(d)),
+                    None => "--:--".to_string(),
+                }
             };
             (row.display_name.clone(), status)
         })
@@ -259,8 +269,8 @@ fn build_check_in_embed(
         )
     };
 
-    let present = cells.iter().filter(|(_, s)| s != "--:--").count();
-    let total = cells.len();
+    let present = sorted.iter().filter(|r| r.arrived.is_some()).count();
+    let total = sorted.iter().filter(|r| !r.opted_out).count();
     let ping_status = if silent { "🔕 off" } else { "🔔 on" };
 
     let color = if footer.is_some() {
@@ -320,9 +330,9 @@ pub fn gather_buttons(
             .label("I'm here!")
             .style(ButtonStyle::Success)
             .disabled(disabled),
-        CreateButton::new(BTN_FORCE_START)
-            .label("Force start")
-            .style(ButtonStyle::Primary)
+        CreateButton::new(BTN_NOT_COMING)
+            .label("I'm out")
+            .style(ButtonStyle::Secondary)
             .disabled(disabled),
         CreateButton::new(BTN_TOGGLE_SILENT)
             .label(if silent { "🔔 Unmute pings" } else { "🔕 Mute pings" })
