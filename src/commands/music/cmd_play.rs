@@ -198,15 +198,17 @@ async fn resolve_source(
         let result = match ctx.data().spotify_client.search(track_source).await {
             Ok(SpotifySearchResult::Track(track)) => Ok(YouTubeSearchResult::Track(track)),
             Ok(SpotifySearchResult::Playlist(playlist)) => Ok(YouTubeSearchResult::Playlist(playlist)),
-            Err(SpotifyError::TrackNotFound(_)) | Err(SpotifyError::PlaylistNotFound(_)) => {
-                Err(SearchError::VideoNotFound(track_source.to_owned()))
-            }
+            Err(SpotifyError::TrackNotFound(_)) | Err(SpotifyError::PlaylistNotFound(_)) => Err(SearchError::VideoNotFound(track_source.to_owned())),
             Err(error) => return Err(MusicBotError::from(error)),
         };
         return Ok(result);
     }
 
-    Ok(ctx.data().youtube_client.search_track_url(track_source.to_owned(), 5).await)
+    Ok(ctx
+        .data()
+        .youtube_client
+        .search_track_url(track_source.to_owned(), 5)
+        .await)
 }
 
 async fn do_play(
