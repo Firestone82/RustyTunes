@@ -80,8 +80,8 @@ impl<'a> NotifyEmbed<'a> {
                         true,
                     );
 
-                if !targets.is_empty() {
-                    builder = builder.field("From:", notify.user_id.mention().to_string(), true);
+                if let Some(scheduler) = notify.scheduled_by() {
+                    builder = builder.field("From:", scheduler.mention().to_string(), true);
                 }
 
                 if let Some(link) = create_link(notify) {
@@ -112,10 +112,15 @@ impl<'a> NotifyEmbed<'a> {
                         }
                         _ => String::new(),
                     };
+                    let from_tag = match n.scheduled_by() {
+                        Some(by) => format!(" (from {})", by.mention()),
+                        None => String::new(),
+                    };
                     description.push_str(&format!(
-                        "`#{:>3}` `{}`{}\n",
+                        "`#{:>3}` `{}`{}{}\n",
                         n.id,
                         format_time(n.notify_at),
+                        from_tag,
                         note_preview
                     ));
                 }

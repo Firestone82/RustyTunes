@@ -66,10 +66,10 @@ impl From<MessageNotifyRow> for MessageNotify {
 
 impl MessageNotify {
     /// Returns the note as it should be shown to a human, with any internal
-    /// `[T:…]` target prefix stripped.
+    /// `[F:…]` / `[T:…]` metadata prefixes stripped.
     pub fn display_note(&self) -> Option<String> {
         let raw = self.note.as_deref()?;
-        let (_, clean) = extract_targets(raw);
+        let (_, _, clean) = extract_metadata(raw);
         if clean.is_empty() {
             None
         } else {
@@ -77,41 +77,80 @@ impl MessageNotify {
         }
     }
 
-    /// Extra users to ping when this notification fires (used by /remindYou).
-    /// Empty for plain /notify entries.
+    /// Extra users to ping when this notification fires (used by `/notify you`).
+    /// Empty for plain `/notify me` entries.
     pub fn targets(&self) -> Vec<UserId> {
         match self.note.as_deref() {
-            Some(raw) => extract_targets(raw).0,
+            Some(raw) => extract_metadata(raw).1,
             None => Vec::new(),
+        }
+    }
+
+    /// The user who scheduled this reminder, when it was scheduled *for*
+    /// someone else via `/notify you`. `None` for self-scheduled `/notify me`
+    /// entries (where the owner is the requester).
+    pub fn scheduled_by(&self) -> Option<UserId> {
+        match self.note.as_deref() {
+            Some(raw) => extract_metadata(raw).0,
+            None => None,
         }
     }
 }
 
-/// Encode a list of recipient user IDs into the note as `[T:1,2,3]rest`.
-/// Used by /remindYou so a single notify_me row can ping multiple people.
-pub fn encode_targets(
+/// Encode the per-reminder metadata into the note as `[F:scheduler][T:t1,t2]rest`.
+/// Either segment is optional — a plain `/notify me` entry stores just the raw note.
+pub fn encode_metadata(
+    scheduled_by: Option<UserId>,
     targets: &[UserId],
     note: &str,
 ) -> String {
-    if targets.is_empty() {
-        return note.to_string();
+    let mut prefix = String::new();
+    if let Some(by) = scheduled_by {
+        prefix.push_str(&format!("[F:{}]", by.get()));
     }
-    let ids: Vec<String> = targets.iter().map(|u| u.get().to_string()).collect();
-    format!("[T:{}]{}", ids.join(","), note)
+    if !targets.is_empty() {
+        let ids: Vec<String> = targets.iter().map(|u| u.get().to_string()).collect();
+        prefix.push_str(&format!("[T:{}]", ids.join(",")));
+    }
+    if prefix.is_empty() {
+        note.to_string()
+    } else {
+        format!("{}{}", prefix, note)
+    }
 }
 
-pub fn extract_targets(note: &str) -> (Vec<UserId>, String) {
-    if let Some(rest) = note.strip_prefix("[T:") {
-        if let Some(end) = rest.find(']') {
-            let ids: Vec<UserId> = rest[..end]
+pub fn extract_metadata(note: &str) -> (Option<UserId>, Vec<UserId>, String) {
+    let mut rest = note;
+
+    let scheduled_by = if let Some(after_f) = rest.strip_prefix("[F:") {
+        if let Some(end) = after_f.find(']') {
+            let id = after_f[..end].parse::<u64>().ok().map(UserId::new);
+            rest = &after_f[end + 1..];
+            id
+        } else {
+            None
+        }
+    } else {
+        None
+    };
+
+    let targets = if let Some(after_t) = rest.strip_prefix("[T:") {
+        if let Some(end) = after_t.find(']') {
+            let ids: Vec<UserId> = after_t[..end]
                 .split(',')
                 .filter_map(|s| s.parse::<u64>().ok())
                 .map(UserId::new)
                 .collect();
-            return (ids, rest[end + 1..].to_string());
+            rest = &after_t[end + 1..];
+            ids
+        } else {
+            Vec::new()
         }
-    }
-    (Vec::new(), note.to_string())
+    } else {
+        Vec::new()
+    };
+
+    (scheduled_by, targets, rest.to_string())
 }
 
 pub struct Notifier {
@@ -220,10 +259,12 @@ impl Notifier {
         guild_id: GuildId,
         id: i64,
     ) -> Result<MessageNotify, NotifierError> {
+        // Allow removal by either the owner (the target the reminder fires for)
+        // or the user who originally scheduled it via `/notify you`.
         let position = self
             .messages
             .iter()
-            .position(|m| m.id == id && m.user_id == user_id && m.guild_id == guild_id)
+            .position(|m| m.id == id && m.guild_id == guild_id && (m.user_id == user_id || m.scheduled_by() == Some(user_id)))
             .ok_or(NotifierError::NotFound)?;
 
         let removed = self.messages.remove(position);

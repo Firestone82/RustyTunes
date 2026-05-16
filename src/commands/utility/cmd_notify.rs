@@ -1,7 +1,7 @@
 use crate::bot::{Context, MusicBotError};
 use crate::embeds::utility::notify_embeds::NotifyEmbed;
 use crate::service::embed_service::SendEmbed;
-use crate::service::notifier_service::{encode_targets, MessageNotify, Notifier, NotifierError};
+use crate::service::notifier_service::{encode_metadata, MessageNotify, Notifier, NotifierError};
 use crate::utils::time_utils::{parse_text, TimeParseError};
 use serenity::all::{Mentionable, User, UserId};
 use tokio::sync::{RwLockReadGuard, RwLockWriteGuard};
@@ -92,7 +92,7 @@ pub async fn you(
     let target_ids: Vec<UserId> = targets.iter().map(|u| u.id).collect();
 
     let user_note = note.unwrap_or_default();
-    let stored_note = encode_targets(&target_ids, &user_note);
+    let stored_note = encode_metadata(Some(ctx.author().id), &target_ids, &user_note);
 
     let mut notifier: RwLockWriteGuard<Notifier> = ctx.data().notifier.write().await;
     let created: MessageNotify = notifier
