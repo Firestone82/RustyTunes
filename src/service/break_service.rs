@@ -154,10 +154,12 @@ pub async fn run_break(
             .edit(
                 &serenity_ctx.http,
                 EditMessage::new()
-                    .embed(progress_embed(
+                    .embeds(break_message_embeds(
+                        serenity_ctx,
+                        guild_id,
+                        voice_channel_id,
                         &state,
                         None,
-                        expected_mentions_text(&state).as_deref(),
                     ))
                     .components(break_buttons(false)),
             )

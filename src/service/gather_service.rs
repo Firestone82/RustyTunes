@@ -756,13 +756,14 @@ fn pregather_message_embeds(
 }
 
 /// Returns the embed pair posted on the gathering message during check-in:
-/// the arrival table, followed by the live attendee list.
+/// the arrival table only. The check-in table already conveys attendance,
+/// so the second attendees embed is intentionally omitted in this phase.
 #[allow(clippy::too_many_arguments)]
 fn check_in_message_embeds(
     serenity_ctx: &SerenityContext,
     guild_id: GuildId,
-    voice_channel_id: ChannelId,
-    state: &GatherState,
+    _voice_channel_id: ChannelId,
+    _state: &GatherState,
     expected: &HashSet<UserId>,
     arrivals: &HashMap<UserId, Duration>,
     started_at: Instant,
@@ -770,7 +771,7 @@ fn check_in_message_embeds(
     silent: bool,
     footer: Option<&str>,
 ) -> Vec<CreateEmbed> {
-    let main = check_in_embed(
+    vec![check_in_embed(
         serenity_ctx,
         guild_id,
         expected,
@@ -779,9 +780,7 @@ fn check_in_message_embeds(
         grace_ends_at,
         silent,
         footer,
-    );
-    let attendees = state_attendees_embed(serenity_ctx, guild_id, voice_channel_id, state);
-    vec![main, attendees]
+    )]
 }
 
 /// Build the attendees embed for the current state — a thin wrapper that
