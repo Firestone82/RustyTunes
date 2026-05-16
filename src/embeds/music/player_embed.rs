@@ -37,6 +37,7 @@ pub enum PlayerEmbed<'a> {
     SearchExpired,
     SearchCancelled,
     NoResults(String),
+    MissingQuery,
     QuotaExceeded,
     TrackTooLong { title: String, cap: std::time::Duration },
     PlaybackErrorEmbed(String),
@@ -176,6 +177,10 @@ impl<'a> PlayerEmbed<'a> {
                 .color(Color::DARK_GOLD)
                 .title("🔎  No results")
                 .description(format!("No tracks found for: **{}**", query)),
+            PlayerEmbed::MissingQuery => CreateEmbed::new()
+                .color(Color::DARK_RED)
+                .title("🚫  Missing search query")
+                .description("Usage: `!play <url or search terms>`. Provide a YouTube/Spotify URL or some text to search for."),
             PlayerEmbed::QuotaExceeded => CreateEmbed::new()
                 .color(Color::DARK_GOLD)
                 .title("🚧  YouTube API quota exceeded")

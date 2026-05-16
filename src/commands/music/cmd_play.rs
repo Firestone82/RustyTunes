@@ -46,6 +46,14 @@ async fn do_play(
     track_source: String,
     top: bool,
 ) -> Result<(), MusicBotError> {
+    if track_source.trim().is_empty() {
+        PlayerEmbed::MissingQuery
+            .to_embed()
+            .send_context(ctx, true, Some(30))
+            .await?;
+        return Ok(());
+    }
+
     let mut result: Result<YouTubeSearchResult, SearchError> = Err(SearchError::InternalError("No search result found".into()));
 
     // Search YouTube
