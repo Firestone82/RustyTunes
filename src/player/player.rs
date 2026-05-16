@@ -281,8 +281,18 @@ impl Player {
             };
 
             if track.duration().is_none() {
-                if let Some(d) = cache_service::probe_duration(&track).await {
-                    track.metadata.duration = Some(d);
+                if let Some(probe) = cache_service::probe_track(&track).await {
+                    if probe.is_live {
+                        tracing::info!("Skipping '{}' — livestreams are not allowed", track.metadata.title);
+                        PlayerEmbed::LivestreamNotAllowed {
+                            title: track.metadata.title.clone(),
+                        }
+                        .to_embed()
+                        .send_context(ctx, false, Some(30))
+                        .await?;
+                        continue;
+                    }
+                    track.metadata.duration = probe.duration;
                 }
             }
 

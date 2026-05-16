@@ -1,5 +1,5 @@
 use crate::bot::MusicBotError;
-use crate::embeds::activity::gather_embed::{gather_buttons, pregather_buttons, CheckInRow, GatherEmbed, BTN_CANCEL, BTN_FORCE_START, BTN_HERE, BTN_JOIN, BTN_LEAVE, BTN_TOGGLE_SILENT, GRACE_PERIOD};
+use crate::embeds::activity::gather_embed::{gather_buttons, pregather_buttons, CheckInRow, GatherEmbed, BTN_CANCEL, BTN_FORCE_START, BTN_HERE, BTN_JOIN, BTN_LEAVE, BTN_NOT_COMING, BTN_TOGGLE_SILENT, GRACE_PERIOD};
 use crate::service::attendance_service;
 use crate::utils::string_utils::sanitize_name;
 use crate::utils::time_utils::get_current_time;
@@ -345,6 +345,7 @@ pub async fn start_gather(
     let deadline = started_at + MAX_GATHER_DURATION;
 
     let mut arrivals: HashMap<UserId, Duration> = HashMap::new();
+    let mut opted_out: HashSet<UserId> = HashSet::new();
 
     let silent = *state.silent.lock().unwrap();
     let _ = msg
@@ -357,6 +358,7 @@ pub async fn start_gather(
                     guild_id,
                     &expected,
                     &arrivals,
+                    &opted_out,
                     started_at,
                     grace_ends_at,
                     silent,
@@ -408,6 +410,7 @@ pub async fn start_gather(
                         &mut grace_ends_at,
                         &mut expected,
                         &mut arrivals,
+                        &mut opted_out,
                         &mut cancelled,
                         &mut last_edit,
                         &state,
@@ -485,6 +488,7 @@ pub async fn start_gather(
                             guild_id,
                             &expected,
                             &arrivals,
+                            &opted_out,
                             started_at,
                             grace_ends_at,
                             silent,
@@ -514,6 +518,7 @@ pub async fn start_gather(
                     guild_id,
                     &expected,
                     &arrivals,
+                    &opted_out,
                     started_at,
                     grace_ends_at,
                     silent,
@@ -537,6 +542,7 @@ async fn handle_interaction(
     grace_ends_at: &mut Instant,
     expected: &mut HashSet<UserId>,
     arrivals: &mut HashMap<UserId, Duration>,
+    opted_out: &mut HashSet<UserId>,
     cancelled: &mut bool,
     last_edit: &mut Instant,
     state: &GatherState,
@@ -561,13 +567,13 @@ async fn handle_interaction(
                 .ok();
             *cancelled = true;
         }
-        BTN_FORCE_START => {
-            if ic.user.id != author_id {
+        BTN_NOT_COMING => {
+            if arrivals.contains_key(&ic.user.id) {
                 ic.create_response(
                     &serenity_ctx.http,
                     CreateInteractionResponse::Message(
                         CreateInteractionResponseMessage::new()
-                            .content("Only the person who started the gathering can force-start it.")
+                            .content("You've already checked in — you can't opt out now.")
                             .ephemeral(true),
                     ),
                 )
@@ -575,7 +581,29 @@ async fn handle_interaction(
                 .ok();
                 return;
             }
-            *grace_ends_at = Instant::now();
+
+            if opted_out.contains(&ic.user.id) {
+                ic.create_response(
+                    &serenity_ctx.http,
+                    CreateInteractionResponse::Message(
+                        CreateInteractionResponseMessage::new()
+                            .content("You've already marked yourself as not coming.")
+                            .ephemeral(true),
+                    ),
+                )
+                .await
+                .ok();
+                return;
+            }
+
+            expected.remove(&ic.user.id);
+            opted_out.insert(ic.user.id);
+
+            let now = Instant::now();
+            if expected.iter().all(|id| arrivals.contains_key(id)) {
+                *grace_ends_at = now.min(*grace_ends_at);
+            }
+
             let silent = *state.silent.lock().unwrap();
             ic.create_response(
                 &serenity_ctx.http,
@@ -586,6 +614,7 @@ async fn handle_interaction(
                             guild_id,
                             expected,
                             arrivals,
+                            opted_out,
                             started_at,
                             *grace_ends_at,
                             silent,
@@ -626,6 +655,7 @@ async fn handle_interaction(
                             guild_id,
                             expected,
                             arrivals,
+                            opted_out,
                             started_at,
                             *grace_ends_at,
                             new_silent,
@@ -687,6 +717,7 @@ async fn handle_interaction(
                             guild_id,
                             expected,
                             arrivals,
+                            opted_out,
                             started_at,
                             *grace_ends_at,
                             silent,
@@ -712,6 +743,7 @@ fn check_in_embed(
     guild_id: GuildId,
     expected: &HashSet<UserId>,
     arrivals: &HashMap<UserId, Duration>,
+    opted_out: &HashSet<UserId>,
     started_at: Instant,
     grace_ends_at: Instant,
     silent: bool,
@@ -719,20 +751,32 @@ fn check_in_embed(
 ) -> serenity::all::CreateEmbed {
     let rows: Vec<CheckInRow> = {
         let guild = serenity_ctx.cache.guild(guild_id);
-        expected
+        let resolve_name = |id: &UserId| {
+            guild
+                .as_ref()
+                .and_then(|g| g.members.get(id))
+                .map(|m| m.display_name().to_string())
+                .unwrap_or_else(|| format!("User {}", id.get()))
+        };
+
+        let mut rows: Vec<CheckInRow> = expected
             .iter()
-            .map(|id| {
-                let raw = guild
-                    .as_ref()
-                    .and_then(|g| g.members.get(id))
-                    .map(|m| m.display_name().to_string())
-                    .unwrap_or_else(|| format!("User {}", id.get()));
-                CheckInRow {
-                    display_name: sanitize_name(&raw),
-                    arrived: arrivals.get(id).copied(),
-                }
+            .map(|id| CheckInRow {
+                display_name: sanitize_name(&resolve_name(id)),
+                arrived: arrivals.get(id).copied(),
+                opted_out: false,
             })
-            .collect()
+            .collect();
+
+        for id in opted_out {
+            rows.push(CheckInRow {
+                display_name: sanitize_name(&resolve_name(id)),
+                arrived: None,
+                opted_out: true,
+            });
+        }
+
+        rows
     };
 
     GatherEmbed::CheckIn {

@@ -40,6 +40,7 @@ pub enum PlayerEmbed<'a> {
     MissingQuery,
     QuotaExceeded,
     TrackTooLong { title: String, cap: std::time::Duration },
+    LivestreamNotAllowed { title: String },
     PlaybackErrorEmbed(String),
     InactivityLeave,
     History(&'a VecDeque<Track>),
@@ -193,6 +194,10 @@ impl<'a> PlayerEmbed<'a> {
                     title,
                     cap.as_secs() / 60,
                 )),
+            PlayerEmbed::LivestreamNotAllowed { title } => CreateEmbed::new()
+                .color(Color::DARK_RED)
+                .title("🔴  Livestreams not allowed")
+                .description(format!("**{}** is a live broadcast and cannot be added to the queue. Only music videos are supported.", title)),
             PlayerEmbed::PlaybackErrorEmbed(message) => CreateEmbed::new()
                 .color(Color::DARK_RED)
                 .title("🚫  Playback error")
