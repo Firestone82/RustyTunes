@@ -1,8 +1,9 @@
 use crate::commands;
 use crate::commands::{activity, music, reputation, utility};
-use crate::handlers::{error_handler, voice_handler};
+use crate::handlers::{error_handler, message_handler, voice_handler};
 use crate::player::player::Player;
 use crate::player::track::PlaybackError;
+use crate::service::emoticon_service::EmoticonService;
 use crate::service::gather_service::GatherState;
 use crate::service::notifier_service::{Notifier, NotifierError};
 use crate::sources::spotify_player::{SpotifyClient, SpotifyError};
@@ -26,6 +27,7 @@ pub struct MusicBotData {
     pub player: Arc<RwLock<Player>>,
     pub notifier: Arc<RwLock<Notifier>>,
     pub gatherings: Arc<RwLock<HashMap<GuildId, Arc<GatherState>>>>,
+    pub emoticon_service: Arc<EmoticonService>,
 }
 
 pub type Database = Pool<Sqlite>;
@@ -149,7 +151,13 @@ impl MusicBotClient {
                         error_handler::schedule_prefix_delete(ctx);
                     })
                 },
-                event_handler: |ctx, event, _fw, data| Box::pin(async move { voice_handler::handle(ctx, event, data).await }),
+                event_handler: |ctx, event, _fw, data| {
+                    Box::pin(async move {
+                        voice_handler::handle(ctx, event, data).await?;
+                        message_handler::handle(ctx, event, data).await?;
+                        Ok(())
+                    })
+                },
 
                 prefix_options: poise::PrefixFrameworkOptions {
                     prefix: Some(String::from("!")),
@@ -224,6 +232,14 @@ impl MusicBotClient {
                         }
                     });
 
+                    let emoticon_service = match EmoticonService::load_default() {
+                        Ok(svc) => Arc::new(svc),
+                        Err(e) => {
+                            tracing::error!("Failed to load emoticon config, disabling feature: {:?}", e);
+                            Arc::new(EmoticonService::empty())
+                        }
+                    };
+
                     Ok(MusicBotData {
                         request_client: reqwest::Client::new(),
                         youtube_client: YoutubeClient::new(),
@@ -232,6 +248,7 @@ impl MusicBotClient {
                         player: player_handle,
                         notifier: notifier_handle,
                         gatherings: Arc::new(RwLock::new(HashMap::new())),
+                        emoticon_service,
                     })
                 })
             })

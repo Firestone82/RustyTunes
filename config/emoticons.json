@@ -1,0 +1,26 @@
+{
+  "_notes": [
+    "Patterns are Rust regex (https://docs.rs/regex). Use '(?i)' for case-insensitive matching and '\\b' for word boundaries so 'ok' matches but 'look' does not.",
+    "The 'emoji' field accepts either a unicode emoji literal ('👌') or a Discord custom-emoji mention. Custom mentions look like '<:name:id>' or '<a:name:id>' for animated emojis.",
+    "To find a custom emoji id, type '\\:emojiname:' in Discord (with the leading backslash) - the client expands it into the full '<:name:id>' form you can copy here.",
+    "The bot can react with custom emojis from any guild it shares.",
+    "An example custom-emoji rule is included below but commented-out (it uses a placeholder id). Replace the id with one from your server and move it into the 'rules' array to enable it."
+  ],
+  "_example_custom": { "pattern": "(?i)\\b(rust|rusty|ferris|crab)\\b", "emoji": "<:ferris:000000000000000000>" },
+  "rules": [
+    { "pattern": "(?i)\\bok(ay)?\\b",            "emoji": "👌" },
+    { "pattern": "(?i)\\b(lol|lmao|rofl)\\b",    "emoji": "😂" },
+    { "pattern": "(?i)\\b(sad|cry|crying)\\b",   "emoji": "😢" },
+    { "pattern": "(?i)\\b(love|heart)\\b",       "emoji": "❤️" },
+    { "pattern": "<3",                           "emoji": "❤️" },
+    { "pattern": "(?i)\\b(fire|lit)\\b",         "emoji": "🔥" },
+    { "pattern": "(?i)\\b(thanks|thx|ty)\\b",    "emoji": "🙏" },
+    { "pattern": "(?i)thank ?you",               "emoji": "🙏" },
+    { "pattern": "(?i)\\b(yes|yep|yup|yeah)\\b", "emoji": "✅" },
+    { "pattern": "(?i)\\b(no|nope|nah)\\b",      "emoji": "❌" },
+    { "pattern": "(?i)\\b(party|celebrate)\\b",  "emoji": "🎉" },
+    { "pattern": "(?i)\\b(music|song|tune)\\b",  "emoji": "🎵" },
+    { "pattern": "(?i)\\b(gg|good game)\\b",     "emoji": "🏆" },
+    { "pattern": "(?i)\\b(bug|broken)\\b",       "emoji": "🐛" }
+  ]
+}
