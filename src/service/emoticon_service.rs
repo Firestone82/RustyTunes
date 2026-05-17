@@ -6,7 +6,9 @@ use std::path::Path;
 
 /// Default location, relative to the working directory, of the emoticon
 /// rules file. Override with the `EMOTICONS_CONFIG` environment variable.
-pub const DEFAULT_CONFIG_PATH: &str = "config/emoticons.json";
+/// The repo ships an `emoticons.json.example` next to it - copy that to
+/// `emoticons.json` and edit. The real file is gitignored.
+pub const DEFAULT_CONFIG_PATH: &str = "emoticons.json";
 
 #[derive(Debug, thiserror::Error)]
 pub enum EmoticonConfigError {
