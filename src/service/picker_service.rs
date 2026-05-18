@@ -1,8 +1,9 @@
 use crate::bot::{Context, MusicBotError};
 use crate::embeds::music::player_embed::PlayerEmbed;
 use crate::service::embed_service::SendEmbed;
+use crate::service::interaction_service;
 // Nutné pro .next() na streamu
-use serenity::all::{ButtonStyle, ComponentInteractionCollector, CreateActionRow, CreateButton, CreateEmbed, CreateInteractionResponse, CreateInteractionResponseMessage};
+use serenity::all::{ButtonStyle, ComponentInteractionCollector, CreateActionRow, CreateButton, CreateEmbed};
 use serenity::futures::StreamExt;
 use std::time::Duration;
 
@@ -63,18 +64,12 @@ pub async fn show_picker(
     // main waiting loop for some interaction
     let interaction_result = tokio::time::timeout(PICKER_TIMEOUT, async {
         while let Some(interaction) = collector.next().await {
-            // check for other users
+            // Defer first so the 3-second ack window can't race the gating
+            // check or the picker work that follows.
+            let _ = interaction_service::ack(&interaction, ctx.http()).await;
+
             if interaction.user.id != ctx.author().id {
-                let _ = interaction
-                    .create_response(
-                        ctx.http(),
-                        CreateInteractionResponse::Message(
-                            CreateInteractionResponseMessage::new()
-                                .content(not_author_message)
-                                .ephemeral(true),
-                        ),
-                    )
-                    .await;
+                let _ = interaction_service::reply_ephemeral(&interaction, ctx.http(), not_author_message).await;
                 continue;
             }
             return interaction;
@@ -92,8 +87,7 @@ pub async fn show_picker(
         return Ok(PickerOutcome::Expired);
     };
 
-    // acknowledge and delete
-    interaction.defer(ctx.http()).await?;
+    // Already deferred above; just clean up the picker message.
     message.delete(ctx.http()).await?;
 
     if interaction.data.custom_id == cancel_id {

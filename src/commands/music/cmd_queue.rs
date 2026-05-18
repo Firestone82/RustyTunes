@@ -3,7 +3,8 @@ use crate::embeds::music::player_embed::PlayerEmbed;
 use crate::embeds::music::queue_embed::QueueEmbed;
 use crate::player::player::Player;
 use crate::service::embed_service::SendEmbed;
-use serenity::all::{ButtonStyle, CreateActionRow, CreateButton, CreateEmbed, CreateInteractionResponse, CreateInteractionResponseMessage, EditMessage};
+use crate::service::interaction_service;
+use serenity::all::{ButtonStyle, CreateActionRow, CreateButton, CreateEmbed, EditMessage};
 use std::collections::HashMap;
 use std::time::{Duration, Instant};
 use tokio::sync::RwLockReadGuard;
@@ -104,35 +105,30 @@ pub async fn queue(
 
         match interaction {
             Some(interaction) => {
+                // Ack first so the 3-second window can't race the gating
+                // check or the queue read that follow.
+                interaction_service::ack(&interaction, &http)
+                    .await
+                    .map_err(|e| MusicBotError::InternalError(e.to_string()))?;
+
                 if interaction.user.id != ctx.author().id {
                     let now = Instant::now();
                     let on_cooldown = cooldowns
                         .get(&interaction.user.id)
                         .map(|&last| now.duration_since(last) < Duration::from_secs(5))
                         .unwrap_or(false);
-                    if on_cooldown {
-                        interaction.defer(&http).await.ok();
-                    } else {
+                    if !on_cooldown {
                         cooldowns.insert(interaction.user.id, now);
-                        interaction
-                            .create_response(
-                                &http,
-                                CreateInteractionResponse::Message(
-                                    CreateInteractionResponseMessage::new()
-                                        .content("Only the person who ran this command can navigate the queue.")
-                                        .ephemeral(true),
-                                ),
-                            )
-                            .await
-                            .ok();
+                        interaction_service::reply_ephemeral(
+                            &interaction,
+                            &http,
+                            "Only the person who ran this command can navigate the queue.",
+                        )
+                        .await
+                        .ok();
                     }
                     continue;
                 }
-
-                interaction
-                    .defer(&http)
-                    .await
-                    .map_err(|e| MusicBotError::InternalError(e.to_string()))?;
 
                 let player = ctx.data().player.read().await;
 

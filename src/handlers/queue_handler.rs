@@ -8,7 +8,7 @@ use lombok::AllArgsConstructor;
 use poise::serenity_prelude;
 use serenity::all::{GuildChannel, GuildId};
 use songbird::{Call, Event, EventContext, EventHandler};
-use std::sync::atomic::Ordering;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
 #[derive(AllArgsConstructor, Clone)]
@@ -43,9 +43,13 @@ impl EventHandler for QueueHandler {
             player.current_track = None;
             player.is_playing = false;
 
-            player.inactivity_cancel.store(false, Ordering::Relaxed);
-
-            let cancel = Arc::clone(&player.inactivity_cancel);
+            // Mint a fresh cancel flag per spawned timer. The previously stored
+            // flag may have been set to `true` by a now-defunct activity burst
+            // (track queued, then ended quickly); resetting it would also undo
+            // that prior cancel and let an older timer leak through, producing
+            // duplicate "leaving voice channel" messages.
+            let cancel: Arc<AtomicBool> = Arc::new(AtomicBool::new(false));
+            player.inactivity_cancel = Arc::clone(&cancel);
             let serenity_ctx = self.serenity_ctx.clone();
             let player_arc = self.player.clone();
             let guild_id = self.guild_id;

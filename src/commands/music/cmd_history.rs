@@ -5,7 +5,8 @@ use crate::player::player::Player;
 use crate::player::track::Track;
 use crate::service::channel_service;
 use crate::service::embed_service::SendEmbed;
-use serenity::all::{ButtonStyle, CreateActionRow, CreateButton, CreateInteractionResponse, CreateInteractionResponseMessage, Message};
+use crate::service::interaction_service;
+use serenity::all::{ButtonStyle, CreateActionRow, CreateButton, Message};
 use std::collections::{HashMap, VecDeque};
 use std::time::{Duration, Instant};
 use tokio::sync::RwLockWriteGuard;
@@ -81,32 +82,29 @@ pub async fn history(ctx: Context<'_>) -> Result<(), MusicBotError> {
 
         match interaction {
             Some(interaction) => {
+                // Ack first so the 3-second window can't race the gating
+                // check or the join/queue work that follows.
+                interaction_service::ack(&interaction, ctx.http()).await?;
+
                 if interaction.user.id != ctx.author().id {
                     let now = Instant::now();
                     let on_cooldown = cooldowns
                         .get(&interaction.user.id)
                         .map(|&last| now.duration_since(last) < Duration::from_secs(5))
                         .unwrap_or(false);
-                    if on_cooldown {
-                        interaction.defer(ctx.http()).await.ok();
-                    } else {
+                    if !on_cooldown {
                         cooldowns.insert(interaction.user.id, now);
-                        interaction
-                            .create_response(
-                                ctx.http(),
-                                CreateInteractionResponse::Message(
-                                    CreateInteractionResponseMessage::new()
-                                        .content("Only the person who ran this command can select a track.")
-                                        .ephemeral(true),
-                                ),
-                            )
-                            .await
-                            .ok();
+                        interaction_service::reply_ephemeral(
+                            &interaction,
+                            ctx.http(),
+                            "Only the person who ran this command can select a track.",
+                        )
+                        .await
+                        .ok();
                     }
                     continue;
                 }
 
-                interaction.defer(ctx.http()).await?;
                 message.delete(ctx.http()).await?;
 
                 let track_index: usize = interaction

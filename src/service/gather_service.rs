@@ -1,11 +1,12 @@
 use crate::bot::MusicBotError;
-use crate::embeds::activity::gather_embed::{gather_buttons, pregather_buttons, CheckInRow, GatherEmbed, BTN_CANCEL, BTN_FORCE_START, BTN_HERE, BTN_JOIN, BTN_LEAVE, BTN_NOT_COMING, BTN_TOGGLE_SILENT, GRACE_PERIOD};
+use crate::embeds::activity::gather_embed::{
+    gather_buttons, pregather_buttons, CheckInRow, GatherEmbed, BTN_CANCEL, BTN_FORCE_START, BTN_HERE, BTN_JOIN, BTN_LEAVE, BTN_NOT_COMING, BTN_TOGGLE_SILENT, GRACE_PERIOD,
+};
 use crate::service::attendance_service;
+use crate::service::interaction_service;
 use crate::utils::string_utils::sanitize_name;
 use crate::utils::time_utils::get_current_time;
-use serenity::all::{
-    ChannelId, ComponentInteractionCollector, CreateEmbed, CreateInteractionResponse, CreateInteractionResponseMessage, CreateMessage, EditMessage, GuildId, Mentionable, Message, UserId,
-};
+use serenity::all::{ChannelId, ComponentInteractionCollector, CreateEmbed, CreateMessage, EditInteractionResponse, EditMessage, GuildId, Mentionable, Message, UserId};
 use serenity::futures::StreamExt;
 use serenity::http::Http;
 use serenity::prelude::Context as SerenityContext;
@@ -150,107 +151,97 @@ pub async fn start_gather(
                 .timeout(wait)
                 .await
             {
-                Some(ic) => match ic.data.custom_id.as_str() {
-                    BTN_CANCEL => {
-                        if ic.user.id != author_id {
-                            ic.create_response(
+                Some(ic) => {
+                    // Ack first so the 3-second window can't race the
+                    // gating checks or the embed rebuild that follow.
+                    interaction_service::ack(&ic, &serenity_ctx.http).await.ok();
+
+                    match ic.data.custom_id.as_str() {
+                        BTN_CANCEL => {
+                            if ic.user.id != author_id {
+                                interaction_service::reply_ephemeral(
+                                    &ic,
+                                    &serenity_ctx.http,
+                                    "Only the person who started the gathering can cancel it.",
+                                )
+                                .await
+                                .ok();
+                                continue 'pregather;
+                            }
+                            break 'pregather true;
+                        }
+                        BTN_FORCE_START => {
+                            if ic.user.id != author_id {
+                                interaction_service::reply_ephemeral(
+                                    &ic,
+                                    &serenity_ctx.http,
+                                    "Only the person who started the gathering can skip the countdown.",
+                                )
+                                .await
+                                .ok();
+                                continue 'pregather;
+                            }
+                            break 'pregather false;
+                        }
+                        BTN_JOIN => {
+                            {
+                                let mut extra = state.extra_expected.lock().unwrap();
+                                let mut forgotten = state.forgotten.lock().unwrap();
+                                extra.insert(ic.user.id);
+                                forgotten.remove(&ic.user.id);
+                            }
+                            interaction_service::edit_message(
+                                &ic,
                                 &serenity_ctx.http,
-                                CreateInteractionResponse::Message(
-                                    CreateInteractionResponseMessage::new()
-                                        .content("Only the person who started the gathering can cancel it.")
-                                        .ephemeral(true),
-                                ),
+                                EditInteractionResponse::new()
+                                    .embeds(pregather_message_embeds(
+                                        serenity_ctx,
+                                        guild_id,
+                                        voice_channel_id,
+                                        &state,
+                                        pregather_started_at,
+                                        pregather_started_at_wall,
+                                        pregather_duration,
+                                        &author_mention,
+                                        &schedule_label,
+                                        None,
+                                    ))
+                                    .components(pregather_buttons(false)),
                             )
                             .await
                             .ok();
-                            continue 'pregather;
                         }
-                        ic.create_response(&serenity_ctx.http, CreateInteractionResponse::Acknowledge)
-                            .await
-                            .ok();
-                        break 'pregather true;
-                    }
-                    BTN_FORCE_START => {
-                        if ic.user.id != author_id {
-                            ic.create_response(
+                        BTN_LEAVE => {
+                            {
+                                let mut extra = state.extra_expected.lock().unwrap();
+                                let mut forgotten = state.forgotten.lock().unwrap();
+                                extra.remove(&ic.user.id);
+                                forgotten.insert(ic.user.id);
+                            }
+                            interaction_service::edit_message(
+                                &ic,
                                 &serenity_ctx.http,
-                                CreateInteractionResponse::Message(
-                                    CreateInteractionResponseMessage::new()
-                                        .content("Only the person who started the gathering can skip the countdown.")
-                                        .ephemeral(true),
-                                ),
+                                EditInteractionResponse::new()
+                                    .embeds(pregather_message_embeds(
+                                        serenity_ctx,
+                                        guild_id,
+                                        voice_channel_id,
+                                        &state,
+                                        pregather_started_at,
+                                        pregather_started_at_wall,
+                                        pregather_duration,
+                                        &author_mention,
+                                        &schedule_label,
+                                        None,
+                                    ))
+                                    .components(pregather_buttons(false)),
                             )
                             .await
                             .ok();
-                            continue 'pregather;
                         }
-                        ic.create_response(&serenity_ctx.http, CreateInteractionResponse::Acknowledge)
-                            .await
-                            .ok();
-                        break 'pregather false;
+                        _ => {}
                     }
-                    BTN_JOIN => {
-                        {
-                            let mut extra = state.extra_expected.lock().unwrap();
-                            let mut forgotten = state.forgotten.lock().unwrap();
-                            extra.insert(ic.user.id);
-                            forgotten.remove(&ic.user.id);
-                        }
-                        let response = CreateInteractionResponseMessage::new()
-                            .embeds(pregather_message_embeds(
-                                serenity_ctx,
-                                guild_id,
-                                voice_channel_id,
-                                &state,
-                                pregather_started_at,
-                                pregather_started_at_wall,
-                                pregather_duration,
-                                &author_mention,
-                                &schedule_label,
-                                None,
-                            ))
-                            .components(pregather_buttons(false));
-                        ic.create_response(
-                            &serenity_ctx.http,
-                            CreateInteractionResponse::UpdateMessage(response),
-                        )
-                        .await
-                        .ok();
-                    }
-                    BTN_LEAVE => {
-                        {
-                            let mut extra = state.extra_expected.lock().unwrap();
-                            let mut forgotten = state.forgotten.lock().unwrap();
-                            extra.remove(&ic.user.id);
-                            forgotten.insert(ic.user.id);
-                        }
-                        let response = CreateInteractionResponseMessage::new()
-                            .embeds(pregather_message_embeds(
-                                serenity_ctx,
-                                guild_id,
-                                voice_channel_id,
-                                &state,
-                                pregather_started_at,
-                                pregather_started_at_wall,
-                                pregather_duration,
-                                &author_mention,
-                                &schedule_label,
-                                None,
-                            ))
-                            .components(pregather_buttons(false));
-                        ic.create_response(
-                            &serenity_ctx.http,
-                            CreateInteractionResponse::UpdateMessage(response),
-                        )
-                        .await
-                        .ok();
-                    }
-                    _ => {
-                        ic.create_response(&serenity_ctx.http, CreateInteractionResponse::Acknowledge)
-                            .await
-                            .ok();
-                    }
-                },
+                }
                 None => {
                     // Timeout: refresh the countdown display (also reflects /gather extend, /gather expect, /gather forget).
                     let _ = msg
@@ -547,35 +538,33 @@ async fn handle_interaction(
     last_edit: &mut Instant,
     state: &GatherState,
 ) {
+    // Ack first so the 3-second window can't race the gating checks or the
+    // embed rebuild that follow. Concurrent clicks from multiple users are
+    // serialised through the collector stream; without an early ack the
+    // second click can blow past the timeout while the first is still
+    // processing.
+    interaction_service::ack(ic, &serenity_ctx.http).await.ok();
+
     match ic.data.custom_id.as_str() {
         BTN_CANCEL => {
             if ic.user.id != author_id {
-                ic.create_response(
+                interaction_service::reply_ephemeral(
+                    ic,
                     &serenity_ctx.http,
-                    CreateInteractionResponse::Message(
-                        CreateInteractionResponseMessage::new()
-                            .content("Only the person who started the gathering can cancel it.")
-                            .ephemeral(true),
-                    ),
+                    "Only the person who started the gathering can cancel it.",
                 )
                 .await
                 .ok();
                 return;
             }
-            ic.create_response(&serenity_ctx.http, CreateInteractionResponse::Acknowledge)
-                .await
-                .ok();
             *cancelled = true;
         }
         BTN_NOT_COMING => {
             if arrivals.contains_key(&ic.user.id) {
-                ic.create_response(
+                interaction_service::reply_ephemeral(
+                    ic,
                     &serenity_ctx.http,
-                    CreateInteractionResponse::Message(
-                        CreateInteractionResponseMessage::new()
-                            .content("You've already checked in — you can't opt out now.")
-                            .ephemeral(true),
-                    ),
+                    "You've already checked in — you can't opt out now.",
                 )
                 .await
                 .ok();
@@ -583,13 +572,10 @@ async fn handle_interaction(
             }
 
             if opted_out.contains(&ic.user.id) {
-                ic.create_response(
+                interaction_service::reply_ephemeral(
+                    ic,
                     &serenity_ctx.http,
-                    CreateInteractionResponse::Message(
-                        CreateInteractionResponseMessage::new()
-                            .content("You've already marked yourself as not coming.")
-                            .ephemeral(true),
-                    ),
+                    "You've already marked yourself as not coming.",
                 )
                 .await
                 .ok();
@@ -605,23 +591,22 @@ async fn handle_interaction(
             }
 
             let silent = *state.silent.lock().unwrap();
-            ic.create_response(
+            interaction_service::edit_message(
+                ic,
                 &serenity_ctx.http,
-                CreateInteractionResponse::UpdateMessage(
-                    CreateInteractionResponseMessage::new()
-                        .embed(check_in_embed(
-                            serenity_ctx,
-                            guild_id,
-                            expected,
-                            arrivals,
-                            opted_out,
-                            started_at,
-                            *grace_ends_at,
-                            silent,
-                            None,
-                        ))
-                        .components(gather_buttons(false, silent)),
-                ),
+                EditInteractionResponse::new()
+                    .embed(check_in_embed(
+                        serenity_ctx,
+                        guild_id,
+                        expected,
+                        arrivals,
+                        opted_out,
+                        started_at,
+                        *grace_ends_at,
+                        silent,
+                        None,
+                    ))
+                    .components(gather_buttons(false, silent)),
             )
             .await
             .ok();
@@ -629,13 +614,10 @@ async fn handle_interaction(
         }
         BTN_TOGGLE_SILENT => {
             if ic.user.id != author_id {
-                ic.create_response(
+                interaction_service::reply_ephemeral(
+                    ic,
                     &serenity_ctx.http,
-                    CreateInteractionResponse::Message(
-                        CreateInteractionResponseMessage::new()
-                            .content("Only the person who started the gathering can mute pings.")
-                            .ephemeral(true),
-                    ),
+                    "Only the person who started the gathering can mute pings.",
                 )
                 .await
                 .ok();
@@ -646,23 +628,22 @@ async fn handle_interaction(
                 *s = !*s;
                 *s
             };
-            ic.create_response(
+            interaction_service::edit_message(
+                ic,
                 &serenity_ctx.http,
-                CreateInteractionResponse::UpdateMessage(
-                    CreateInteractionResponseMessage::new()
-                        .embed(check_in_embed(
-                            serenity_ctx,
-                            guild_id,
-                            expected,
-                            arrivals,
-                            opted_out,
-                            started_at,
-                            *grace_ends_at,
-                            new_silent,
-                            None,
-                        ))
-                        .components(gather_buttons(false, new_silent)),
-                ),
+                EditInteractionResponse::new()
+                    .embed(check_in_embed(
+                        serenity_ctx,
+                        guild_id,
+                        expected,
+                        arrivals,
+                        opted_out,
+                        started_at,
+                        *grace_ends_at,
+                        new_silent,
+                        None,
+                    ))
+                    .components(gather_buttons(false, new_silent)),
             )
             .await
             .ok();
@@ -670,13 +651,10 @@ async fn handle_interaction(
         }
         BTN_HERE => {
             if !user_in_voice(serenity_ctx, guild_id, voice_channel_id, ic.user.id) {
-                ic.create_response(
+                interaction_service::reply_ephemeral(
+                    ic,
                     &serenity_ctx.http,
-                    CreateInteractionResponse::Message(
-                        CreateInteractionResponseMessage::new()
-                            .content("You need to be in the voice channel to check in.")
-                            .ephemeral(true),
-                    ),
+                    "You need to be in the voice channel to check in.",
                 )
                 .await
                 .ok();
@@ -684,16 +662,9 @@ async fn handle_interaction(
             }
 
             if arrivals.contains_key(&ic.user.id) {
-                ic.create_response(
-                    &serenity_ctx.http,
-                    CreateInteractionResponse::Message(
-                        CreateInteractionResponseMessage::new()
-                            .content("You're already checked in.")
-                            .ephemeral(true),
-                    ),
-                )
-                .await
-                .ok();
+                interaction_service::reply_ephemeral(ic, &serenity_ctx.http, "You're already checked in.")
+                    .await
+                    .ok();
                 return;
             }
 
@@ -708,33 +679,28 @@ async fn handle_interaction(
             }
 
             let silent = *state.silent.lock().unwrap();
-            ic.create_response(
+            interaction_service::edit_message(
+                ic,
                 &serenity_ctx.http,
-                CreateInteractionResponse::UpdateMessage(
-                    CreateInteractionResponseMessage::new()
-                        .embed(check_in_embed(
-                            serenity_ctx,
-                            guild_id,
-                            expected,
-                            arrivals,
-                            opted_out,
-                            started_at,
-                            *grace_ends_at,
-                            silent,
-                            None,
-                        ))
-                        .components(gather_buttons(false, silent)),
-                ),
+                EditInteractionResponse::new()
+                    .embed(check_in_embed(
+                        serenity_ctx,
+                        guild_id,
+                        expected,
+                        arrivals,
+                        opted_out,
+                        started_at,
+                        *grace_ends_at,
+                        silent,
+                        None,
+                    ))
+                    .components(gather_buttons(false, silent)),
             )
             .await
             .ok();
             *last_edit = Instant::now();
         }
-        _ => {
-            ic.create_response(&serenity_ctx.http, CreateInteractionResponse::Acknowledge)
-                .await
-                .ok();
-        }
+        _ => {}
     }
 }
 

@@ -1,7 +1,8 @@
 use crate::bot::{Context, MusicBotError};
 use crate::commands::reputation::Rep;
 use crate::embeds::reputation::rep_embed::ReputationEmbed;
-use serenity::all::{ButtonStyle, ComponentInteractionCollector, CreateActionRow, CreateButton, CreateInteractionResponse, CreateInteractionResponseMessage, User};
+use crate::service::interaction_service;
+use serenity::all::{ButtonStyle, ComponentInteractionCollector, CreateActionRow, CreateButton, EditInteractionResponse, User};
 use serenity::futures::StreamExt;
 use std::time::Duration;
 
@@ -68,18 +69,20 @@ pub async fn list_rep(
     loop {
         match tokio::time::timeout(Duration::from_mins(2), collector.next()).await {
             Ok(Some(interaction)) => {
+                // Ack first so the 3-second window can't race the gating
+                // check or the pagination update.
+                interaction_service::ack(&interaction, ctx.http())
+                    .await
+                    .map_err(|e| MusicBotError::InternalError(e.to_string()))?;
+
                 if interaction.user.id != ctx.author().id {
-                    interaction
-                        .create_response(
-                            ctx.http(),
-                            CreateInteractionResponse::Message(
-                                CreateInteractionResponseMessage::new()
-                                    .content("Only the person who ran this command can select a track.")
-                                    .ephemeral(true),
-                            ),
-                        )
-                        .await
-                        .ok();
+                    interaction_service::reply_ephemeral(
+                        &interaction,
+                        ctx.http(),
+                        "Only the person who ran this command can select a track.",
+                    )
+                    .await
+                    .ok();
                     continue;
                 }
 
@@ -95,25 +98,23 @@ pub async fn list_rep(
                     _ => continue,
                 }
 
-                interaction
-                    .create_response(
-                        ctx.serenity_context(),
-                        CreateInteractionResponse::UpdateMessage(
-                            CreateInteractionResponseMessage::new()
-                                .embed(
-                                    ReputationEmbed::List(
-                                        get_page_slice(current_page),
-                                        &target_id,
-                                        total_rep,
-                                        logs.len(),
-                                    )
-                                    .to_embed(),
-                                )
-                                .components(get_nav_components(current_page, total_pages)),
-                        ),
-                    )
-                    .await
-                    .map_err(|e| MusicBotError::InternalError(e.to_string()))?;
+                interaction_service::edit_message(
+                    &interaction,
+                    ctx.http(),
+                    EditInteractionResponse::new()
+                        .embed(
+                            ReputationEmbed::List(
+                                get_page_slice(current_page),
+                                &target_id,
+                                total_rep,
+                                logs.len(),
+                            )
+                            .to_embed(),
+                        )
+                        .components(get_nav_components(current_page, total_pages)),
+                )
+                .await
+                .map_err(|e| MusicBotError::InternalError(e.to_string()))?;
             }
             Ok(None) => break,
             Err(_) => break,
