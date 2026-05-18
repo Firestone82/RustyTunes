@@ -19,6 +19,10 @@ fn nav_buttons(
             .label("◀")
             .style(ButtonStyle::Secondary)
             .disabled(page <= 1),
+        CreateButton::new("queue_page")
+            .label(format!("{}/{}", page, total_pages))
+            .style(ButtonStyle::Secondary)
+            .disabled(true),
         CreateButton::new("queue_next")
             .label("▶")
             .style(ButtonStyle::Secondary)
@@ -138,14 +142,7 @@ pub async fn queue(
 
                 if player.queue.is_empty() && player.current_track.is_none() {
                     drop(player);
-                    let _ = message
-                        .edit(
-                            &http,
-                            EditMessage::new()
-                                .embeds(vec![QueueEmbed::IsEmpty.to_embed()])
-                                .components(vec![]),
-                        )
-                        .await;
+                    let _ = message.delete(&http).await;
                     break;
                 }
 
