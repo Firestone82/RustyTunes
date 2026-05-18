@@ -247,22 +247,24 @@ async fn do_play(
 
             track.added_by = ctx.author().name.clone();
 
+            // Push first (infallible), confirm to the user, then kick off
+            // playback. This order guarantees TrackAdded lands before
+            // NowPlaying for an idle queue, and that we never show success
+            // before a playback error — kick_off_playback is what can fail.
             let mut player: RwLockWriteGuard<Player> = ctx.data().player.write().await;
-            if let Err(error) = player.add_track_to_queue(ctx, track.clone(), top).await {
+            player.push_track(track.clone(), top);
+
+            QueueEmbed::TrackAdded(&track)
+                .to_embed()
+                .send_context(ctx, true, Some(30))
+                .await?;
+
+            if let Err(error) = player.kick_off_playback(ctx, top).await {
                 drop(player);
                 report_playback_error(ctx, error).await?;
                 return Ok(());
             }
             drop(player);
-
-            // Confirm after the add succeeds so we never show success
-            // followed by a playback error. NowPlaying still follows once
-            // next_track resolves the input, giving immediate feedback even
-            // for a previously idle queue.
-            QueueEmbed::TrackAdded(&track)
-                .to_embed()
-                .send_context(ctx, true, Some(30))
-                .await?;
 
             channel_service::join_user_channel(ctx).await?;
         }
@@ -293,17 +295,19 @@ async fn do_play(
                     track.added_by = ctx.author().name.clone();
 
                     let mut player: RwLockWriteGuard<Player> = ctx.data().player.write().await;
-                    if let Err(error) = player.add_track_to_queue(ctx, track.clone(), top).await {
-                        drop(player);
-                        report_playback_error(ctx, error).await?;
-                        return Ok(());
-                    }
-                    drop(player);
+                    player.push_track(track.clone(), top);
 
                     QueueEmbed::TrackAdded(&track)
                         .to_embed()
                         .send_context(ctx, true, Some(30))
                         .await?;
+
+                    if let Err(error) = player.kick_off_playback(ctx, top).await {
+                        drop(player);
+                        report_playback_error(ctx, error).await?;
+                        return Ok(());
+                    }
+                    drop(player);
 
                     channel_service::join_user_channel(ctx).await?;
                 }

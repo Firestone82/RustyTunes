@@ -154,6 +154,19 @@ impl Player {
         track: Track,
         top: bool,
     ) -> Result<(), PlaybackError> {
+        self.push_track(track, top);
+        self.kick_off_playback(ctx, top).await
+    }
+
+    /// Infallible queue push — separated from `kick_off_playback` so callers
+    /// that need to render a "queued" confirmation between the push and the
+    /// playback start (so the message lands before NowPlaying) can interleave
+    /// them while holding the player lock.
+    pub fn push_track(
+        &mut self,
+        track: Track,
+        top: bool,
+    ) {
         tracing::info!(
             "Adding track to queue (top={}): {}",
             top,
@@ -167,8 +180,6 @@ impl Player {
             self.queue.push(track);
         }
         tracing::debug!("Queue length: {}", self.queue.len());
-
-        self.kick_off_playback(ctx, top).await
     }
 
     /// Decide what to do after appending to the queue:
@@ -176,7 +187,7 @@ impl Player {
     /// - paused + !top:   resume the currently-paused track
     /// - idle:            start playback from the head of the queue
     /// - already playing: nothing to do
-    async fn kick_off_playback(
+    pub async fn kick_off_playback(
         &mut self,
         ctx: Context<'_>,
         top: bool,
