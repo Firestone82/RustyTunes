@@ -5,7 +5,8 @@ use crate::player::player::Player;
 use crate::player::track::Track;
 use crate::service::channel_service;
 use crate::service::embed_service::SendEmbed;
-use serenity::all::{ButtonStyle, CreateActionRow, CreateButton, CreateInteractionResponse, CreateInteractionResponseMessage, Message};
+use crate::service::interaction_service::DeferredInteractionStream;
+use serenity::all::{ButtonStyle, CreateActionRow, CreateButton, CreateInteractionResponseFollowup, Message};
 use std::collections::{HashMap, VecDeque};
 use std::time::{Duration, Instant};
 use tokio::sync::RwLockWriteGuard;
@@ -63,6 +64,8 @@ pub async fn history(ctx: Context<'_>) -> Result<(), MusicBotError> {
 
     let deadline = Instant::now() + Duration::from_secs(60 * 2);
     let mut cooldowns: HashMap<serenity::all::UserId, Instant> = HashMap::new();
+    let mut stream = DeferredInteractionStream::new(ctx.serenity_context(), message.id);
+
     loop {
         let remaining = deadline.saturating_duration_since(Instant::now());
         if remaining.is_zero() {
@@ -74,65 +77,52 @@ pub async fn history(ctx: Context<'_>) -> Result<(), MusicBotError> {
             return Ok(());
         }
 
-        let interaction = message
-            .await_component_interaction(ctx.serenity_context().shard.clone())
-            .timeout(remaining)
-            .await;
+        let Some(interaction) = stream.next_within(remaining).await else {
+            message.delete(ctx.http()).await?;
+            PlayerEmbed::SearchExpired
+                .to_embed()
+                .send_context(ctx, true, Some(15))
+                .await?;
+            break;
+        };
 
-        match interaction {
-            Some(interaction) => {
-                if interaction.user.id != ctx.author().id {
-                    let now = Instant::now();
-                    let on_cooldown = cooldowns
-                        .get(&interaction.user.id)
-                        .map(|&last| now.duration_since(last) < Duration::from_secs(5))
-                        .unwrap_or(false);
-                    if on_cooldown {
-                        interaction.defer(ctx.http()).await.ok();
-                    } else {
-                        cooldowns.insert(interaction.user.id, now);
-                        interaction
-                            .create_response(
-                                ctx.http(),
-                                CreateInteractionResponse::Message(
-                                    CreateInteractionResponseMessage::new()
-                                        .content("Only the person who ran this command can select a track.")
-                                        .ephemeral(true),
-                                ),
-                            )
-                            .await
-                            .ok();
-                    }
-                    continue;
-                }
-
-                interaction.defer(ctx.http()).await?;
-                message.delete(ctx.http()).await?;
-
-                let track_index: usize = interaction
-                    .data
-                    .custom_id
-                    .strip_prefix("history_")
-                    .and_then(|s| s.parse().ok())
-                    .unwrap();
-                let track: Track = tracks_rev[track_index].clone();
-
-                let mut player: RwLockWriteGuard<Player> = ctx.data().player.write().await;
-                player.add_track_to_queue(ctx, track, false).await?;
-                drop(player);
-
-                channel_service::join_user_channel(ctx).await?;
-                break;
+        if interaction.user.id != ctx.author().id {
+            let now = Instant::now();
+            let on_cooldown = cooldowns
+                .get(&interaction.user.id)
+                .map(|&last| now.duration_since(last) < Duration::from_secs(5))
+                .unwrap_or(false);
+            if !on_cooldown {
+                cooldowns.insert(interaction.user.id, now);
+                interaction
+                    .create_followup(
+                        ctx.http(),
+                        CreateInteractionResponseFollowup::new()
+                            .content("Only the person who ran this command can select a track.")
+                            .ephemeral(true),
+                    )
+                    .await
+                    .ok();
             }
-            None => {
-                message.delete(ctx.http()).await?;
-                PlayerEmbed::SearchExpired
-                    .to_embed()
-                    .send_context(ctx, true, Some(15))
-                    .await?;
-                break;
-            }
+            continue;
         }
+
+        message.delete(ctx.http()).await?;
+
+        let track_index: usize = interaction
+            .data
+            .custom_id
+            .strip_prefix("history_")
+            .and_then(|s| s.parse().ok())
+            .unwrap();
+        let track: Track = tracks_rev[track_index].clone();
+
+        let mut player: RwLockWriteGuard<Player> = ctx.data().player.write().await;
+        player.add_track_to_queue(ctx, track, false).await?;
+        drop(player);
+
+        channel_service::join_user_channel(ctx).await?;
+        break;
     }
 
     Ok(())

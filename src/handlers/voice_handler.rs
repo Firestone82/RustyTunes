@@ -28,7 +28,16 @@ pub async fn handle(
                     .lock()
                     .unwrap()
                     .contains(&new.user_id);
-                if is_expected {
+                // A user who opted out and was disconnected can take back the
+                // opt-out by rejoining — voice_handler routes both flows
+                // through `auto_arrived` and the check-in loop tells them
+                // apart by consulting `reconsidering`.
+                let is_reconsidering = gather_state
+                    .reconsidering
+                    .lock()
+                    .unwrap()
+                    .contains(&new.user_id);
+                if is_expected || is_reconsidering {
                     gather_state
                         .auto_arrived
                         .lock()

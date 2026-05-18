@@ -3,12 +3,14 @@ use crate::embeds::music::player_embed::PlayerEmbed;
 use crate::embeds::music::queue_embed::QueueEmbed;
 use crate::player::player::Player;
 use crate::service::embed_service::SendEmbed;
-use serenity::all::{ButtonStyle, CreateActionRow, CreateButton, CreateEmbed, CreateInteractionResponse, CreateInteractionResponseMessage, EditMessage};
+use crate::service::interaction_service::DeferredInteractionStream;
+use serenity::all::{ButtonStyle, CreateActionRow, CreateButton, CreateEmbed, CreateInteractionResponseFollowup, EditMessage};
 use std::collections::HashMap;
 use std::time::{Duration, Instant};
 use tokio::sync::RwLockReadGuard;
 
 const ITEMS_PER_PAGE: usize = 10;
+const PAGINATION_TIMEOUT: Duration = Duration::from_secs(60);
 
 fn nav_buttons(
     page: usize,
@@ -19,6 +21,10 @@ fn nav_buttons(
             .label("◀")
             .style(ButtonStyle::Secondary)
             .disabled(page <= 1),
+        CreateButton::new("queue_page")
+            .label(format!("{}/{}", page, total_pages))
+            .style(ButtonStyle::Secondary)
+            .disabled(true),
         CreateButton::new("queue_next")
             .label("▶")
             .style(ButtonStyle::Secondary)
@@ -70,7 +76,6 @@ pub async fn queue(
     let needs_pagination = total_pages > 1 && !player.queue.is_empty();
     drop(player);
 
-    // Single message with both embeds — Now Playing then queue list.
     let mut reply = poise::CreateReply::default().reply(true);
     for embed in embeds {
         reply = reply.embed(embed);
@@ -96,85 +101,73 @@ pub async fn queue(
     let http = ctx.serenity_context().http.clone();
     let mut cooldowns: HashMap<serenity::all::UserId, Instant> = HashMap::new();
 
+    // Each click is deferred on arrival in a spawned task, so a slow turn of
+    // this loop can't push the next user's click past Discord's 3-second ack
+    // window. Interactions arrive here already acknowledged.
+    let mut stream = DeferredInteractionStream::new(ctx.serenity_context(), message.id);
+
     loop {
-        let interaction = message
-            .await_component_interaction(ctx.serenity_context().shard.clone())
-            .timeout(Duration::from_secs(60))
-            .await;
+        let Some(interaction) = stream.next_within(PAGINATION_TIMEOUT).await else {
+            let _ = message.delete(&http).await;
+            break;
+        };
 
-        match interaction {
-            Some(interaction) => {
-                if interaction.user.id != ctx.author().id {
-                    let now = Instant::now();
-                    let on_cooldown = cooldowns
-                        .get(&interaction.user.id)
-                        .map(|&last| now.duration_since(last) < Duration::from_secs(5))
-                        .unwrap_or(false);
-                    if on_cooldown {
-                        interaction.defer(&http).await.ok();
-                    } else {
-                        cooldowns.insert(interaction.user.id, now);
-                        interaction
-                            .create_response(
-                                &http,
-                                CreateInteractionResponse::Message(
-                                    CreateInteractionResponseMessage::new()
-                                        .content("Only the person who ran this command can navigate the queue.")
-                                        .ephemeral(true),
-                                ),
-                            )
-                            .await
-                            .ok();
-                    }
-                    continue;
-                }
-
+        if interaction.user.id != ctx.author().id {
+            let now = Instant::now();
+            let on_cooldown = cooldowns
+                .get(&interaction.user.id)
+                .map(|&last| now.duration_since(last) < Duration::from_secs(5))
+                .unwrap_or(false);
+            if !on_cooldown {
+                cooldowns.insert(interaction.user.id, now);
                 interaction
-                    .defer(&http)
+                    .create_followup(
+                        &http,
+                        CreateInteractionResponseFollowup::new()
+                            .content("Only the person who ran this command can navigate the queue.")
+                            .ephemeral(true),
+                    )
                     .await
-                    .map_err(|e| MusicBotError::InternalError(e.to_string()))?;
-
-                let player = ctx.data().player.read().await;
-
-                if player.queue.is_empty() && player.current_track.is_none() {
-                    drop(player);
-                    let _ = message
-                        .edit(
-                            &http,
-                            EditMessage::new()
-                                .embeds(vec![QueueEmbed::IsEmpty.to_embed()])
-                                .components(vec![]),
-                        )
-                        .await;
-                    break;
-                }
-
-                let total_pages = player.queue.len().div_ceil(ITEMS_PER_PAGE).max(1);
-
-                match interaction.data.custom_id.as_str() {
-                    "queue_prev" => page = page.saturating_sub(1).max(1),
-                    "queue_next" => page = (page + 1).min(total_pages),
-                    _ => {}
-                }
-                page = page.min(total_pages);
-
-                let embeds = build_embeds(&player, page);
-                let still_paginates = total_pages > 1 && !player.queue.is_empty();
-                drop(player);
-
-                let mut edit = EditMessage::new().embeds(embeds);
-                edit = if still_paginates {
-                    edit.components(nav_buttons(page, total_pages))
-                } else {
-                    edit.components(vec![])
-                };
-                let _ = message.edit(&http, edit).await;
+                    .ok();
             }
-            None => {
-                let _ = message.delete(&http).await;
-                break;
-            }
+            continue;
         }
+
+        let player = ctx.data().player.read().await;
+
+        if player.queue.is_empty() && player.current_track.is_none() {
+            drop(player);
+            let _ = message
+                .edit(
+                    &http,
+                    EditMessage::new()
+                        .embeds(vec![QueueEmbed::IsEmpty.to_embed()])
+                        .components(vec![]),
+                )
+                .await;
+            break;
+        }
+
+        let total_pages = player.queue.len().div_ceil(ITEMS_PER_PAGE).max(1);
+
+        match interaction.data.custom_id.as_str() {
+            "queue_prev" => page = page.saturating_sub(1).max(1),
+            "queue_next" => page = (page + 1).min(total_pages),
+            _ => {}
+        }
+        page = page.min(total_pages);
+
+        let embeds = build_embeds(&player, page);
+        let still_paginates = total_pages > 1 && !player.queue.is_empty();
+        drop(player);
+
+        let mut edit = EditMessage::new().embeds(embeds);
+        edit = if still_paginates {
+            edit.components(nav_buttons(page, total_pages))
+        } else {
+            edit.components(vec![])
+        };
+        let _ = message.edit(&http, edit).await;
     }
 
     Ok(())

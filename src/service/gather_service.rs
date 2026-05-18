@@ -1,12 +1,12 @@
 use crate::bot::MusicBotError;
-use crate::embeds::activity::gather_embed::{gather_buttons, pregather_buttons, CheckInRow, GatherEmbed, BTN_CANCEL, BTN_FORCE_START, BTN_HERE, BTN_JOIN, BTN_LEAVE, BTN_NOT_COMING, BTN_TOGGLE_SILENT, GRACE_PERIOD};
+use crate::embeds::activity::gather_embed::{
+    gather_buttons, pregather_buttons, CheckInRow, GatherEmbed, BTN_CANCEL, BTN_FORCE_START, BTN_HERE, BTN_JOIN, BTN_LEAVE, BTN_NOT_COMING, BTN_TOGGLE_SILENT, GRACE_PERIOD,
+};
 use crate::service::attendance_service;
+use crate::service::interaction_service::DeferredInteractionStream;
 use crate::utils::string_utils::sanitize_name;
 use crate::utils::time_utils::get_current_time;
-use serenity::all::{
-    ChannelId, ComponentInteractionCollector, CreateEmbed, CreateInteractionResponse, CreateInteractionResponseMessage, CreateMessage, EditMessage, GuildId, Mentionable, Message, UserId,
-};
-use serenity::futures::StreamExt;
+use serenity::all::{ChannelId, ComponentInteraction, CreateEmbed, CreateInteractionResponseFollowup, CreateMessage, EditMessage, GuildId, Mentionable, Message, UserId};
 use serenity::http::Http;
 use serenity::prelude::Context as SerenityContext;
 use std::collections::{HashMap, HashSet};
@@ -34,6 +34,11 @@ pub struct GatherState {
     pub forgotten: Mutex<HashSet<UserId>>,
     /// Users who joined the gathering voice channel while expected — processed on the next loop tick.
     pub auto_arrived: Mutex<HashSet<UserId>>,
+    /// Users who pressed "I'm out" and were disconnected from the gathering
+    /// voice channel. If they hop back into the channel, voice_handler pushes
+    /// them onto `auto_arrived` so the check-in loop can flip them from
+    /// opted-out to arrived.
+    pub reconsidering: Mutex<HashSet<UserId>>,
     /// When true, ghost-ping reminders are suppressed for everyone.
     pub silent: Mutex<bool>,
     /// Set while the pre-gather countdown is active; cleared once it ends.
@@ -49,6 +54,7 @@ impl GatherState {
             extra_expected: Mutex::new(HashSet::new()),
             forgotten: Mutex::new(HashSet::new()),
             auto_arrived: Mutex::new(HashSet::new()),
+            reconsidering: Mutex::new(HashSet::new()),
             silent: Mutex::new(false),
             pregather: Mutex::new(None),
             pregather_extension: Mutex::new(Duration::ZERO),
@@ -65,6 +71,16 @@ const MIN_EDIT_INTERVAL: Duration = Duration::from_secs(5);
 // Max wait in the select loop — keeps button response latency well within 3 s.
 const LOOP_POLL: Duration = Duration::from_millis(800);
 
+/// What the interaction handler decided should happen next.
+enum CheckInOutcome {
+    /// State unchanged or ephemeral-only response — no need to re-render.
+    None,
+    /// State changed — main loop should re-render the embed.
+    Refresh,
+    /// Author hit cancel — main loop should exit.
+    Cancel,
+}
+
 pub async fn start_gather(
     serenity_ctx: &SerenityContext,
     guild_id: GuildId,
@@ -77,7 +93,6 @@ pub async fn start_gather(
     pregather_duration: Duration,
 ) -> Result<(), MusicBotError> {
     let bot_id = serenity_ctx.cache.current_user().id;
-    let shard = serenity_ctx.shard.clone();
 
     let initial_voice_ids: Vec<UserId> = current_voice_members(serenity_ctx, guild_id, voice_channel_id, bot_id);
     if initial_voice_ids.is_empty() {
@@ -134,6 +149,8 @@ pub async fn start_gather(
             .await
             .map_err(|e| MusicBotError::InternalError(e.to_string()))?;
 
+        let mut stream = DeferredInteractionStream::new(serenity_ctx, msg.id);
+
         let pregather_cancelled = 'pregather: loop {
             let now = Instant::now();
             let ends_at = pregather_started_at + pregather_duration + *state.pregather_extension.lock().unwrap();
@@ -145,48 +162,30 @@ pub async fn start_gather(
                 .saturating_duration_since(now)
                 .min(MIN_EDIT_INTERVAL);
 
-            match msg
-                .await_component_interaction(shard.clone())
-                .timeout(wait)
-                .await
-            {
+            match stream.next_within(wait).await {
                 Some(ic) => match ic.data.custom_id.as_str() {
                     BTN_CANCEL => {
                         if ic.user.id != author_id {
-                            ic.create_response(
+                            send_ephemeral(
                                 &serenity_ctx.http,
-                                CreateInteractionResponse::Message(
-                                    CreateInteractionResponseMessage::new()
-                                        .content("Only the person who started the gathering can cancel it.")
-                                        .ephemeral(true),
-                                ),
+                                &ic,
+                                "Only the person who started the gathering can cancel it.",
                             )
-                            .await
-                            .ok();
+                            .await;
                             continue 'pregather;
                         }
-                        ic.create_response(&serenity_ctx.http, CreateInteractionResponse::Acknowledge)
-                            .await
-                            .ok();
                         break 'pregather true;
                     }
                     BTN_FORCE_START => {
                         if ic.user.id != author_id {
-                            ic.create_response(
+                            send_ephemeral(
                                 &serenity_ctx.http,
-                                CreateInteractionResponse::Message(
-                                    CreateInteractionResponseMessage::new()
-                                        .content("Only the person who started the gathering can skip the countdown.")
-                                        .ephemeral(true),
-                                ),
+                                &ic,
+                                "Only the person who started the gathering can skip the countdown.",
                             )
-                            .await
-                            .ok();
+                            .await;
                             continue 'pregather;
                         }
-                        ic.create_response(&serenity_ctx.http, CreateInteractionResponse::Acknowledge)
-                            .await
-                            .ok();
                         break 'pregather false;
                     }
                     BTN_JOIN => {
@@ -196,26 +195,25 @@ pub async fn start_gather(
                             extra.insert(ic.user.id);
                             forgotten.remove(&ic.user.id);
                         }
-                        let response = CreateInteractionResponseMessage::new()
-                            .embeds(pregather_message_embeds(
-                                serenity_ctx,
-                                guild_id,
-                                voice_channel_id,
-                                &state,
-                                pregather_started_at,
-                                pregather_started_at_wall,
-                                pregather_duration,
-                                &author_mention,
-                                &schedule_label,
-                                None,
-                            ))
-                            .components(pregather_buttons(false));
-                        ic.create_response(
-                            &serenity_ctx.http,
-                            CreateInteractionResponse::UpdateMessage(response),
-                        )
-                        .await
-                        .ok();
+                        let _ = msg
+                            .edit(
+                                &serenity_ctx.http,
+                                EditMessage::new()
+                                    .embeds(pregather_message_embeds(
+                                        serenity_ctx,
+                                        guild_id,
+                                        voice_channel_id,
+                                        &state,
+                                        pregather_started_at,
+                                        pregather_started_at_wall,
+                                        pregather_duration,
+                                        &author_mention,
+                                        &schedule_label,
+                                        None,
+                                    ))
+                                    .components(pregather_buttons(false)),
+                            )
+                            .await;
                     }
                     BTN_LEAVE => {
                         {
@@ -224,32 +222,27 @@ pub async fn start_gather(
                             extra.remove(&ic.user.id);
                             forgotten.insert(ic.user.id);
                         }
-                        let response = CreateInteractionResponseMessage::new()
-                            .embeds(pregather_message_embeds(
-                                serenity_ctx,
-                                guild_id,
-                                voice_channel_id,
-                                &state,
-                                pregather_started_at,
-                                pregather_started_at_wall,
-                                pregather_duration,
-                                &author_mention,
-                                &schedule_label,
-                                None,
-                            ))
-                            .components(pregather_buttons(false));
-                        ic.create_response(
-                            &serenity_ctx.http,
-                            CreateInteractionResponse::UpdateMessage(response),
-                        )
-                        .await
-                        .ok();
+                        let _ = msg
+                            .edit(
+                                &serenity_ctx.http,
+                                EditMessage::new()
+                                    .embeds(pregather_message_embeds(
+                                        serenity_ctx,
+                                        guild_id,
+                                        voice_channel_id,
+                                        &state,
+                                        pregather_started_at,
+                                        pregather_started_at_wall,
+                                        pregather_duration,
+                                        &author_mention,
+                                        &schedule_label,
+                                        None,
+                                    ))
+                                    .components(pregather_buttons(false)),
+                            )
+                            .await;
                     }
-                    _ => {
-                        ic.create_response(&serenity_ctx.http, CreateInteractionResponse::Acknowledge)
-                            .await
-                            .ok();
-                    }
+                    _ => {}
                 },
                 None => {
                     // Timeout: refresh the countdown display (also reflects /gather extend, /gather expect, /gather forget).
@@ -278,6 +271,7 @@ pub async fn start_gather(
 
         // Pre-gather phase done — `/gather extend` is rejected from here on.
         *state.pregather.lock().unwrap() = None;
+        drop(stream);
 
         if pregather_cancelled {
             let _ = msg
@@ -372,12 +366,10 @@ pub async fn start_gather(
     let mut last_edit = Instant::now();
     let mut cancelled = false;
 
-    // A persistent stream buffers every interaction on this message so no
-    // button click is ever dropped between loop iterations.
-    let interaction_stream = ComponentInteractionCollector::new(serenity_ctx)
-        .message_id(msg.id)
-        .stream();
-    tokio::pin!(interaction_stream);
+    // All clicks are deferred on arrival in a spawned task — keeps the 3s
+    // ack window safe even when this loop is busy rendering or talking to
+    // Discord. Interactions arrive here already acked.
+    let mut stream = DeferredInteractionStream::new(serenity_ctx, msg.id);
 
     loop {
         let now = Instant::now();
@@ -397,29 +389,27 @@ pub async fn start_gather(
         };
         let wait = next_periodic.saturating_duration_since(now).min(LOOP_POLL);
 
-        tokio::select! {
-            ic = interaction_stream.next() => {
-                match ic {
-                    Some(ic) => handle_interaction(
-                        &ic,
-                        serenity_ctx,
-                        guild_id,
-                        voice_channel_id,
-                        author_id,
-                        started_at,
-                        &mut grace_ends_at,
-                        &mut expected,
-                        &mut arrivals,
-                        &mut opted_out,
-                        &mut cancelled,
-                        &mut last_edit,
-                        &state,
-                    )
-                    .await,
-                    None => break,
-                }
+        if let Some(ic) = stream.next_within(wait).await {
+            let outcome = handle_interaction(
+                &ic,
+                serenity_ctx,
+                guild_id,
+                voice_channel_id,
+                author_id,
+                started_at,
+                &mut grace_ends_at,
+                &mut expected,
+                &mut arrivals,
+                &mut opted_out,
+                &state,
+            )
+            .await;
+
+            match outcome {
+                CheckInOutcome::Cancel => cancelled = true,
+                CheckInOutcome::Refresh => last_edit = started_at, // force immediate refresh
+                CheckInOutcome::None => {}
             }
-            _ = tokio::time::sleep(wait) => {}
         }
 
         let now = Instant::now();
@@ -441,11 +431,19 @@ pub async fn start_gather(
             }
         }
 
-        // voice_handler reports joins by inserting into auto_arrived.
+        // voice_handler reports joins by inserting into auto_arrived. A
+        // joiner that's also in `reconsidering` means they previously opted
+        // out, were disconnected, and just walked back in — un-opt them
+        // before stamping the arrival.
         {
             let auto_ids: Vec<UserId> = state.auto_arrived.lock().unwrap().drain().collect();
             if !auto_ids.is_empty() {
+                let mut reconsidering = state.reconsidering.lock().unwrap();
                 for id in auto_ids {
+                    if reconsidering.remove(&id) {
+                        opted_out.remove(&id);
+                        expected.insert(id);
+                    }
                     if expected.contains(&id) && !arrivals.contains_key(&id) {
                         let lateness = if now <= grace_ends_at { Duration::ZERO } else { now - started_at };
                         arrivals.insert(id, lateness);
@@ -500,6 +498,8 @@ pub async fn start_gather(
         }
     }
 
+    drop(stream);
+
     let silent = *state.silent.lock().unwrap();
     let footer = if cancelled {
         Some("Cancelled by initiator.")
@@ -533,7 +533,7 @@ pub async fn start_gather(
 
 #[allow(clippy::too_many_arguments)]
 async fn handle_interaction(
-    ic: &serenity::all::ComponentInteraction,
+    ic: &ComponentInteraction,
     serenity_ctx: &SerenityContext,
     guild_id: GuildId,
     voice_channel_id: ChannelId,
@@ -543,158 +543,98 @@ async fn handle_interaction(
     expected: &mut HashSet<UserId>,
     arrivals: &mut HashMap<UserId, Duration>,
     opted_out: &mut HashSet<UserId>,
-    cancelled: &mut bool,
-    last_edit: &mut Instant,
     state: &GatherState,
-) {
+) -> CheckInOutcome {
     match ic.data.custom_id.as_str() {
         BTN_CANCEL => {
             if ic.user.id != author_id {
-                ic.create_response(
+                send_ephemeral(
                     &serenity_ctx.http,
-                    CreateInteractionResponse::Message(
-                        CreateInteractionResponseMessage::new()
-                            .content("Only the person who started the gathering can cancel it.")
-                            .ephemeral(true),
-                    ),
+                    ic,
+                    "Only the person who started the gathering can cancel it.",
                 )
-                .await
-                .ok();
-                return;
+                .await;
+                return CheckInOutcome::None;
             }
-            ic.create_response(&serenity_ctx.http, CreateInteractionResponse::Acknowledge)
-                .await
-                .ok();
-            *cancelled = true;
+            CheckInOutcome::Cancel
         }
         BTN_NOT_COMING => {
             if arrivals.contains_key(&ic.user.id) {
-                ic.create_response(
+                send_ephemeral(
                     &serenity_ctx.http,
-                    CreateInteractionResponse::Message(
-                        CreateInteractionResponseMessage::new()
-                            .content("You've already checked in — you can't opt out now.")
-                            .ephemeral(true),
-                    ),
+                    ic,
+                    "You've already checked in — you can't opt out now.",
                 )
-                .await
-                .ok();
-                return;
+                .await;
+                return CheckInOutcome::None;
             }
-
             if opted_out.contains(&ic.user.id) {
-                ic.create_response(
+                send_ephemeral(
                     &serenity_ctx.http,
-                    CreateInteractionResponse::Message(
-                        CreateInteractionResponseMessage::new()
-                            .content("You've already marked yourself as not coming.")
-                            .ephemeral(true),
-                    ),
+                    ic,
+                    "You've already marked yourself as not coming.",
                 )
-                .await
-                .ok();
-                return;
+                .await;
+                return CheckInOutcome::None;
             }
 
             expected.remove(&ic.user.id);
             opted_out.insert(ic.user.id);
+            // Arm the reconsider trap so the voice_handler routes a future
+            // rejoin back through auto_arrived (see the auto_arrived block
+            // in the main loop, which clears this flag and un-opts them).
+            state.reconsidering.lock().unwrap().insert(ic.user.id);
+
+            // If the opt-out is from someone currently sitting in the
+            // gathering channel, kick them so a rejoin is an explicit
+            // gesture — not just lingering presence. Spawn it so a slow
+            // disconnect API call can't block the next click.
+            if user_in_voice(serenity_ctx, guild_id, voice_channel_id, ic.user.id) {
+                let http = serenity_ctx.http.clone();
+                let user_id = ic.user.id;
+                tokio::spawn(async move {
+                    if let Err(error) = guild_id.disconnect_member(&http, user_id).await {
+                        tracing::warn!("Failed to disconnect opted-out user {}: {:?}", user_id, error);
+                    }
+                });
+            }
 
             let now = Instant::now();
             if expected.iter().all(|id| arrivals.contains_key(id)) {
                 *grace_ends_at = now.min(*grace_ends_at);
             }
 
-            let silent = *state.silent.lock().unwrap();
-            ic.create_response(
-                &serenity_ctx.http,
-                CreateInteractionResponse::UpdateMessage(
-                    CreateInteractionResponseMessage::new()
-                        .embed(check_in_embed(
-                            serenity_ctx,
-                            guild_id,
-                            expected,
-                            arrivals,
-                            opted_out,
-                            started_at,
-                            *grace_ends_at,
-                            silent,
-                            None,
-                        ))
-                        .components(gather_buttons(false, silent)),
-                ),
-            )
-            .await
-            .ok();
-            *last_edit = Instant::now();
+            CheckInOutcome::Refresh
         }
         BTN_TOGGLE_SILENT => {
             if ic.user.id != author_id {
-                ic.create_response(
+                send_ephemeral(
                     &serenity_ctx.http,
-                    CreateInteractionResponse::Message(
-                        CreateInteractionResponseMessage::new()
-                            .content("Only the person who started the gathering can mute pings.")
-                            .ephemeral(true),
-                    ),
+                    ic,
+                    "Only the person who started the gathering can mute pings.",
                 )
-                .await
-                .ok();
-                return;
+                .await;
+                return CheckInOutcome::None;
             }
-            let new_silent = {
+            {
                 let mut s = state.silent.lock().unwrap();
                 *s = !*s;
-                *s
-            };
-            ic.create_response(
-                &serenity_ctx.http,
-                CreateInteractionResponse::UpdateMessage(
-                    CreateInteractionResponseMessage::new()
-                        .embed(check_in_embed(
-                            serenity_ctx,
-                            guild_id,
-                            expected,
-                            arrivals,
-                            opted_out,
-                            started_at,
-                            *grace_ends_at,
-                            new_silent,
-                            None,
-                        ))
-                        .components(gather_buttons(false, new_silent)),
-                ),
-            )
-            .await
-            .ok();
-            *last_edit = Instant::now();
+            }
+            CheckInOutcome::Refresh
         }
         BTN_HERE => {
             if !user_in_voice(serenity_ctx, guild_id, voice_channel_id, ic.user.id) {
-                ic.create_response(
+                send_ephemeral(
                     &serenity_ctx.http,
-                    CreateInteractionResponse::Message(
-                        CreateInteractionResponseMessage::new()
-                            .content("You need to be in the voice channel to check in.")
-                            .ephemeral(true),
-                    ),
+                    ic,
+                    "You need to be in the voice channel to check in.",
                 )
-                .await
-                .ok();
-                return;
+                .await;
+                return CheckInOutcome::None;
             }
-
             if arrivals.contains_key(&ic.user.id) {
-                ic.create_response(
-                    &serenity_ctx.http,
-                    CreateInteractionResponse::Message(
-                        CreateInteractionResponseMessage::new()
-                            .content("You're already checked in.")
-                            .ephemeral(true),
-                    ),
-                )
-                .await
-                .ok();
-                return;
+                send_ephemeral(&serenity_ctx.http, ic, "You're already checked in.").await;
+                return CheckInOutcome::None;
             }
 
             let now = Instant::now();
@@ -707,35 +647,25 @@ async fn handle_interaction(
                 *grace_ends_at = now;
             }
 
-            let silent = *state.silent.lock().unwrap();
-            ic.create_response(
-                &serenity_ctx.http,
-                CreateInteractionResponse::UpdateMessage(
-                    CreateInteractionResponseMessage::new()
-                        .embed(check_in_embed(
-                            serenity_ctx,
-                            guild_id,
-                            expected,
-                            arrivals,
-                            opted_out,
-                            started_at,
-                            *grace_ends_at,
-                            silent,
-                            None,
-                        ))
-                        .components(gather_buttons(false, silent)),
-                ),
-            )
-            .await
-            .ok();
-            *last_edit = Instant::now();
+            CheckInOutcome::Refresh
         }
-        _ => {
-            ic.create_response(&serenity_ctx.http, CreateInteractionResponse::Acknowledge)
-                .await
-                .ok();
-        }
+        _ => CheckInOutcome::None,
     }
+}
+
+async fn send_ephemeral(
+    http: &Http,
+    ic: &ComponentInteraction,
+    content: &str,
+) {
+    let _ = ic
+        .create_followup(
+            http,
+            CreateInteractionResponseFollowup::new()
+                .content(content)
+                .ephemeral(true),
+        )
+        .await;
 }
 
 fn check_in_embed(

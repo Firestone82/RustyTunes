@@ -213,6 +213,12 @@ async fn resolve_source(
         .await)
 }
 
+fn is_direct_url(source: &str) -> bool {
+    source.starts_with(YOUTUBE_VIDEO_URL)
+        || source.starts_with(YOUTUBE_PLAYLIST_URL)
+        || SpotifyClient::is_spotify_url(source)
+}
+
 async fn do_play(
     ctx: Context<'_>,
     track_source: String,
@@ -226,9 +232,17 @@ async fn do_play(
         return Ok(());
     }
 
-    // Defer the interaction before any async work so Discord doesn't expire
-    // it during the yt-dlp metadata probe that may happen in next_track.
     ctx.defer().await?;
+
+    // For direct URLs the metadata fetch can take several seconds. Send an
+    // acknowledgment now so the user sees something right away, before the
+    // YouTube / Spotify API call finishes.
+    if is_direct_url(&track_source) {
+        PlayerEmbed::Queuing(&track_source)
+            .to_embed()
+            .send_context(ctx, true, Some(30))
+            .await?;
+    }
 
     let result = resolve_source(ctx, &track_source).await?;
 
@@ -246,23 +260,26 @@ async fn do_play(
             }
 
             track.added_by = ctx.author().name.clone();
+
+            // Push first (infallible), confirm to the user, then kick off
+            // playback. This order guarantees TrackAdded lands before
+            // NowPlaying for an idle queue, and that we never show success
+            // before a playback error — kick_off_playback is what can fail.
             let mut player: RwLockWriteGuard<Player> = ctx.data().player.write().await;
+            player.push_track(track.clone(), top);
 
-            // Skip the "added to queue" confirmation when nothing is playing —
-            // the new track will start immediately and NowPlaying covers it.
-            if player.is_playing {
-                QueueEmbed::TrackAdded(&track)
-                    .to_embed()
-                    .send_context(ctx, true, Some(30))
-                    .await?;
-            }
+            QueueEmbed::TrackAdded(&track)
+                .to_embed()
+                .send_context(ctx, true, Some(30))
+                .await?;
 
-            if let Err(error) = player.add_track_to_queue(ctx, track.clone(), top).await {
+            if let Err(error) = player.kick_off_playback(ctx, top).await {
                 drop(player);
                 report_playback_error(ctx, error).await?;
                 return Ok(());
             }
             drop(player);
+
             channel_service::join_user_channel(ctx).await?;
         }
 
@@ -292,20 +309,20 @@ async fn do_play(
                     track.added_by = ctx.author().name.clone();
 
                     let mut player: RwLockWriteGuard<Player> = ctx.data().player.write().await;
+                    player.push_track(track.clone(), top);
 
-                    if player.is_playing {
-                        QueueEmbed::TrackAdded(&track)
-                            .to_embed()
-                            .send_context(ctx, true, Some(30))
-                            .await?;
-                    }
+                    QueueEmbed::TrackAdded(&track)
+                        .to_embed()
+                        .send_context(ctx, true, Some(30))
+                        .await?;
 
-                    if let Err(error) = player.add_track_to_queue(ctx, track, top).await {
+                    if let Err(error) = player.kick_off_playback(ctx, top).await {
                         drop(player);
                         report_playback_error(ctx, error).await?;
                         return Ok(());
                     }
                     drop(player);
+
                     channel_service::join_user_channel(ctx).await?;
                 }
                 PickerOutcome::Cancelled => {
