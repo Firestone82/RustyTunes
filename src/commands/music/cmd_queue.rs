@@ -21,6 +21,10 @@ fn nav_buttons(
             .label("◀")
             .style(ButtonStyle::Secondary)
             .disabled(page <= 1),
+        CreateButton::new("queue_page")
+            .label(format!("{}/{}", page, total_pages))
+            .style(ButtonStyle::Secondary)
+            .disabled(true),
         CreateButton::new("queue_next")
             .label("▶")
             .style(ButtonStyle::Secondary)
