@@ -1,15 +1,15 @@
 use crate::bot::{Context, MusicBotError};
 use crate::commands::reputation::Rep;
 use crate::embeds::reputation::rep_embed::ReputationEmbed;
-use serenity::all::{ButtonStyle, ComponentInteractionCollector, CreateActionRow, CreateButton, CreateInteractionResponse, CreateInteractionResponseMessage, User};
-use serenity::futures::StreamExt;
+use crate::service::interaction_service::DeferredInteractionStream;
+use serenity::all::{ButtonStyle, CreateActionRow, CreateButton, CreateInteractionResponseFollowup, EditMessage};
 use std::time::Duration;
 
 /// List the reputation of a user, including history.
 #[poise::command(prefix_command, slash_command, aliases("reps", "repinfo"))]
 pub async fn list_rep(
     ctx: Context<'_>,
-    #[description = "User to check reputation for (optional, defaults to yourself)"] user: Option<User>,
+    #[description = "User to check reputation for (optional, defaults to yourself)"] user: Option<serenity::all::User>,
 ) -> Result<(), MusicBotError> {
     let target_user = user.as_ref().unwrap_or(ctx.author());
     let target_id = target_user.id.to_string();
@@ -61,69 +61,57 @@ pub async fn list_rep(
         .await
         .map_err(|error| MusicBotError::InternalError(error.to_string()))?;
 
-    let mut collector = ComponentInteractionCollector::new(ctx.serenity_context())
-        .message_id(message.id)
-        .stream();
+    let mut stream = DeferredInteractionStream::new(ctx.serenity_context(), message.id);
 
-    loop {
-        match tokio::time::timeout(Duration::from_mins(2), collector.next()).await {
-            Ok(Some(interaction)) => {
-                if interaction.user.id != ctx.author().id {
-                    interaction
-                        .create_response(
-                            ctx.http(),
-                            CreateInteractionResponse::Message(
-                                CreateInteractionResponseMessage::new()
-                                    .content("Only the person who ran this command can select a track.")
-                                    .ephemeral(true),
-                            ),
-                        )
-                        .await
-                        .ok();
-                    continue;
-                }
-
-                match interaction.data.custom_id.as_str() {
-                    "page_next" => {
-                        if current_page + 1 < total_pages {
-                            current_page += 1;
-                        }
-                    }
-                    "page_prev" => {
-                        current_page = current_page.saturating_sub(1);
-                    }
-                    _ => continue,
-                }
-
-                interaction
-                    .create_response(
-                        ctx.serenity_context(),
-                        CreateInteractionResponse::UpdateMessage(
-                            CreateInteractionResponseMessage::new()
-                                .embed(
-                                    ReputationEmbed::List(
-                                        get_page_slice(current_page),
-                                        &target_id,
-                                        total_rep,
-                                        logs.len(),
-                                    )
-                                    .to_embed(),
-                                )
-                                .components(get_nav_components(current_page, total_pages)),
-                        ),
-                    )
-                    .await
-                    .map_err(|e| MusicBotError::InternalError(e.to_string()))?;
-            }
-            Ok(None) => break,
-            Err(_) => break,
+    while let Some(interaction) = stream.next_within(Duration::from_mins(2)).await {
+        if interaction.user.id != ctx.author().id {
+            interaction
+                .create_followup(
+                    ctx.http(),
+                    CreateInteractionResponseFollowup::new()
+                        .content("Only the person who ran this command can navigate the list.")
+                        .ephemeral(true),
+                )
+                .await
+                .ok();
+            continue;
         }
+
+        match interaction.data.custom_id.as_str() {
+            "page_next" => {
+                if current_page + 1 < total_pages {
+                    current_page += 1;
+                }
+            }
+            "page_prev" => {
+                current_page = current_page.saturating_sub(1);
+            }
+            _ => continue,
+        }
+
+        message
+            .edit(
+                ctx.serenity_context(),
+                EditMessage::new()
+                    .embed(
+                        ReputationEmbed::List(
+                            get_page_slice(current_page),
+                            &target_id,
+                            total_rep,
+                            logs.len(),
+                        )
+                        .to_embed(),
+                    )
+                    .components(get_nav_components(current_page, total_pages)),
+            )
+            .await
+            .map_err(|e| MusicBotError::InternalError(e.to_string()))?;
     }
 
     message
         .edit(
             ctx.serenity_context(),
-            serenity::all::EditMessage::new().components(Vec::new()),
+            EditMessage::new().components(Vec::new()),
         )
         .await
         .map_err(|e| MusicBotError::InternalError(e.to_string()))?;

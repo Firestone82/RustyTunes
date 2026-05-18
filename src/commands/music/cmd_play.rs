@@ -246,17 +246,18 @@ async fn do_play(
             }
 
             track.added_by = ctx.author().name.clone();
+
+            // Confirm to the user that the track was queued before we kick
+            // off playback. For an empty queue, NowPlaying still follows
+            // once `next_track` resolves the input — but the user gets
+            // immediate feedback instead of staring at a blank thinking
+            // indicator while yt-dlp probes the URL.
+            QueueEmbed::TrackAdded(&track)
+                .to_embed()
+                .send_context(ctx, true, Some(30))
+                .await?;
+
             let mut player: RwLockWriteGuard<Player> = ctx.data().player.write().await;
-
-            // Skip the "added to queue" confirmation when nothing is playing —
-            // the new track will start immediately and NowPlaying covers it.
-            if player.is_playing {
-                QueueEmbed::TrackAdded(&track)
-                    .to_embed()
-                    .send_context(ctx, true, Some(30))
-                    .await?;
-            }
-
             if let Err(error) = player.add_track_to_queue(ctx, track.clone(), top).await {
                 drop(player);
                 report_playback_error(ctx, error).await?;
@@ -291,15 +292,12 @@ async fn do_play(
                     }
                     track.added_by = ctx.author().name.clone();
 
+                    QueueEmbed::TrackAdded(&track)
+                        .to_embed()
+                        .send_context(ctx, true, Some(30))
+                        .await?;
+
                     let mut player: RwLockWriteGuard<Player> = ctx.data().player.write().await;
-
-                    if player.is_playing {
-                        QueueEmbed::TrackAdded(&track)
-                            .to_embed()
-                            .send_context(ctx, true, Some(30))
-                            .await?;
-                    }
-
                     if let Err(error) = player.add_track_to_queue(ctx, track, top).await {
                         drop(player);
                         report_playback_error(ctx, error).await?;
