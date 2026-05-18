@@ -1,4 +1,5 @@
 use crate::embeds::music::player_embed::PlayerEmbed;
+use crate::handlers::error_handler::TrackErrorHandler;
 use crate::player::player::{self, Player};
 // Odebral jsem PlaybackError, v tomto kontextu nebyl správně použit
 use crate::service::embed_service::SendEmbed;
@@ -126,6 +127,14 @@ impl EventHandler for QueueHandler {
         }
 
         let _ = track_handle.add_event(Event::Track(songbird::TrackEvent::End), self.clone());
+        let _ = track_handle.add_event(
+            Event::Track(songbird::TrackEvent::Error),
+            TrackErrorHandler::new(
+                self.serenity_ctx.clone(),
+                self.guild_channel.clone(),
+                next_track.metadata.title.clone(),
+            ),
+        );
 
         player::set_now_playing(&self.serenity_ctx, &next_track);
 

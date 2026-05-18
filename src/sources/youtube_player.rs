@@ -243,6 +243,7 @@ impl YoutubeClient {
         let playlist_id = url.trim_start_matches(PLAYLIST_URI).to_string();
 
         let mut child = tokio::process::Command::new("yt-dlp")
+            .args(crate::utils::ytdlp_utils::js_runtime_args())
             .args([
                 "--flat-playlist",
                 "--no-warnings",

@@ -1,6 +1,12 @@
 use crate::bot::{MusicBotData, MusicBotError};
 use crate::embeds::bot::bot_embeds::BotEmbed;
+use crate::embeds::music::player_embed::PlayerEmbed;
+use crate::service::embed_service::SendEmbed;
+use crate::utils::ytdlp_utils::summarize_ytdlp_error;
 use async_trait::async_trait;
+use poise::serenity_prelude;
+use serenity::all::GuildChannel;
+use songbird::tracks::PlayMode;
 use songbird::{Event, EventContext, EventHandler};
 
 /// Delete the user's prefix-command invocation after 30s so the channel
@@ -17,16 +23,72 @@ pub fn schedule_prefix_delete(ctx: poise::Context<'_, MusicBotData, MusicBotErro
     }
 }
 
-/// Songbird event handler for `TrackEvent::Error` — logs and continues.
-pub struct ErrorHandler;
+/// Per-track Songbird handler for `TrackEvent::Error`. Captures the track's
+/// title and announcement channel at registration time so it can post a
+/// "Track failed" embed when songbird reports the input died. The End event
+/// still fires for errored tracks (songbird emits both), so queue advance is
+/// handled by `QueueHandler` — this handler only owns the user-facing notice.
+#[derive(Clone)]
+pub struct TrackErrorHandler {
+    serenity_ctx: serenity_prelude::Context,
+    guild_channel: GuildChannel,
+    track_title: String,
+}
+
+impl TrackErrorHandler {
+    pub fn new(
+        serenity_ctx: serenity_prelude::Context,
+        guild_channel: GuildChannel,
+        track_title: String,
+    ) -> Self {
+        Self {
+            serenity_ctx,
+            guild_channel,
+            track_title,
+        }
+    }
+}
 
 #[async_trait]
-impl EventHandler for ErrorHandler {
+impl EventHandler for TrackErrorHandler {
     async fn act(
         &self,
-        _e: &EventContext<'_>,
+        ctx: &EventContext<'_>,
     ) -> Option<Event> {
-        tracing::error!("Track error event: {:?}", _e);
+        let raw_error = if let EventContext::Track(states) = ctx {
+            states.first().and_then(|(state, _)| match &state.playing {
+                PlayMode::Errored(err) => Some(err.to_string()),
+                _ => None,
+            })
+        } else {
+            None
+        };
+
+        let reason = raw_error
+            .as_deref()
+            .map(summarize_ytdlp_error)
+            .unwrap_or_else(|| "playback error".to_string());
+
+        tracing::error!(
+            "Track failed: '{}' — {} (raw: {:?})",
+            self.track_title,
+            reason,
+            raw_error
+        );
+
+        let _ = PlayerEmbed::TrackFailed {
+            title: self.track_title.clone(),
+            reason,
+        }
+        .to_embed()
+        .send_channel(
+            self.serenity_ctx.http.clone(),
+            &self.guild_channel,
+            Some(60),
+            None,
+        )
+        .await;
+
         None
     }
 }

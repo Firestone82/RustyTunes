@@ -12,6 +12,7 @@
 
 use crate::player::track::{Track, TrackSource};
 use crate::service::normalize_service;
+use crate::utils::ytdlp_utils::js_runtime_args;
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
 use std::time::Duration;
@@ -163,6 +164,7 @@ pub async fn cache_track(track: &Track) -> std::io::Result<PathBuf> {
     let output_template = dir.join(format!("{stem}.part.%(ext)s"));
 
     let output = Command::new("yt-dlp")
+        .args(js_runtime_args())
         .args(["--no-warnings", "--no-playlist", "-f", "bestaudio/best", "-o"])
         .arg(&output_template)
         .arg(&input_url)
@@ -267,14 +269,8 @@ pub async fn probe_track(track: &Track) -> Option<TrackProbe> {
         .unwrap_or_else(|| track.metadata.track_url.clone());
 
     let output = Command::new("yt-dlp")
-        .args([
-            "--no-warnings",
-            "--no-playlist",
-            "--print",
-            "%(duration)s",
-            "--print",
-            "%(is_live)s",
-        ])
+        .args(js_runtime_args())
+        .args(["--no-warnings", "--no-playlist", "--print", "%(duration)s", "--print", "%(is_live)s"])
         .arg(&input_url)
         .stdout(Stdio::piped())
         .stderr(Stdio::null())
@@ -291,15 +287,16 @@ pub async fn probe_track(track: &Track) -> Option<TrackProbe> {
     let duration_line = lines.next().unwrap_or("").trim().to_owned();
     let is_live_line = lines.next().unwrap_or("").trim().to_owned();
 
-    let duration = duration_line.parse::<f64>().ok().and_then(|s| {
-        if s.is_finite() && s > 0.0 {
-            Some(Duration::from_secs(s as u64))
-        } else {
-            None
-        }
-    });
+    let duration = duration_line.parse::<f64>().ok().and_then(
+        |s| {
+            if s.is_finite() && s > 0.0 {
+                Some(Duration::from_secs(s as u64))
+            } else {
+                None
+            }
+        },
+    );
     let is_live = is_live_line.eq_ignore_ascii_case("true");
 
     Some(TrackProbe { duration, is_live })
 }
-

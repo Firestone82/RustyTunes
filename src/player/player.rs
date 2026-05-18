@@ -1,5 +1,6 @@
 use crate::bot::{Context, Database};
 use crate::embeds::music::player_embed::PlayerEmbed;
+use crate::handlers::error_handler::TrackErrorHandler;
 use crate::handlers::queue_handler::QueueHandler;
 use crate::player::track::{PlaybackError, Playlist, Track, MAX_TRACK_DURATION};
 use crate::service::cache_service;
@@ -283,13 +284,14 @@ impl Player {
             if track.duration().is_none() {
                 if let Some(probe) = cache_service::probe_track(&track).await {
                     if probe.is_live {
-                        tracing::info!("Skipping '{}' — livestreams are not allowed", track.metadata.title);
-                        PlayerEmbed::LivestreamNotAllowed {
-                            title: track.metadata.title.clone(),
-                        }
-                        .to_embed()
-                        .send_context(ctx, false, Some(30))
-                        .await?;
+                        tracing::info!(
+                            "Skipping '{}' — livestreams are not allowed",
+                            track.metadata.title
+                        );
+                        PlayerEmbed::LivestreamNotAllowed { title: track.metadata.title.clone() }
+                            .to_embed()
+                            .send_context(ctx, false, Some(30))
+                            .await?;
                         continue;
                     }
                     track.metadata.duration = probe.duration;
@@ -358,6 +360,7 @@ impl Player {
                     }
                 }
 
+                let guild_channel = ctx.guild_channel().await.unwrap();
                 let _ = track_handle.add_event(
                     Event::Track(TrackEvent::End),
                     QueueHandler::new(
@@ -365,8 +368,16 @@ impl Player {
                         manager.clone(),
                         ctx.data().request_client.clone(),
                         ctx.data().player.clone(),
-                        ctx.guild_channel().await.unwrap(),
+                        guild_channel.clone(),
                         guild_id,
+                    ),
+                );
+                let _ = track_handle.add_event(
+                    Event::Track(TrackEvent::Error),
+                    TrackErrorHandler::new(
+                        ctx.serenity_context().clone(),
+                        guild_channel,
+                        next_track.metadata.title.clone(),
                     ),
                 );
 

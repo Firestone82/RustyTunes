@@ -1,7 +1,6 @@
 use crate::bot::{Context, MusicBotError};
-use crate::handlers::error_handler::ErrorHandler;
 use serenity::all::{ChannelId, GuildId, UserId};
-use songbird::{Call, Event, Songbird};
+use songbird::{Call, Songbird};
 use std::sync::Arc;
 use tokio::sync::MutexGuard;
 
@@ -25,20 +24,12 @@ pub async fn join_user_channel(ctx: Context<'_>) -> Result<ChannelId, MusicBotEr
         .await
         .ok_or_else(|| MusicBotError::InternalError("Could not locate voice channel. Songbird manager does not exist".to_owned()))?;
 
-    match manager.join(guild_id, chanel_id).await {
-        Ok(handle_lock) => {
-            let mut handle: MutexGuard<Call> = handle_lock.lock().await;
-
-            // Disconnect detection lives in voice_handler — songbird's
-            // CoreEvent::DriverDisconnect also fires on transient drops
-            // (e.g. when an admin moves the bot), which is too aggressive.
-            handle.add_global_event(Event::Track(songbird::TrackEvent::Error), ErrorHandler);
-        }
-
-        Err(error) => {
-            tracing::error!("Error joining voice channel: {:?}", error);
-            return Err(MusicBotError::UnableToJoinVoiceChannelError);
-        }
+    // Per-track `TrackEvent::Error` and `TrackEvent::End` handlers are
+    // attached in the playback path so each carries the failing track's
+    // title and the channel where the play command was issued.
+    if let Err(error) = manager.join(guild_id, chanel_id).await {
+        tracing::error!("Error joining voice channel: {:?}", error);
+        return Err(MusicBotError::UnableToJoinVoiceChannelError);
     }
 
     Ok(chanel_id)

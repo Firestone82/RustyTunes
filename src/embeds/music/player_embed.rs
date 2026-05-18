@@ -42,6 +42,7 @@ pub enum PlayerEmbed<'a> {
     TrackTooLong { title: String, cap: std::time::Duration },
     LivestreamNotAllowed { title: String },
     PlaybackErrorEmbed(String),
+    TrackFailed { title: String, reason: String },
     InactivityLeave,
     History(&'a VecDeque<Track>),
     HistoryEmpty,
@@ -197,11 +198,18 @@ impl<'a> PlayerEmbed<'a> {
             PlayerEmbed::LivestreamNotAllowed { title } => CreateEmbed::new()
                 .color(Color::DARK_RED)
                 .title("🔴  Livestreams not allowed")
-                .description(format!("**{}** is a live broadcast and cannot be added to the queue. Only music videos are supported.", title)),
+                .description(format!(
+                    "**{}** is a live broadcast and cannot be added to the queue. Only music videos are supported.",
+                    title
+                )),
             PlayerEmbed::PlaybackErrorEmbed(message) => CreateEmbed::new()
                 .color(Color::DARK_RED)
                 .title("🚫  Playback error")
                 .description(message.clone()),
+            PlayerEmbed::TrackFailed { title, reason } => CreateEmbed::new()
+                .color(Color::DARK_RED)
+                .title("🚫  Track failed")
+                .description(format!("**{title}** could not be played — {reason}")),
             PlayerEmbed::InactivityLeave => CreateEmbed::new()
                 .color(Color::DARK_GOLD)
                 .title("👋  Leaving voice channel")
