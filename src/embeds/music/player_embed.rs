@@ -202,7 +202,10 @@ impl<'a> PlayerEmbed<'a> {
             PlayerEmbed::LivestreamNotAllowed { title } => CreateEmbed::new()
                 .color(Color::DARK_RED)
                 .title("🔴  Livestreams not allowed")
-                .description(format!("**{}** is a live broadcast and cannot be added to the queue. Only music videos are supported.", title)),
+                .description(format!(
+                    "**{}** is a live broadcast and cannot be added to the queue. Only music videos are supported.",
+                    title
+                )),
             PlayerEmbed::PlaybackErrorEmbed(message) => CreateEmbed::new()
                 .color(Color::DARK_RED)
                 .title("🚫  Playback error")

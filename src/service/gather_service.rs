@@ -594,7 +594,11 @@ async fn handle_interaction(
                 let user_id = ic.user.id;
                 tokio::spawn(async move {
                     if let Err(error) = guild_id.disconnect_member(&http, user_id).await {
-                        tracing::warn!("Failed to disconnect opted-out user {}: {:?}", user_id, error);
+                        tracing::warn!(
+                            "Failed to disconnect opted-out user {}: {:?}",
+                            user_id,
+                            error
+                        );
                     }
                 });
             }

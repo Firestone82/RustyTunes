@@ -24,7 +24,11 @@ pub async fn handle(
 
     for reaction in reactions {
         if let Err(e) = new_message.react(&ctx.http, reaction).await {
-            tracing::warn!("Failed to add emoticon reaction to message {}: {:?}", new_message.id, e);
+            tracing::warn!(
+                "Failed to add emoticon reaction to message {}: {:?}",
+                new_message.id,
+                e
+            );
         }
     }
 

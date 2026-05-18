@@ -214,9 +214,7 @@ async fn resolve_source(
 }
 
 fn is_direct_url(source: &str) -> bool {
-    source.starts_with(YOUTUBE_VIDEO_URL)
-        || source.starts_with(YOUTUBE_PLAYLIST_URL)
-        || SpotifyClient::is_spotify_url(source)
+    source.starts_with(YOUTUBE_VIDEO_URL) || source.starts_with(YOUTUBE_PLAYLIST_URL) || SpotifyClient::is_spotify_url(source)
 }
 
 async fn do_play(

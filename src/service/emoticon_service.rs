@@ -81,7 +81,10 @@ impl EmoticonService {
         let path = path.as_ref();
 
         if !path.exists() {
-            tracing::warn!("Emoticon config '{}' not found; emoticon reactions disabled", path.display());
+            tracing::warn!(
+                "Emoticon config '{}' not found; emoticon reactions disabled",
+                path.display()
+            );
             return Ok(Self::empty());
         }
 
@@ -105,13 +108,20 @@ impl EmoticonService {
             rules.push(EmoticonRule { pattern, reaction });
         }
 
-        tracing::info!("Loaded {} emoticon rule(s) from {}", rules.len(), path.display());
+        tracing::info!(
+            "Loaded {} emoticon rule(s) from {}",
+            rules.len(),
+            path.display()
+        );
         Ok(Self { rules })
     }
 
     /// Return the reactions whose patterns match `content`. Each reaction
     /// is returned at most once, in rule order.
-    pub fn detect_reactions(&self, content: &str) -> Vec<ReactionType> {
+    pub fn detect_reactions(
+        &self,
+        content: &str,
+    ) -> Vec<ReactionType> {
         let mut seen: HashSet<ReactionKey> = HashSet::new();
         let mut out: Vec<ReactionType> = Vec::new();
 
@@ -159,15 +169,19 @@ fn parse_reaction(raw: &str) -> Result<ReactionType, EmoticonConfigError> {
             None => (false, inner.strip_prefix(':').unwrap_or(inner)),
         };
 
-        let (name, id_part) = body.rsplit_once(':').ok_or_else(|| EmoticonConfigError::InvalidEmoji {
-            raw: raw.to_string(),
-            reason: "expected '<:name:id>' or '<a:name:id>'".to_string(),
-        })?;
+        let (name, id_part) = body
+            .rsplit_once(':')
+            .ok_or_else(|| EmoticonConfigError::InvalidEmoji {
+                raw: raw.to_string(),
+                reason: "expected '<:name:id>' or '<a:name:id>'".to_string(),
+            })?;
 
-        let id = id_part.parse::<u64>().map_err(|_| EmoticonConfigError::InvalidEmoji {
-            raw: raw.to_string(),
-            reason: format!("'{id_part}' is not a valid emoji id"),
-        })?;
+        let id = id_part
+            .parse::<u64>()
+            .map_err(|_| EmoticonConfigError::InvalidEmoji {
+                raw: raw.to_string(),
+                reason: format!("'{id_part}' is not a valid emoji id"),
+            })?;
 
         return Ok(ReactionType::Custom {
             animated,

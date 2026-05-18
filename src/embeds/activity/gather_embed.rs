@@ -193,10 +193,12 @@ fn build_check_in_embed(
             (None, true) => 1,
             (None, false) => 2,
         };
-        rank(a).cmp(&rank(b)).then_with(|| match (a.arrived, b.arrived) {
-            (Some(da), Some(db)) => da.cmp(&db),
-            _ => a.display_name.cmp(&b.display_name),
-        })
+        rank(a)
+            .cmp(&rank(b))
+            .then_with(|| match (a.arrived, b.arrived) {
+                (Some(da), Some(db)) => da.cmp(&db),
+                _ => a.display_name.cmp(&b.display_name),
+            })
     });
 
     let cells: Vec<(String, String)> = sorted
