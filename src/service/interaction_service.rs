@@ -12,10 +12,12 @@ use tokio::task::JoinHandle;
 /// after the click. If the bot processes clicks serially and a single
 /// handler takes longer than that (e.g. lock contention, yt-dlp probe), any
 /// click that landed in the buffer during the slow handler has already
-/// expired by the time we pop it. Deferring on a per-click `tokio::spawn`
-/// the moment the click arrives — instead of waiting our turn in the main
-/// loop — keeps the ack within the 3-second window regardless of how busy
-/// the consumer is.
+/// expired by the time we pop it. Deferring each click in the forwarder loop
+/// — instead of waiting our turn in the main loop — keeps the ack within the
+/// 3-second window regardless of how busy the consumer is. Deferring is done
+/// sequentially (not spawned) so the original click order is preserved; a
+/// single defer round-trip is ~100–300 ms, so even a burst of several rapid
+/// clicks stays comfortably under the 3-second limit.
 ///
 /// Consumers receive interactions that have already been acked via
 /// `defer()` (a silent `DeferredUpdateMessage`), so subsequent updates must
@@ -40,15 +42,15 @@ impl DeferredInteractionStream {
         let forwarder = tokio::spawn(async move {
             tokio::pin!(collector);
             while let Some(ic) = collector.next().await {
-                let http = http.clone();
-                let tx = tx.clone();
-                tokio::spawn(async move {
-                    if let Err(error) = ic.defer(&http).await {
-                        tracing::debug!("Failed to defer component interaction: {:?}", error);
-                        return;
-                    }
-                    let _ = tx.send(ic);
-                });
+                // Defer inline (not spawned) so click order is preserved.
+                // Deferring is fast (~100-300 ms) and sequential deferral of
+                // a burst still finishes well within Discord's 3-second ack
+                // window.
+                if let Err(error) = ic.defer(&http).await {
+                    tracing::debug!("Failed to defer component interaction: {:?}", error);
+                    continue;
+                }
+                let _ = tx.send(ic);
             }
         });
 

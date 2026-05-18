@@ -247,16 +247,6 @@ async fn do_play(
 
             track.added_by = ctx.author().name.clone();
 
-            // Confirm to the user that the track was queued before we kick
-            // off playback. For an empty queue, NowPlaying still follows
-            // once `next_track` resolves the input — but the user gets
-            // immediate feedback instead of staring at a blank thinking
-            // indicator while yt-dlp probes the URL.
-            QueueEmbed::TrackAdded(&track)
-                .to_embed()
-                .send_context(ctx, true, Some(30))
-                .await?;
-
             let mut player: RwLockWriteGuard<Player> = ctx.data().player.write().await;
             if let Err(error) = player.add_track_to_queue(ctx, track.clone(), top).await {
                 drop(player);
@@ -264,6 +254,16 @@ async fn do_play(
                 return Ok(());
             }
             drop(player);
+
+            // Confirm after the add succeeds so we never show success
+            // followed by a playback error. NowPlaying still follows once
+            // next_track resolves the input, giving immediate feedback even
+            // for a previously idle queue.
+            QueueEmbed::TrackAdded(&track)
+                .to_embed()
+                .send_context(ctx, true, Some(30))
+                .await?;
+
             channel_service::join_user_channel(ctx).await?;
         }
 
@@ -292,18 +292,19 @@ async fn do_play(
                     }
                     track.added_by = ctx.author().name.clone();
 
-                    QueueEmbed::TrackAdded(&track)
-                        .to_embed()
-                        .send_context(ctx, true, Some(30))
-                        .await?;
-
                     let mut player: RwLockWriteGuard<Player> = ctx.data().player.write().await;
-                    if let Err(error) = player.add_track_to_queue(ctx, track, top).await {
+                    if let Err(error) = player.add_track_to_queue(ctx, track.clone(), top).await {
                         drop(player);
                         report_playback_error(ctx, error).await?;
                         return Ok(());
                     }
                     drop(player);
+
+                    QueueEmbed::TrackAdded(&track)
+                        .to_embed()
+                        .send_context(ctx, true, Some(30))
+                        .await?;
+
                     channel_service::join_user_channel(ctx).await?;
                 }
                 PickerOutcome::Cancelled => {
