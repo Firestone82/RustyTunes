@@ -34,6 +34,11 @@ pub struct GatherState {
     pub forgotten: Mutex<HashSet<UserId>>,
     /// Users who joined the gathering voice channel while expected — processed on the next loop tick.
     pub auto_arrived: Mutex<HashSet<UserId>>,
+    /// Users who pressed "I'm out" and were disconnected from the gathering
+    /// voice channel. If they hop back into the channel, voice_handler pushes
+    /// them onto `auto_arrived` so the check-in loop can flip them from
+    /// opted-out to arrived.
+    pub reconsidering: Mutex<HashSet<UserId>>,
     /// When true, ghost-ping reminders are suppressed for everyone.
     pub silent: Mutex<bool>,
     /// Set while the pre-gather countdown is active; cleared once it ends.
@@ -49,6 +54,7 @@ impl GatherState {
             extra_expected: Mutex::new(HashSet::new()),
             forgotten: Mutex::new(HashSet::new()),
             auto_arrived: Mutex::new(HashSet::new()),
+            reconsidering: Mutex::new(HashSet::new()),
             silent: Mutex::new(false),
             pregather: Mutex::new(None),
             pregather_extension: Mutex::new(Duration::ZERO),
@@ -425,11 +431,19 @@ pub async fn start_gather(
             }
         }
 
-        // voice_handler reports joins by inserting into auto_arrived.
+        // voice_handler reports joins by inserting into auto_arrived. A
+        // joiner that's also in `reconsidering` means they previously opted
+        // out, were disconnected, and just walked back in — un-opt them
+        // before stamping the arrival.
         {
             let auto_ids: Vec<UserId> = state.auto_arrived.lock().unwrap().drain().collect();
             if !auto_ids.is_empty() {
+                let mut reconsidering = state.reconsidering.lock().unwrap();
                 for id in auto_ids {
+                    if reconsidering.remove(&id) {
+                        opted_out.remove(&id);
+                        expected.insert(id);
+                    }
                     if expected.contains(&id) && !arrivals.contains_key(&id) {
                         let lateness = if now <= grace_ends_at { Duration::ZERO } else { now - started_at };
                         arrivals.insert(id, lateness);
@@ -566,6 +580,24 @@ async fn handle_interaction(
 
             expected.remove(&ic.user.id);
             opted_out.insert(ic.user.id);
+            // Arm the reconsider trap so the voice_handler routes a future
+            // rejoin back through auto_arrived (see the auto_arrived block
+            // in the main loop, which clears this flag and un-opts them).
+            state.reconsidering.lock().unwrap().insert(ic.user.id);
+
+            // If the opt-out is from someone currently sitting in the
+            // gathering channel, kick them so a rejoin is an explicit
+            // gesture — not just lingering presence. Spawn it so a slow
+            // disconnect API call can't block the next click.
+            if user_in_voice(serenity_ctx, guild_id, voice_channel_id, ic.user.id) {
+                let http = serenity_ctx.http.clone();
+                let user_id = ic.user.id;
+                tokio::spawn(async move {
+                    if let Err(error) = guild_id.disconnect_member(&http, user_id).await {
+                        tracing::warn!("Failed to disconnect opted-out user {}: {:?}", user_id, error);
+                    }
+                });
+            }
 
             let now = Instant::now();
             if expected.iter().all(|id| arrivals.contains_key(id)) {
