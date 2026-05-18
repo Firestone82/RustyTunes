@@ -22,6 +22,7 @@ fn track_description(track: &Track) -> String {
 
 pub enum PlayerEmbed<'a> {
     NowPlaying(&'a Track),
+    Queuing(&'a str),
     NoSongPlaying,
     IsStopped,
     Stopped,
@@ -61,6 +62,10 @@ pub enum PlayerEmbed<'a> {
 impl<'a> PlayerEmbed<'a> {
     pub fn to_embed(&self) -> CreateEmbed {
         match self {
+            PlayerEmbed::Queuing(source) => CreateEmbed::new()
+                .color(Color::DARK_BLUE)
+                .title("⏳  Queuing…")
+                .description(format!("Resolving `{}`…", source)),
             PlayerEmbed::NowPlaying(track) => {
                 let song = track_description(track);
                 let author = if track.metadata.channel.is_empty() { "—".to_string() } else { track.metadata.channel.clone() };

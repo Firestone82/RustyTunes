@@ -213,6 +213,12 @@ async fn resolve_source(
         .await)
 }
 
+fn is_direct_url(source: &str) -> bool {
+    source.starts_with(YOUTUBE_VIDEO_URL)
+        || source.starts_with(YOUTUBE_PLAYLIST_URL)
+        || SpotifyClient::is_spotify_url(source)
+}
+
 async fn do_play(
     ctx: Context<'_>,
     track_source: String,
@@ -226,9 +232,17 @@ async fn do_play(
         return Ok(());
     }
 
-    // Defer the interaction before any async work so Discord doesn't expire
-    // it during the yt-dlp metadata probe that may happen in next_track.
     ctx.defer().await?;
+
+    // For direct URLs the metadata fetch can take several seconds. Send an
+    // acknowledgment now so the user sees something right away, before the
+    // YouTube / Spotify API call finishes.
+    if is_direct_url(&track_source) {
+        PlayerEmbed::Queuing(&track_source)
+            .to_embed()
+            .send_context(ctx, true, Some(30))
+            .await?;
+    }
 
     let result = resolve_source(ctx, &track_source).await?;
 
