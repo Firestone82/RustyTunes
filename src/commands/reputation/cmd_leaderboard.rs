@@ -28,8 +28,12 @@ pub async fn rep_leaderboard(ctx: Context<'_>) -> Result<(), MusicBotError> {
     .await
     .map_err(|e| MusicBotError::InternalError(e.to_string()))?;
 
-    let detail_pages = entries.len().div_ceil(ITEMS_PER_PAGE);
-    let total_pages = (1 + detail_pages).max(1);
+    let detail_pages = if entries.len() > SUMMARY_TOP + SUMMARY_BOTTOM {
+        (entries.len() - SUMMARY_TOP).div_ceil(ITEMS_PER_PAGE)
+    } else {
+        0
+    };
+    let total_pages = 1 + detail_pages;
     let mut current_page = 0;
 
     let mut message = ctx
@@ -120,7 +124,7 @@ fn render_page(
         .to_embed()
     } else {
         let detail_page = page - 1;
-        let start = detail_page * ITEMS_PER_PAGE;
+        let start = SUMMARY_TOP + detail_page * ITEMS_PER_PAGE;
         let end = (start + ITEMS_PER_PAGE).min(entries.len());
         let slice = if start < entries.len() { &entries[start..end] } else { &[][..] };
 
