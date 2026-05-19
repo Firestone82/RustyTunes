@@ -134,6 +134,7 @@ impl MusicBotClient {
                     reputation::cmd_plus::add_rep(),
                     reputation::cmd_minus::remove_rep(),
                     reputation::cmd_list::list_rep(),
+                    reputation::cmd_leaderboard::rep_leaderboard(),
                     utility::cmd_rename::rename_context(),
                 ],
                 pre_command: |ctx| {
