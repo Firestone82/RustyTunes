@@ -5,6 +5,7 @@ use crate::embeds::reputation::rep_embed::ReputationEmbed;
 use crate::service::embed_service::SendEmbed;
 use time::{Duration, OffsetDateTime};
 
+pub mod cmd_leaderboard;
 pub mod cmd_list;
 pub mod cmd_minus;
 pub mod cmd_plus;
@@ -17,6 +18,12 @@ pub struct Rep {
     pub rep_value: i64,
     pub reason: String,
     pub created_at: OffsetDateTime,
+}
+
+pub struct LeaderboardEntry {
+    pub receiver_id: String,
+    pub total_rep: i64,
+    pub log_count: i64,
 }
 
 /// Detects if giver spams
