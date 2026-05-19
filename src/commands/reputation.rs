@@ -60,24 +60,30 @@ async fn spam_protection(
     Ok(false)
 }
 
+pub struct ProcessRepResult {
+    pub rep_id: i64,
+    pub overall_rep: i64,
+}
+
 async fn apply_rep_db(
     pool: &sqlx::Pool<sqlx::Sqlite>,
     giver_id: &str,
     receiver_id: &str,
     rep_value: i64,
     reason: &str,
-) -> Result<i64, sqlx::Error> {
-    sqlx::query!(
+) -> Result<ProcessRepResult, sqlx::Error> {
+    let rep_id: i64 = sqlx::query_scalar!(
         "
         INSERT INTO reputation_logs (giver_id, receiver_id, rep_value, reason)
         VALUES (?, ?, ?, ?)
+        RETURNING id
         ",
         giver_id,
         receiver_id,
         rep_value,
         reason,
     )
-    .execute(pool)
+    .fetch_one(pool)
     .await?;
 
     let overall_rep: i64 = sqlx::query_scalar!(
@@ -91,16 +97,16 @@ async fn apply_rep_db(
     .fetch_one(pool)
     .await?;
 
-    Ok(overall_rep)
+    Ok(ProcessRepResult { rep_id, overall_rep })
 }
 
 /// process reputation
-async fn process_rep(
+pub async fn process_rep(
     ctx: Context<'_>,
     user: User,
     reason: String,
     rep_value: i64,
-) -> Result<Option<i64>, MusicBotError> {
+) -> Result<Option<ProcessRepResult>, MusicBotError> {
     // self check
     if user.id == ctx.author().id {
         ReputationEmbed::SelfError
@@ -124,7 +130,7 @@ async fn process_rep(
         return Ok(None);
     }
 
-    let rep = apply_rep_db(
+    let result = apply_rep_db(
         &ctx.data().database_pool,
         &giver_id,
         &receiver_id,
@@ -134,5 +140,5 @@ async fn process_rep(
     .await
     .map_err(|e| MusicBotError::InternalError(e.to_string()))?;
 
-    Ok(Some(rep))
+    Ok(Some(result))
 }

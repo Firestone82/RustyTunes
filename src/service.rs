@@ -8,3 +8,4 @@ pub mod interaction_service;
 pub mod normalize_service;
 pub mod notifier_service;
 pub mod picker_service;
+pub mod rep_interaction_service;

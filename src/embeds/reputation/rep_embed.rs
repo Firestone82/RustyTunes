@@ -27,31 +27,46 @@ pub struct RepEmbed<'a> {
     pub receiver_id: &'a User,
     pub reason: String,
     pub overall_rep: i64,
+    pub edited: bool,
 }
 
 impl ReputationEmbed<'_> {
     pub fn to_embed(&self) -> CreateEmbed {
         match self {
-            ReputationEmbed::PlusRep(rep) => CreateEmbed::new()
-                .color(serenity::all::Color::DARK_GREEN)
-                .title("✅  Reputation Increased")
-                .field("Given by", format!("{}", rep.giver_id), true)
-                .field("ㅤ", "-->", true)
-                .field("Target", format!("{}", rep.receiver_id), true)
-                .field("Amount", "+1 💚", true)
-                .field(" ", " ", true)
-                .field("Current rep", format!("`{}`", rep.overall_rep), true)
-                .field("Reason", format!(">>> {}", rep.reason), false),
-            ReputationEmbed::MinusRep(rep) => CreateEmbed::new()
-                .color(serenity::all::Color::DARK_RED)
-                .title("❌  Reputation Decreased")
-                .field("Given by", format!("{}", rep.giver_id), true)
-                .field("ㅤ", "-->", true)
-                .field("Target", format!("{}", rep.receiver_id), true)
-                .field("Amount", "-1 💔", true)
-                .field(" ", " ", true)
-                .field("Current rep", format!("`{}`", rep.overall_rep), true)
-                .field("Reason", format!(">>> {}", rep.reason), false),
+            ReputationEmbed::PlusRep(rep) => {
+                let embed = CreateEmbed::new()
+                    .color(serenity::all::Color::DARK_GREEN)
+                    .title("✅  Reputation Increased")
+                    .field("Given by", format!("{}", rep.giver_id), true)
+                    .field("ㅤ", "-->", true)
+                    .field("Target", format!("{}", rep.receiver_id), true)
+                    .field("Amount", "+1 💚", true)
+                    .field(" ", " ", true)
+                    .field("Current rep", format!("`{}`", rep.overall_rep), true)
+                    .field("Reason", format!(">>> {}", rep.reason), false);
+                if rep.edited {
+                    embed.footer(CreateEmbedFooter::new("✏️ Edited"))
+                } else {
+                    embed
+                }
+            }
+            ReputationEmbed::MinusRep(rep) => {
+                let embed = CreateEmbed::new()
+                    .color(serenity::all::Color::DARK_RED)
+                    .title("❌  Reputation Decreased")
+                    .field("Given by", format!("{}", rep.giver_id), true)
+                    .field("ㅤ", "-->", true)
+                    .field("Target", format!("{}", rep.receiver_id), true)
+                    .field("Amount", "-1 💔", true)
+                    .field(" ", " ", true)
+                    .field("Current rep", format!("`{}`", rep.overall_rep), true)
+                    .field("Reason", format!(">>> {}", rep.reason), false);
+                if rep.edited {
+                    embed.footer(CreateEmbedFooter::new("✏️ Edited"))
+                } else {
+                    embed
+                }
+            }
             ReputationEmbed::List(reps, for_user, calculated_rep, rep_count) => {
                 let mut embed = CreateEmbed::new()
                     .color(serenity::all::Color::DARK_BLUE)
@@ -120,15 +135,14 @@ impl ReputationEmbed<'_> {
 
                     embed = embed
                         .description(sections.join("\n\n"))
-                        .footer(CreateEmbedFooter::new(format!("👥 Ranked users: {}", total_entries)));
+                        .footer(CreateEmbedFooter::new(format!(
+                            "👥 Ranked users: {}",
+                            total_entries
+                        )));
                 }
                 embed
             }
-            ReputationEmbed::LeaderboardPage {
-                entries,
-                start_rank,
-                total_entries,
-            } => {
+            ReputationEmbed::LeaderboardPage { entries, start_rank, total_entries } => {
                 let mut embed = CreateEmbed::new()
                     .color(serenity::all::Color::DARK_GOLD)
                     .title("🏆  Reputation leaderboard");
@@ -138,7 +152,10 @@ impl ReputationEmbed<'_> {
                 } else {
                     embed = embed
                         .description(render_entries(entries, *start_rank))
-                        .footer(CreateEmbedFooter::new(format!("👥 Ranked users: {}", total_entries)));
+                        .footer(CreateEmbedFooter::new(format!(
+                            "👥 Ranked users: {}",
+                            total_entries
+                        )));
                 }
                 embed
             }
