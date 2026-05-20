@@ -1,6 +1,7 @@
 use crate::embeds::music::player_embed::PlayerEmbed;
 use crate::player::player::{self, Player};
 // Odebral jsem PlaybackError, v tomto kontextu nebyl správně použit
+use crate::service::channel_service;
 use crate::service::embed_service::SendEmbed;
 use async_trait::async_trait;
 use lombok::AllArgsConstructor;
@@ -61,6 +62,13 @@ impl EventHandler for QueueHandler {
                 }
 
                 if player_arc.read().await.is_playing {
+                    return;
+                }
+
+                // Voice handler already cleaned up if the bot was kicked or
+                // dragged out — don't announce a leave we didn't perform.
+                if !channel_service::bot_in_voice(&serenity_ctx, guild_id).await {
+                    tracing::debug!("Bot already left voice channel — skipping inactivity leave notice");
                     return;
                 }
 

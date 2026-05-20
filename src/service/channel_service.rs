@@ -1,5 +1,6 @@
 use crate::bot::{Context, MusicBotError};
 use crate::handlers::error_handler::ErrorHandler;
+use poise::serenity_prelude;
 use serenity::all::{ChannelId, GuildId, UserId};
 use songbird::{Call, Event, Songbird};
 use std::sync::Arc;
@@ -32,7 +33,12 @@ pub async fn join_user_channel(ctx: Context<'_>) -> Result<ChannelId, MusicBotEr
             // Disconnect detection lives in voice_handler — songbird's
             // CoreEvent::DriverDisconnect also fires on transient drops
             // (e.g. when an admin moves the bot), which is too aggressive.
-            handle.add_global_event(Event::Track(songbird::TrackEvent::Error), ErrorHandler);
+            let error_handler = ErrorHandler::new(
+                ctx.serenity_context().clone(),
+                ctx.data().player.clone(),
+                ctx.guild_channel().await,
+            );
+            handle.add_global_event(Event::Track(songbird::TrackEvent::Error), error_handler);
         }
 
         Err(error) => {
@@ -84,4 +90,19 @@ pub fn get_user_voice_channel(
         .as_ref()
         .and_then(|guild| guild.voice_states.get(user_id))
         .and_then(|voice_state| voice_state.channel_id)
+}
+
+/// Whether the bot still has an active songbird Call for `guild_id`.
+/// `voice_handler` drops the Call as soon as the bot is kicked/dragged out
+/// of voice, so callers spawning delayed "leaving voice channel" notices
+/// should gate them on this — otherwise they announce a leave that already
+/// happened from somewhere they're no longer in.
+pub async fn bot_in_voice(
+    serenity_ctx: &serenity_prelude::Context,
+    guild_id: GuildId,
+) -> bool {
+    match songbird::get(serenity_ctx).await {
+        Some(manager) => manager.get(guild_id).is_some(),
+        None => false,
+    }
 }

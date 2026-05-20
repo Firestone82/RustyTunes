@@ -1,7 +1,15 @@
 use crate::bot::{MusicBotData, MusicBotError};
 use crate::embeds::bot::bot_embeds::BotEmbed;
+use crate::embeds::music::player_embed::PlayerEmbed;
+use crate::player::player::Player;
+use crate::service::embed_service::SendEmbed;
 use async_trait::async_trait;
+use poise::serenity_prelude;
+use serenity::all::GuildChannel;
+use songbird::tracks::PlayMode;
 use songbird::{Event, EventContext, EventHandler};
+use std::sync::Arc;
+use tokio::sync::RwLock;
 
 /// Delete the user's prefix-command invocation after 30s so the channel
 /// doesn't get cluttered. Slash commands clean themselves up.
@@ -17,16 +25,66 @@ pub fn schedule_prefix_delete(ctx: poise::Context<'_, MusicBotData, MusicBotErro
     }
 }
 
-/// Songbird event handler for `TrackEvent::Error` — logs and continues.
-pub struct ErrorHandler;
+/// Songbird event handler for `TrackEvent::Error` — logs the failure and
+/// surfaces it to the text channel so users see *why* a track was skipped
+/// (typically a yt-dlp signature/extraction error). Songbird also fires
+/// `TrackEvent::End` after an error, so the per-track `QueueHandler` keeps
+/// the queue moving — we only handle the user-facing notice here.
+pub struct ErrorHandler {
+    serenity_ctx: serenity_prelude::Context,
+    player: Arc<RwLock<Player>>,
+    guild_channel: Option<GuildChannel>,
+}
+
+impl ErrorHandler {
+    pub fn new(
+        serenity_ctx: serenity_prelude::Context,
+        player: Arc<RwLock<Player>>,
+        guild_channel: Option<GuildChannel>,
+    ) -> Self {
+        Self { serenity_ctx, player, guild_channel }
+    }
+}
 
 #[async_trait]
 impl EventHandler for ErrorHandler {
     async fn act(
         &self,
-        _e: &EventContext<'_>,
+        e: &EventContext<'_>,
     ) -> Option<Event> {
-        tracing::error!("Track error event: {:?}", _e);
+        let reason = match e {
+            EventContext::Track(track_list) => track_list
+                .iter()
+                .find_map(|(state, _)| match &state.playing {
+                    PlayMode::Errored(err) => Some(err.to_string()),
+                    _ => None,
+                })
+                .unwrap_or_else(|| "unknown playback error".to_string()),
+            _ => "unknown playback error".to_string(),
+        };
+
+        tracing::error!("Track error event: {}", reason);
+
+        let title = self
+            .player
+            .read()
+            .await
+            .current_track
+            .as_ref()
+            .map(|t| t.metadata.title.clone());
+
+        let description = match title {
+            Some(t) => format!("Failed to play **{t}** — {reason}"),
+            None => format!("Playback failed — {reason}"),
+        };
+
+        if let Some(channel) = &self.guild_channel {
+            let _ = PlayerEmbed::PlaybackErrorEmbed(description)
+                .to_embed()
+                .send_channel(self.serenity_ctx.http.clone(), channel, Some(60), None)
+                .await;
+        }
+
         None
     }
 }
