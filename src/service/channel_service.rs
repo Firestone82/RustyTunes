@@ -26,19 +26,26 @@ pub async fn join_user_channel(ctx: Context<'_>) -> Result<ChannelId, MusicBotEr
         .await
         .ok_or_else(|| MusicBotError::InternalError("Could not locate voice channel. Songbird manager does not exist".to_owned()))?;
 
+    // `manager.join` is idempotent — `!play` runs it on every invocation even
+    // when the bot is already connected. Global event listeners stack on the
+    // same Call, so register the error handler only on a fresh join.
+    let already_joined = manager.get(guild_id).is_some();
+
     match manager.join(guild_id, chanel_id).await {
         Ok(handle_lock) => {
-            let mut handle: MutexGuard<Call> = handle_lock.lock().await;
+            if !already_joined {
+                let mut handle: MutexGuard<Call> = handle_lock.lock().await;
 
-            // Disconnect detection lives in voice_handler — songbird's
-            // CoreEvent::DriverDisconnect also fires on transient drops
-            // (e.g. when an admin moves the bot), which is too aggressive.
-            let error_handler = ErrorHandler::new(
-                ctx.serenity_context().clone(),
-                ctx.data().player.clone(),
-                ctx.guild_channel().await,
-            );
-            handle.add_global_event(Event::Track(songbird::TrackEvent::Error), error_handler);
+                // Disconnect detection lives in voice_handler — songbird's
+                // CoreEvent::DriverDisconnect also fires on transient drops
+                // (e.g. when an admin moves the bot), which is too aggressive.
+                let error_handler = ErrorHandler::new(
+                    ctx.serenity_context().clone(),
+                    ctx.data().player.clone(),
+                    ctx.guild_channel().await,
+                );
+                handle.add_global_event(Event::Track(songbird::TrackEvent::Error), error_handler);
+            }
         }
 
         Err(error) => {
