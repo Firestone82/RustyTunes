@@ -106,3 +106,22 @@ pub async fn bot_in_voice(
         None => false,
     }
 }
+
+/// The voice channel the bot is currently connected to in `guild_id`, if
+/// any. Discord voice channels carry an integrated text chat reachable by
+/// the same `ChannelId`, so this is what to write into when announcing
+/// voice-scoped events (joining, leaving for inactivity) — keeps the
+/// chatter close to the voice activity rather than spamming whichever text
+/// channel the original `!play` came from.
+pub fn bot_voice_channel(
+    serenity_ctx: &serenity_prelude::Context,
+    guild_id: GuildId,
+) -> Option<ChannelId> {
+    let bot_id = serenity_ctx.cache.current_user().id;
+    serenity_ctx
+        .cache
+        .guild(guild_id)
+        .as_ref()
+        .and_then(|g| g.voice_states.get(&bot_id))
+        .and_then(|vs| vs.channel_id)
+}

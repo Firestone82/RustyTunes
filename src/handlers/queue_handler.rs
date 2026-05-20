@@ -49,7 +49,6 @@ impl EventHandler for QueueHandler {
             let serenity_ctx = self.serenity_ctx.clone();
             let player_arc = self.player.clone();
             let guild_id = self.guild_id;
-            let guild_channel = self.guild_channel.clone();
 
             drop(player);
 
@@ -67,16 +66,16 @@ impl EventHandler for QueueHandler {
 
                 // Voice handler already cleaned up if the bot was kicked or
                 // dragged out — don't announce a leave we didn't perform.
-                if !channel_service::bot_in_voice(&serenity_ctx, guild_id).await {
+                let Some(voice_channel_id) = channel_service::bot_voice_channel(&serenity_ctx, guild_id) else {
                     tracing::debug!("Bot already left voice channel — skipping inactivity leave notice");
                     return;
-                }
+                };
 
                 tracing::info!("Leaving voice channel after 5 minutes of inactivity");
 
                 let _ = PlayerEmbed::InactivityLeave
                     .to_embed()
-                    .send_channel(serenity_ctx.http.clone(), &guild_channel, Some(60), None)
+                    .send_channel_id(serenity_ctx.http.clone(), voice_channel_id, Some(60), None)
                     .await;
 
                 let _ = player_arc.write().await.stop_playback().await;

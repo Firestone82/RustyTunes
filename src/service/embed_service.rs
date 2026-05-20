@@ -20,11 +20,25 @@ pub async fn send_channel_embed(
     delete_after: Option<u64>,
     message: Option<String>,
 ) -> Result<Message, MusicBotError> {
+    send_channel_id_embed(http, channel.id, embed, delete_after, message).await
+}
+
+/// Same as `send_channel_embed` but targets a raw `ChannelId`. Used when we
+/// need to write into a channel we don't have a cached `GuildChannel` for —
+/// e.g. the voice channel's integrated text chat, looked up through the
+/// bot's current voice state.
+pub async fn send_channel_id_embed(
+    http: Arc<Http>,
+    channel_id: ChannelId,
+    embed: CreateEmbed,
+    delete_after: Option<u64>,
+    message: Option<String>,
+) -> Result<Message, MusicBotError> {
     let created_message = CreateMessage::default()
         .content(message.unwrap_or_default())
         .embed(embed);
 
-    let message = channel
+    let message = channel_id
         .send_message(http.clone(), created_message)
         .await
         .map_err(|error| MusicBotError::InternalError(error.to_string()))?;
@@ -93,6 +107,14 @@ pub trait SendEmbed {
         delete_after: Option<u64>,
         message: Option<String>,
     ) -> impl std::future::Future<Output = Result<Message, MusicBotError>> + Send;
+
+    fn send_channel_id(
+        &self,
+        http: Arc<Http>,
+        channel_id: ChannelId,
+        delete_after: Option<u64>,
+        message: Option<String>,
+    ) -> impl std::future::Future<Output = Result<Message, MusicBotError>> + Send;
 }
 
 impl SendEmbed for CreateEmbed {
@@ -114,6 +136,17 @@ impl SendEmbed for CreateEmbed {
         message: Option<String>,
     ) -> Result<Message, MusicBotError> {
         let message: Message = send_channel_embed(http, channel, self.clone(), delete_after, message).await?;
+        Ok(message)
+    }
+
+    async fn send_channel_id(
+        &self,
+        http: Arc<Http>,
+        channel_id: ChannelId,
+        delete_after: Option<u64>,
+        message: Option<String>,
+    ) -> Result<Message, MusicBotError> {
+        let message: Message = send_channel_id_embed(http, channel_id, self.clone(), delete_after, message).await?;
         Ok(message)
     }
 }
