@@ -1,4 +1,5 @@
 use crate::service::cache_service;
+use crate::utils::yt_dlp_utils;
 use songbird::input::{File, Input, YoutubeDl};
 use std::path::PathBuf;
 use std::time::Duration;
@@ -113,7 +114,12 @@ impl Track {
             .play_url
             .clone()
             .unwrap_or_else(|| self.metadata.track_url.clone());
-        (YoutubeDl::new(req_client.clone(), input_url).into(), None)
+        let mut ytdl = YoutubeDl::new(req_client.clone(), input_url);
+        let extra = yt_dlp_utils::extra_args();
+        if !extra.is_empty() {
+            ytdl = ytdl.user_args(extra);
+        }
+        (ytdl.into(), None)
     }
 }
 

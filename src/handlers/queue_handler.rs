@@ -1,6 +1,7 @@
 use crate::embeds::music::player_embed::PlayerEmbed;
 use crate::player::player::{self, Player};
 // Odebral jsem PlaybackError, v tomto kontextu nebyl správně použit
+use crate::service::channel_service;
 use crate::service::embed_service::SendEmbed;
 use async_trait::async_trait;
 use lombok::AllArgsConstructor;
@@ -48,7 +49,6 @@ impl EventHandler for QueueHandler {
             let serenity_ctx = self.serenity_ctx.clone();
             let player_arc = self.player.clone();
             let guild_id = self.guild_id;
-            let guild_channel = self.guild_channel.clone();
 
             drop(player);
 
@@ -64,11 +64,18 @@ impl EventHandler for QueueHandler {
                     return;
                 }
 
+                // Voice handler already cleaned up if the bot was kicked or
+                // dragged out — don't announce a leave we didn't perform.
+                let Some(voice_channel_id) = channel_service::bot_voice_channel(&serenity_ctx, guild_id) else {
+                    tracing::debug!("Bot already left voice channel — skipping inactivity leave notice");
+                    return;
+                };
+
                 tracing::info!("Leaving voice channel after 5 minutes of inactivity");
 
                 let _ = PlayerEmbed::InactivityLeave
                     .to_embed()
-                    .send_channel(serenity_ctx.http.clone(), &guild_channel, Some(60), None)
+                    .send_channel_id(serenity_ctx.http.clone(), voice_channel_id, Some(60), None)
                     .await;
 
                 let _ = player_arc.write().await.stop_playback().await;

@@ -1,4 +1,5 @@
 use crate::player::track::{Playlist, Track, TrackMetadata};
+use crate::utils::yt_dlp_utils;
 use dotenv::var;
 use google_youtube3::api::{PlaylistItem, PlaylistItemSnippet, SearchResult, SearchResultSnippet};
 use google_youtube3::client::NoToken;
@@ -243,6 +244,7 @@ impl YoutubeClient {
         let playlist_id = url.trim_start_matches(PLAYLIST_URI).to_string();
 
         let mut child = tokio::process::Command::new("yt-dlp")
+            .args(yt_dlp_utils::extra_args())
             .args([
                 "--flat-playlist",
                 "--no-warnings",

@@ -1,5 +1,6 @@
 use crate::bot::{Context, MusicBotError};
 use crate::handlers::error_handler::ErrorHandler;
+use poise::serenity_prelude;
 use serenity::all::{ChannelId, GuildId, UserId};
 use songbird::{Call, Event, Songbird};
 use std::sync::Arc;
@@ -25,14 +26,26 @@ pub async fn join_user_channel(ctx: Context<'_>) -> Result<ChannelId, MusicBotEr
         .await
         .ok_or_else(|| MusicBotError::InternalError("Could not locate voice channel. Songbird manager does not exist".to_owned()))?;
 
+    // `manager.join` is idempotent — `!play` runs it on every invocation even
+    // when the bot is already connected. Global event listeners stack on the
+    // same Call, so register the error handler only on a fresh join.
+    let already_joined = manager.get(guild_id).is_some();
+
     match manager.join(guild_id, chanel_id).await {
         Ok(handle_lock) => {
-            let mut handle: MutexGuard<Call> = handle_lock.lock().await;
+            if !already_joined {
+                let mut handle: MutexGuard<Call> = handle_lock.lock().await;
 
-            // Disconnect detection lives in voice_handler — songbird's
-            // CoreEvent::DriverDisconnect also fires on transient drops
-            // (e.g. when an admin moves the bot), which is too aggressive.
-            handle.add_global_event(Event::Track(songbird::TrackEvent::Error), ErrorHandler);
+                // Disconnect detection lives in voice_handler — songbird's
+                // CoreEvent::DriverDisconnect also fires on transient drops
+                // (e.g. when an admin moves the bot), which is too aggressive.
+                let error_handler = ErrorHandler::new(
+                    ctx.serenity_context().clone(),
+                    ctx.data().player.clone(),
+                    ctx.guild_channel().await,
+                );
+                handle.add_global_event(Event::Track(songbird::TrackEvent::Error), error_handler);
+            }
         }
 
         Err(error) => {
@@ -84,4 +97,38 @@ pub fn get_user_voice_channel(
         .as_ref()
         .and_then(|guild| guild.voice_states.get(user_id))
         .and_then(|voice_state| voice_state.channel_id)
+}
+
+/// Whether the bot still has an active songbird Call for `guild_id`.
+/// `voice_handler` drops the Call as soon as the bot is kicked/dragged out
+/// of voice, so callers spawning delayed "leaving voice channel" notices
+/// should gate them on this — otherwise they announce a leave that already
+/// happened from somewhere they're no longer in.
+pub async fn bot_in_voice(
+    serenity_ctx: &serenity_prelude::Context,
+    guild_id: GuildId,
+) -> bool {
+    match songbird::get(serenity_ctx).await {
+        Some(manager) => manager.get(guild_id).is_some(),
+        None => false,
+    }
+}
+
+/// The voice channel the bot is currently connected to in `guild_id`, if
+/// any. Discord voice channels carry an integrated text chat reachable by
+/// the same `ChannelId`, so this is what to write into when announcing
+/// voice-scoped events (joining, leaving for inactivity) — keeps the
+/// chatter close to the voice activity rather than spamming whichever text
+/// channel the original `!play` came from.
+pub fn bot_voice_channel(
+    serenity_ctx: &serenity_prelude::Context,
+    guild_id: GuildId,
+) -> Option<ChannelId> {
+    let bot_id = serenity_ctx.cache.current_user().id;
+    serenity_ctx
+        .cache
+        .guild(guild_id)
+        .as_ref()
+        .and_then(|g| g.voice_states.get(&bot_id))
+        .and_then(|vs| vs.channel_id)
 }
