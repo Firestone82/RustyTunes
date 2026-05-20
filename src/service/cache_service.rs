@@ -12,6 +12,7 @@
 
 use crate::player::track::{Track, TrackSource};
 use crate::service::normalize_service;
+use crate::utils::yt_dlp_utils;
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
 use std::time::Duration;
@@ -163,6 +164,7 @@ pub async fn cache_track(track: &Track) -> std::io::Result<PathBuf> {
     let output_template = dir.join(format!("{stem}.part.%(ext)s"));
 
     let output = Command::new("yt-dlp")
+        .args(yt_dlp_utils::extra_args())
         .args(["--no-warnings", "--no-playlist", "-f", "bestaudio/best", "-o"])
         .arg(&output_template)
         .arg(&input_url)
@@ -267,6 +269,7 @@ pub async fn probe_track(track: &Track) -> Option<TrackProbe> {
         .unwrap_or_else(|| track.metadata.track_url.clone());
 
     let output = Command::new("yt-dlp")
+        .args(yt_dlp_utils::extra_args())
         .args(["--no-warnings", "--no-playlist", "--print", "%(duration)s", "--print", "%(is_live)s"])
         .arg(&input_url)
         .stdout(Stdio::piped())
