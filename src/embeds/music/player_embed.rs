@@ -32,6 +32,7 @@ pub enum PlayerEmbed<'a> {
     VolumeChanged(f32),
     SilentState(bool),
     NormalizeState(bool),
+    NormalizeUnavailable,
     Skipped(usize),
     Shuffled,
     Search(&'a [Track]),
@@ -130,6 +131,10 @@ impl<'a> PlayerEmbed<'a> {
                     .title(title)
                     .description(body)
             }
+            PlayerEmbed::NormalizeUnavailable => CreateEmbed::new()
+                .color(Color::ORANGE)
+                .title("🎚️  Normalization unavailable")
+                .description("Loudness normalization needs the on-disk track cache, which is disabled (`CACHE_ENABLED=false`). Re-enable the cache to use `!normalize`."),
             PlayerEmbed::SilentState(on) => {
                 let (title, body) = if *on {
                     (
