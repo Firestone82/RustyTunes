@@ -2,6 +2,7 @@ use crate::bot::{Context, MusicBotError};
 use crate::checks::channel_checks::check_author_in_same_voice_channel;
 use crate::embeds::music::player_embed::PlayerEmbed;
 use crate::player::player::{self, Player};
+use crate::service::cache_service;
 use crate::service::embed_service::SendEmbed;
 use tokio::sync::RwLockWriteGuard;
 
@@ -16,6 +17,14 @@ pub async fn normalize(
     ctx: Context<'_>,
     state: Option<String>,
 ) -> Result<(), MusicBotError> {
+    if !cache_service::is_enabled() {
+        PlayerEmbed::NormalizeUnavailable
+            .to_embed()
+            .send_context(ctx, true, Some(30))
+            .await?;
+        return Ok(());
+    }
+
     let player_arc = ctx.data().player.clone();
     let mut player: RwLockWriteGuard<Player> = player_arc.write().await;
 

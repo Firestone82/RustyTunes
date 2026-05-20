@@ -14,6 +14,7 @@ use crate::player::track::{Track, TrackSource};
 use crate::service::normalize_service;
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
+use std::sync::OnceLock;
 use std::time::Duration;
 use tokio::process::Command;
 
@@ -25,6 +26,29 @@ const CACHE_DIR: &str = "cache";
 const YOUTUBE_SUBDIR: &str = "youtube";
 const SPOTIFY_SUBDIR: &str = "spotify";
 const MAX_FILENAME_STEM: usize = 80;
+
+/// Whether the on-disk track cache is enabled. Controlled via the
+/// `CACHE_ENABLED` env var; defaults to `true`. When disabled, every play
+/// streams fresh from yt-dlp — `find_cached` returns `None`, `is_cacheable`
+/// returns `false`, and the cache background task is skipped. Loudness
+/// normalization rides along since it needs an analyzable file path.
+pub fn is_enabled() -> bool {
+    static CACHED: OnceLock<bool> = OnceLock::new();
+    *CACHED.get_or_init(|| match std::env::var("CACHE_ENABLED") {
+        Ok(raw) => match raw.trim().to_ascii_lowercase().as_str() {
+            "0" | "false" | "no" | "off" => {
+                tracing::info!("Track cache: disabled (CACHE_ENABLED={raw:?})");
+                false
+            }
+            "" | "1" | "true" | "yes" | "on" => true,
+            _ => {
+                tracing::warn!("Track cache: ignoring invalid CACHE_ENABLED={raw:?}, leaving enabled");
+                true
+            }
+        },
+        Err(_) => true,
+    })
+}
 
 pub fn cache_dir() -> PathBuf {
     PathBuf::from(CACHE_DIR)
@@ -93,6 +117,9 @@ pub fn cache_stem_for(track: &Track) -> Option<String> {
 /// Search order: per-source subdirectory first, then the legacy flat root so
 /// pre-split caches keep working without a migration step.
 pub async fn find_cached(track: &Track) -> Option<PathBuf> {
+    if !is_enabled() {
+        return None;
+    }
     let stem = cache_stem_for(track)?;
 
     if let Some(dir) = cache_dir_for(&track.source) {
@@ -138,6 +165,12 @@ async fn find_in_dir(
 /// Download `track` through yt-dlp into the cache, returning the final path.
 /// No-op (returns existing path) if a cached copy already exists.
 pub async fn cache_track(track: &Track) -> std::io::Result<PathBuf> {
+    if !is_enabled() {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::Unsupported,
+            "track cache is disabled",
+        ));
+    }
     let stem = cache_stem_for(track).ok_or_else(|| std::io::Error::new(std::io::ErrorKind::InvalidInput, "track is not cacheable"))?;
 
     if let Some(existing) = find_cached(track).await {
@@ -241,8 +274,9 @@ async fn cleanup_part_files(
 /// Whether `track` has enough metadata to be cacheable. Used by callers
 /// before they spawn a cache-and-apply background job so we don't kick off
 /// work for tracks we can't cache (local files, or sources missing an id).
+/// Also returns `false` when caching is globally disabled.
 pub fn is_cacheable(track: &Track) -> bool {
-    cache_stem_for(track).is_some()
+    is_enabled() && cache_stem_for(track).is_some()
 }
 
 /// Result of a single combined yt-dlp metadata probe.

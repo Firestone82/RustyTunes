@@ -84,9 +84,11 @@ impl Player {
         }
     }
 
-    /// Whether loudness normalization should apply this session.
+    /// Whether loudness normalization should apply this session. Off whenever
+    /// the on-disk cache is disabled — normalization measures loudness from
+    /// the cached file, so it has nothing to work with when there's no cache.
     pub fn should_normalize(&self) -> bool {
-        self.normalize
+        self.normalize && cache_service::is_enabled()
     }
 
     pub fn push_to_history(
@@ -591,6 +593,13 @@ pub fn spawn_cache_and_apply(
         return;
     }
     tokio::spawn(async move {
+        // Give songbird's streaming yt-dlp a few seconds of clean bandwidth
+        // before the caching yt-dlp starts pulling the same audio. The two
+        // invocations are independent, so without a head-start they race for
+        // the network and the user hears the streamed playback buffer instead
+        // of starting promptly.
+        tokio::time::sleep(std::time::Duration::from_secs(5)).await;
+
         match cache_service::cache_track(&track).await {
             Ok(path) => {
                 tracing::info!("Cached '{}' to {}", track.metadata.title, path.display());
