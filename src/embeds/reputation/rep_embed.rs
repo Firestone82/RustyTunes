@@ -120,15 +120,14 @@ impl ReputationEmbed<'_> {
 
                     embed = embed
                         .description(sections.join("\n\n"))
-                        .footer(CreateEmbedFooter::new(format!("👥 Ranked users: {}", total_entries)));
+                        .footer(CreateEmbedFooter::new(format!(
+                            "👥 Ranked users: {}",
+                            total_entries
+                        )));
                 }
                 embed
             }
-            ReputationEmbed::LeaderboardPage {
-                entries,
-                start_rank,
-                total_entries,
-            } => {
+            ReputationEmbed::LeaderboardPage { entries, start_rank, total_entries } => {
                 let mut embed = CreateEmbed::new()
                     .color(serenity::all::Color::DARK_GOLD)
                     .title("🏆  Reputation leaderboard");
@@ -138,7 +137,10 @@ impl ReputationEmbed<'_> {
                 } else {
                     embed = embed
                         .description(render_entries(entries, *start_rank))
-                        .footer(CreateEmbedFooter::new(format!("👥 Ranked users: {}", total_entries)));
+                        .footer(CreateEmbedFooter::new(format!(
+                            "👥 Ranked users: {}",
+                            total_entries
+                        )));
                 }
                 embed
             }

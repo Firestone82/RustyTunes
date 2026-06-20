@@ -10,7 +10,11 @@ const SUMMARY_TOP: usize = 5;
 const SUMMARY_BOTTOM: usize = 5;
 
 /// Show the reputation leaderboard, ranked by total rep.
-#[poise::command(prefix_command, slash_command, aliases("leaderboard", "reptop", "toprep"))]
+#[poise::command(
+    prefix_command,
+    slash_command,
+    aliases("leaderboard", "reptop", "toprep")
+)]
 pub async fn rep_leaderboard(ctx: Context<'_>) -> Result<(), MusicBotError> {
     let entries = sqlx::query_as!(
         LeaderboardEntry,
